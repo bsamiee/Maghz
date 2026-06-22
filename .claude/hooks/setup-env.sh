@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# SessionStart hook: write selected session environment for sub-agents.
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+# --- [CONSTANTS] --------------------------------------------------------------
+
+readonly TOOL_PATHS="${CLAUDE_TOOL_PATHS:-${CLAUDE_EXTRA_PATH:-}}"
+readonly ALLOW_MISSING_TOOL_PATHS="${CLAUDE_ALLOW_MISSING_TOOL_PATHS:-0}"
+readonly EXTRA_ENV_KEYS="${CLAUDE_ENV_EXPORT_KEYS:-}"
+declare -ra _ENV_KEYS=(
+    EXA_API_KEY
+    PERPLEXITY_API_KEY
+    TAVILY_API_KEY
+    CONTEXT7_API_KEY
+    OPENAI_API_KEY
+    GH_TOKEN
+    GITHUB_TOKEN
+    GH_PROJECTS_TOKEN
+    HOSTINGER_TOKEN
+    GOOGLE_OAUTH_CLIENT_ID
+    GOOGLE_OAUTH_CLIENT_SECRET
+    N8N_API_KEY
+)
+
+# --- [FUNCTIONS] --------------------------------------------------------------
+
+_emit_env_key() {
+    local -r key="$1"
+    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+    [[ -n "${!key:-}" ]] && printf 'export %s=%q\n' "${key}" "${!key}"
+}
+
+_emit_extra_env_keys() {
+    [[ -n "${EXTRA_ENV_KEYS}" ]] || return 0
+    local -a keys=()
+    local key
+    read -ra keys <<<"${EXTRA_ENV_KEYS//,/ }"
+    for key in "${keys[@]}"; do
+        _emit_env_key "${key}"
+    done
+}
+
+_emit_tool_paths() {
+    [[ -n "${TOOL_PATHS}" ]] || return 0
+    local -a paths=() selected=()
+    local path path_value
+    IFS=: read -ra paths <<<"${TOOL_PATHS}"
+    for path in "${paths[@]}"; do
+        [[ -n "${path}" ]] || continue
+        [[ -d "${path}" || "${ALLOW_MISSING_TOOL_PATHS}" == "1" ]] && selected+=("${path}")
+    done
+    ((${#selected[@]} > 0)) || return 0
+    printf -v path_value '%s:' "${selected[@]}"
+    # shellcheck disable=SC2016  # Single quotes intentional -- expand when Claude sources the env file.
+    printf 'export PATH="%s:${PATH}"\n' "${path_value%:}"
+}
+
+# --- [EXPORT] -----------------------------------------------------------------
+
+[[ -n "${CLAUDE_ENV_FILE:-}" ]] || exit 0
+ENV_DIR="$(dirname -- "${CLAUDE_ENV_FILE}")"
+readonly ENV_DIR
+[[ -d "${ENV_DIR}" && -w "${ENV_DIR}" && ! -d "${CLAUDE_ENV_FILE}" ]] || exit 0
+umask 077
+_ENV_TMP="$(mktemp "${CLAUDE_ENV_FILE}.tmp.XXXXXX")"
+readonly _ENV_TMP
+trap 'rm -f "${_ENV_TMP}"' EXIT
+{
+    for key in "${_ENV_KEYS[@]}"; do
+        _emit_env_key "${key}"
+    done
+    _emit_extra_env_keys
+    _emit_tool_paths
+} >"${_ENV_TMP}"
+chmod 600 "${_ENV_TMP}"
+mv "${_ENV_TMP}" "${CLAUDE_ENV_FILE}"

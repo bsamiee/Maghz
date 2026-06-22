@@ -1,0 +1,37 @@
+# Maghz knowledge-domain synonym map for the kb_english text-search configuration.
+#
+# Install path: $SHAREDIR/tsearch_data/maghz_synonyms.syn
+#   $SHAREDIR resolves to `pg_config --sharedir` (e.g. /usr/share/postgresql/18).
+#   The maghz-pg image (or a routines bootstrap step) must place this file there
+#   BEFORE `CREATE TEXT SEARCH DICTIONARY ... (TEMPLATE = synonym, SYNONYMS = maghz_synonyms)`
+#   in db/routines.sql resolves it. A missing file fails dictionary creation.
+#
+# Format (synonym template): one rule per line, `term synonym` — exactly TWO tokens,
+#   one input word -> one replacement lexeme. The synonym template does NOT support
+#   phrases: a line with 3+ tokens is parsed as `term` -> first-token-only and the rest is
+#   dropped, so acronym -> multi-word expansions (ml -> machine learning) belong in the
+#   thesaurus (maghz_thesaurus.ths), NOT here. Lowercase; the synonym dictionary fires
+#   BEFORE the snowball stemmer in the chain, so map to the stem the stemmer would miss.
+#   Trailing `*` on the synonym (RHS) enables prefix matching under to_tsquery.
+#
+# Starter rows: a minimal-but-real slice proving terminology dedup. The full ontology
+#   is fleshed out later — keep additions strictly one-word-to-one-word and stem-aware.
+#   Multi-word acronym expansions live in the thesaurus file.
+
+# --- Acronym normalization (single-token only; phrase expansions are in the thesaurus) ---
+db postgres
+pg postgres
+postgresql postgres
+k8s kubernetes
+
+# --- Spelling / regional variants ---
+normalisation normalization
+optimisation optimization
+behaviour behavior
+colour color
+
+# --- Domain term unification ---
+embeddings embedding
+vectors vector
+similarity similar
+retrieval retrieve

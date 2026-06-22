@@ -1,0 +1,83 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": [
+        "postgres-mcp",
+        "--access-mode=restricted"
+      ],
+      "env": {
+        "DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"
+      }
+    },
+    "n8n": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--init",
+        "ghcr.io/czlonkowski/n8n-mcp:latest",
+        "-e",
+        "MCP_MODE=stdio",
+        "-e",
+        "LOG_LEVEL=error",
+        "-e",
+        "DISABLE_CONSOLE_OUTPUT=true",
+        "-e",
+        "N8N_API_URL=${MAGHZ_MCP__N8N_API_URL}",
+        "-e",
+        "N8N_API_KEY=${MAGHZ_MCP__N8N_API_KEY}"
+      ],
+      "env": {}
+    },
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "${MAGHZ_MCP__EXA_API_KEY}"
+      }
+    },
+    "perplexity": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "perplexity-mcp"
+      ],
+      "env": {
+        "PERPLEXITY_API_KEY": "${MAGHZ_MCP__PERPLEXITY_API_KEY}"
+      }
+    },
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "tavily-mcp"
+      ],
+      "env": {
+        "TAVILY_API_KEY": "${MAGHZ_MCP__TAVILY_API_KEY}"
+      }
+    },
+    "workspace": {
+      "command": "uvx",
+      "args": [
+        "workspace-mcp",
+        "--tool-tier",
+        "extended"
+      ],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
+        "TOKEN_DIR": ".cache/workspace-mcp"
+      }
+    },
+    "notebooklm": {
+      "command": "notebooklm-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

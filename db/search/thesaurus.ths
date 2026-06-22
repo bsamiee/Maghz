@@ -1,0 +1,46 @@
+# Maghz knowledge-domain thesaurus for the kb_english text-search configuration.
+#
+# Install path: $SHAREDIR/tsearch_data/maghz_thesaurus.ths
+#   $SHAREDIR resolves to `pg_config --sharedir` (e.g. /usr/share/postgresql/18).
+#   The maghz-pg image (or a routines bootstrap step) must place this file there
+#   BEFORE `CREATE TEXT SEARCH DICTIONARY ... (TEMPLATE = thesaurus, ... )` in
+#   db/routines.sql resolves it. A missing file fails dictionary creation.
+#
+# Format (thesaurus template): `phrase : replacement`. The LEFT side is matched against
+#   lexemes already normalized by the subdictionary (english_stem, via the Dictionary
+#   option in routines.sql), so write phrases in natural SURFACE form — the stemmer
+#   normalizes both sides at load and match time, so `nearest neighbor search` also matches
+#   `nearest neighbors searches`. Multi-word LEFT is the whole point: it collapses a phrase
+#   to one canonical concept lexeme, deduping concepts indexed under different terminology.
+#   The RIGHT side is itself passed through the subdictionary; a LEADING `*` on a replacement
+#   token bypasses the subdictionary so an opaque/coined token (an acronym, a made-up concept
+#   id) is emitted verbatim instead of being stemmed. Opaque RHS tokens below carry the `*`.
+#
+# Starter rows: a minimal-but-real slice. The full ontology is fleshed out later.
+
+# --- Acronym -> phrase unification (the synonym template cannot do multi-word; thesaurus can) ---
+# Both the acronym and its expansion collapse to one opaque canonical lexeme.
+machine learning : *ml
+artificial intelligence : *ai
+natural language processing : *nlp
+large language model : *llm
+retrieval augmented generation : *rag
+continuous integration : *ci
+continuous delivery : *cd
+
+# --- Multi-word concept collapse ---
+nearest neighbor search : *ann
+approximate nearest neighbor : *ann
+vector similarity search : *ann
+full text search : *fts
+inverted index : *fts
+knowledge graph : *kg
+second brain : *pkm
+personal knowledge management : *pkm
+spaced repetition : *srs
+reciprocal rank fusion : *rrf
+hybrid retrieval : *hybridsearch
+hybrid search : *hybridsearch
+dense retrieval : *densesearch
+lexical search : *lexicalsearch
+keyword search : *lexicalsearch

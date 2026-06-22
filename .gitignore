@@ -1,0 +1,14 @@
+.DS_Store
+.env*
+.git/
+.vscode/
+.planning/
+.venv/
+__pycache__/
+*.py[cod]
+uv.lock
+.cache/
+.artifacts/
+dist/
+build/
+*.egg-info/

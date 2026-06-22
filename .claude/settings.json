@@ -1,0 +1,68 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "effortLevel": "xhigh",
+    "alwaysThinkingEnabled": true,
+    "showThinkingSummaries": true,
+    "skillListingBudgetFraction": 0.02,
+    "respectGitignore": true,
+    "autoMemoryEnabled": true,
+    "showClearContextOnPlanAccept": true,
+    "viewMode": "verbose",
+    "useAutoModeDuringPlan": true,
+    "claudeMdExcludes": [
+        "**/.cache/**/CLAUDE.md",
+        "**/node_modules/**/CLAUDE.md",
+        "**/bin/**/CLAUDE.md",
+        "**/obj/**/CLAUDE.md",
+        "**/.artifacts/**/CLAUDE.md"
+    ],
+    "permissions": {
+        "allow": [
+            "Bash(*)",
+            "Read",
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Glob",
+            "Grep",
+            "WebSearch",
+            "WebFetch",
+            "Skill",
+            "SlashCommand",
+            "Agent",
+            "Workflow",
+            "TaskCreate",
+            "TaskUpdate",
+            "TaskList",
+            "TaskGet",
+            "TaskOutput",
+            "TaskStop",
+            "LSP",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "EnterWorktree",
+            "ExitWorktree",
+            "ListMcpResourcesTool",
+            "ReadMcpResourceTool"
+        ]
+    },
+    "attribution": {
+        "commit": "",
+        "pr": ""
+    },
+    "hooks": {
+        "SessionStart": [
+            {
+                "matcher": "startup|resume|compact",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-env.sh",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ]
+    },
+    "enabledPlugins": {}
+}
