@@ -1,21 +1,25 @@
-"""Automation wire vocabulary: triggers, actions, the spec record, the receipt, the fault rail.
+"""Automation wire vocabulary: the trigger/action unions, the spec, the receipt, and the gated-skip owner.
 
-Every type that crosses an automation module boundary lives here. The two tagged unions
-(`Trigger` by `tag_field="type"`, `Action` by `tag_field="kind"`) are msgspec-native and
-resolve independently; `AutomationSpec` pairs exactly one of each. `AutomationReceipt`
-extends the envelope `Detail` base with `tag="automation"` so the report stays one shape.
-`AutomationFault` is the domain-internal `expression` tagged union, projected to an
-`Envelope` exactly once at the CLI boundary in `engine.py`. No operations live here.
+Every type crossing an automation module boundary lives here. The two msgspec tagged unions resolve
+independently — `Trigger` by `tag_field="type"`, `Action` by `tag_field="kind"` — and `AutomationSpec`
+pairs exactly one of each. `AutomationReceipt` extends the open `Detail` base with `tag="automation"`,
+so the report stays one shape while carrying precise per-fire evidence: every slot a given fire mode
+never touches rides `msgspec.UNSET` so it encodes ABSENT on the ledger wire rather than `null`,
+preserving the fire/skip and agent/engine-arm distinction for downstream consumers exactly as the
+sibling `SyncDetail` carries its verb-divergent slots. Boundary breaches ride the runtime `BoundaryFault`
+directly; the domain mints no parallel fault carrier. `Gate` is the one non-fault gated-skip outcome — a
+saturated lane or an over-ceiling host is a deliberate `Status.SKIP` value the governor returns — and
+`Gate.envelope` is its sole egress projection through the canonical `core.completed` constructor, never a
+fault case the engine must re-classify.
 """
 
 from enum import StrEnum
-from typing import assert_never, Literal
+from typing import Literal, Self
 import uuid
 
-from expression import case, tag, tagged_union
 import msgspec
 
-from admin.core.model import Detail
+from admin.core import completed, Detail, Envelope, Status
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -24,13 +28,42 @@ from admin.core.model import Detail
 class AgentSkill(StrEnum):
     """Closed in-arm discriminant for `AgentAction`; one member per research skill.
 
-    Adding a skill is one member here plus one `_AGENT_DISPATCH` row in `engine.py` — the
-    `Action` union is never restructured. A future `N8N_TRIGGER` member is the n8n entry.
+    Adding a skill is one member here plus one `_AGENT_DISPATCH` row in `engine.py`; the `Action`
+    union is never restructured.
     """
 
     DEEP_RESEARCH = "deep_research"
     REFINE = "refine"
     CREATE_ENTRY = "create_entry"
+
+
+class GateReason(StrEnum):
+    """The closed reasons the governor gates a fire to a non-failing skip; each binds its own `Status`.
+
+    The projected `Status` rides each member through `__new__` (the `Status`-pattern attribute bind), so
+    `Gate.envelope` reads the member's own outcome with no parallel correspondence: both current reasons
+    project `SKIP`, and a future hard-deny reason lands as one member carrying its own `Status`. A gated
+    fire never enters the boundary rail, so it cannot collapse into the shared `BoundaryFault` vocabulary.
+    """
+
+    status: Status
+
+    SATURATED = ("saturated", Status.SKIP)
+    OVER_CEILING = ("over_ceiling", Status.SKIP)
+
+    def __new__(cls, value: str, status: Status) -> Self:
+        """Mint the member as its string value, binding the projected gated `Status` onto it."""
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.status = status
+        return member
+
+
+type TriggerTag = Literal["watch", "schedule", "manual"]
+type ActionTag = Literal["agent", "notify", "embed", "sync"]
+
+
+# --- [MODELS] --------------------------------------------------------------------------
 
 
 class Watch(msgspec.Struct, frozen=True, gc=False, tag="watch"):
@@ -55,11 +88,10 @@ class Manual(msgspec.Struct, frozen=True, gc=False, tag="manual"):
 
 
 class AgentAction(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="agent"):
-    """Research-skill dispatch; `params` defers the skill payload to the dispatch arm.
+    """Research-skill dispatch keyed by `skill`; `params` defers the skill payload to the dispatch arm.
 
-    Collapses the former `DeepResearch` / `Refine` / `CreateEntry` cases into one case keyed
-    by `skill`. `params` is decoded lazily inside the `_AGENT_DISPATCH[skill]` callable, never
-    by the engine itself.
+    One case for every skill, not a per-skill struct: `params` is `msgspec.Raw`, decoded lazily inside
+    the `_AGENT_DISPATCH[skill]` callable, never by the engine.
     """
 
     skill: AgentSkill
@@ -68,7 +100,7 @@ class AgentAction(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="
 
 
 class Notify(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="notify"):
-    """Side-channel message emission to stderr or the NDJSON ledger."""
+    """Side-channel message emission; `channel` is the routing key the `Signals` sink discriminates on."""
 
     channel: Literal["stderr", "ndjson"]
     message: str
@@ -88,23 +120,15 @@ class Sync(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="sync"):
 
 
 type Trigger = Watch | Schedule | Manual
-type TriggerTag = Literal["watch", "schedule", "manual"]
 type Action = AgentAction | Notify | Embed | Sync
-type ActionTag = Literal["agent", "notify", "embed", "sync"]
-type AutomationFaultKind = Literal[
-    "spec_decode", "admission_denied", "lane_overflow", "action_transient", "action_permanent", "trigger_spawn", "agent_call"
-]
-
-
-# --- [MODELS] --------------------------------------------------------------------------
 
 
 class AutomationSpec(msgspec.Struct, frozen=True, gc=False):
     """The complete `--spec` wire payload: one trigger, one action, one lane key.
 
-    The two unions' tag fields (`type` vs `kind`) do not collide; msgspec resolves each
-    independently. `lane` is validated against `cfg.automation.lane_keys` at the
-    `_decode_spec` admission boundary, never silently coerced to `"default"`.
+    The two unions' tag fields (`type` vs `kind`) do not collide; msgspec resolves each independently.
+    `lane` is validated against `cfg.automation.lane_keys` at the `decode_spec` admission boundary,
+    never silently coerced to `"default"`.
     """
 
     trigger: Trigger
@@ -116,78 +140,55 @@ class AutomationSpec(msgspec.Struct, frozen=True, gc=False):
 class AutomationReceipt(Detail, frozen=True, tag="automation"):
     """The single typed receipt the engine emits; rides inside `report.detail`.
 
-    `trigger_tag` / `action_tag` carry closed `Literal`s, never bare `str`. `agent_skill`
-    is a valid `AgentSkill` only on the `AgentAction` arm. `cpu_percent` / `memory_rss_mb`
-    are the governor snapshot, non-null on every fire.
+    `trigger_tag`/`action_tag` carry closed `Literal`s, never bare `str`. Every mode-divergent slot rides
+    `msgspec.UNSET` so it encodes ABSENT on the ledger wire rather than `null`, exactly as the sibling
+    `SyncDetail` carries its verb-divergent slots: `agent_skill` is present only on the `AgentAction` arm
+    (the engine-owned arms omit it); `cpu_percent`/`memory_rss_mb` are the governor snapshot, present on a
+    real fire and ABSENT on a gated/missed tick; `rows_affected`/`job_id` are the action-arm evidence the
+    fire that produced them carries and every other fire omits. `attempt`/`elapsed_ms` stay required: a
+    fire stamps the live reading, a skip stamps `0`/`0.0`, so the fire/skip discriminant is the snapshot
+    slots' presence, never a null required field.
     """
 
     spec_id: str
     trigger_tag: TriggerTag
     action_tag: ActionTag
-    agent_skill: AgentSkill | None
     lane: str
     fired_at: str
     attempt: int
     elapsed_ms: float
-    rows_affected: int | None = None
-    job_id: str | None = None
-    cpu_percent: float | None = None
-    memory_rss_mb: float | None = None
+    agent_skill: AgentSkill | msgspec.UnsetType = msgspec.UNSET
+    rows_affected: int | msgspec.UnsetType = msgspec.UNSET
+    job_id: str | msgspec.UnsetType = msgspec.UNSET
+    cpu_percent: float | msgspec.UnsetType = msgspec.UNSET
+    memory_rss_mb: float | msgspec.UnsetType = msgspec.UNSET
 
 
-# --- [ERRORS] --------------------------------------------------------------------------
+class Gate(msgspec.Struct, frozen=True, gc=False):
+    """One gated, non-failing admission outcome the governor returns instead of firing the spec.
 
-
-@tagged_union(frozen=True)
-class AutomationFault:
-    """Closed domain-internal fault vocabulary; projected to an `Envelope` once at `drive`.
-
-    Each case is `(context, detail)`: `spec_decode` / `admission_denied` / `action_*` /
-    `agent_call` carry `(spec_id_or_empty, detail)`; `lane_overflow` carries `(spec_id, lane)`;
-    `trigger_spawn` carries `(lane, detail)`. Never serialized directly — `context()` is the owner
-    fold the engine reads, and `_fault_envelope` projects the pair with a total `match` +
-    `assert_never`.
+    A saturated lane or an over-ceiling host holds the fire as a deliberate skip, distinct from a
+    `BoundaryFault` operational breach — the gate never enters the boundary rail, so the engine's
+    dispatch result is `RuntimeRail[AutomationReceipt] | Gate` rather than smuggling a non-failure
+    through the fault carrier. `envelope` projects through the canonical `core.completed` gated-skip
+    constructor (the one owner that freezes `error_context` into the `Envelope` carrier), reading the
+    reason's own `Status` and stamping `{reason, spec_id, detail}` so an operator reads saturation or
+    ceiling pressure off the wire.
     """
 
-    tag: AutomationFaultKind = tag()
+    reason: GateReason
+    spec_id: str
+    detail: str
 
-    spec_decode: tuple[str, str] = case()
-    admission_denied: tuple[str, str] = case()
-    lane_overflow: tuple[str, str] = case()
-    action_transient: tuple[str, str] = case()
-    action_permanent: tuple[str, str] = case()
-    trigger_spawn: tuple[str, str] = case()
-    agent_call: tuple[str, str] = case()
-
-    def context(self) -> tuple[str, str]:  # noqa: PLR0911, PLR0912 - one typed read per case of the closed seven-case fault union
-        """Read the `(context, detail)` pair off whichever case is set, total over the closed union.
-
-        Every leaf payload is a `(context, detail)` pair whose subject differs by case — `spec_id`
-        for the spec/action/agent faults, `lane` for `lane_overflow`/`trigger_spawn` — so the engine
-        composes one owner read instead of a free-function fold: `_lift` mints the runtime
-        `BoundaryFault` from it and `_fault_envelope` carries it into the CLI `Envelope` context.
+    def envelope(self) -> Envelope:
+        """Project this gated outcome to its skip `Envelope` at the reason's own `Status`.
 
         Returns:
-            The `(context, detail)` pair the populated case carries; the `assert_never` arm proves the
-            seven `AutomationFaultKind` cases are exhausted.
+            The `core.completed` envelope carrying the gate detail as `error` and the
+            `{reason, spec_id, detail}` context the CLI and ledger read the gating cause off.
         """
-        match self.tag:
-            case "spec_decode":
-                return self.spec_decode
-            case "admission_denied":
-                return self.admission_denied
-            case "lane_overflow":
-                return self.lane_overflow
-            case "action_transient":
-                return self.action_transient
-            case "action_permanent":
-                return self.action_permanent
-            case "trigger_spawn":
-                return self.trigger_spawn
-            case "agent_call":
-                return self.agent_call
-            case _ as unreachable:  # pragma: no cover - exhaustive over the closed AutomationFaultKind literal
-                assert_never(unreachable)
+        context = {"reason": self.reason.value, "spec_id": self.spec_id, "detail": self.detail}
+        return completed(self.reason.status, error=self.detail, error_context=context)
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------
@@ -197,11 +198,11 @@ __all__ = [
     "ActionTag",
     "AgentAction",
     "AgentSkill",
-    "AutomationFault",
-    "AutomationFaultKind",
     "AutomationReceipt",
     "AutomationSpec",
     "Embed",
+    "Gate",
+    "GateReason",
     "Manual",
     "Notify",
     "Schedule",

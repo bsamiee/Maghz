@@ -6,8 +6,8 @@ the verb dispatchers over `CloudOp`/`McpOp`/`N8nOp`/`SchemaOp`/`StackOp`/the `co
 discriminant, and `drive` is the single polymorphic automation entrypoint that selects its Watch /
 Schedule / Manual lane off the `AutomationSpec.trigger` discriminant. `ledger`, `schema`, `stack`, and
 `sync` return the domain-internal `RuntimeRail[Envelope]`
-(`Result[Envelope, BoundaryFault]`) that the CLI `project` handler lowers to the stdout `Envelope`
-once, at the edge; `cloud` lifts its own `Result[CloudSyncDetail, CloudFault]` to `Envelope` at its
+(`Result[Envelope, BoundaryFault]`) that the CLI `runtime.lower` seam collapses to the stdout
+`Envelope` once, at the edge; `cloud` lifts its own `Result[CloudSyncDetail, CloudFault]` to `Envelope` at its
 `completed`/`fault` boundary and `mcp` lifts its own `Result[McpConfigDetail, McpFault]` likewise, so
 both thread straight through without that lowering. `n8n` returns the lifted `Envelope` directly: its
 `run` lifts its own `Result[N8nDetail, N8nFault]` rail (the `_exec` exit grade plus the STATUS

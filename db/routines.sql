@@ -26,6 +26,9 @@
 -- registration lives in cron.sql, which runs against postgres and reaches maghz via
 -- cron.schedule_in_database.
 
+-- [CATALOG:extensions] -- generated from admin/profile.py `routines_prelude()` (target_db == maghz).
+-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb
+-- asserts the live pg_extension census equals this declared set (census_diff).
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_search;
 CREATE EXTENSION IF NOT EXISTS pg_ivm;
@@ -45,6 +48,7 @@ CREATE EXTENSION IF NOT EXISTS btree_gin;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 CREATE EXTENSION IF NOT EXISTS tablefunc;
+-- [/CATALOG:extensions]
 
 CREATE SCHEMA IF NOT EXISTS maghz;
 

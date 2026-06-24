@@ -18,7 +18,6 @@ dependencies = [
     "apscheduler>=4.0.0a6",        # automation: 4.x AsyncScheduler cron trigger; native anyio, async ctx-mgr lifecycle. 4.x final unpublished — pinned to the latest 4.x prerelease; lift to >=4.0.0 when it lands.
     "httpx>=0.28.1",               # transport: query-time Ollama embedding calls (localhost:11434)
     "asyncssh>=2.23.1",            # transport: sole VPS SSHv2/SFTP client (exec/deploy); pure-Python wheel, cp315-clean. EPL-2.0 OR GPL-2.0+ (unmodified library use).
-    "keyring",                     # runtime: OS keychain credential boundary
     "frozendict>=2.4.7",           # data: hashable immutable map backing every static dispatch/correspondence/env-projection table across the rails; pure-Python `py3-none-any` wheel, cp315-clean. Sole immutable-map idiom — no MappingProxyType; `.get` projects to expression.Option.
     "pg8000>=1.31.5",              # data: pure-Python PostgreSQL driver; zero native build, installs clean on CPython 3.15 (psycopg/asyncpg binary wheels lag 3.15). Lift to psycopg[binary] when cp315 wheels land.
     "sqlglot",                     # data: pure-Python SQL parse/transpile/lineage for schema + ledger query tooling; cp315-clean

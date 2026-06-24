@@ -1,41 +1,57 @@
-"""n8n rail: one polymorphic verb over workflow export, import, and container liveness.
+"""n8n rail: one polymorphic verb over workflow export/import and the authenticated REST liveness census.
 
-A single `run` entrypoint discriminates on a closed `N8nOp` and lowers to the stdout `Envelope`
-itself — it owns the `completed`/`fault` lift, so the CLI binds it with no `project` seam, the same
-self-lowering contract the `cloud` rail exposes. EXPORT and IMPORT exec into the running container
-through the sole `_exec` boundary, which drives `anyio.run_process(..., check=False)` and grades the
-exit into the typed `N8nFault` rail (`op`/`message`/`exit_code`); a non-zero `docker exec` exit is a
-domain `Error(N8nFault)`, never a raised exception. The workflow count derives from the host-mounted
-`workflows_dir` `*.json` census — counted AFTER the export writes one `<id>.json` per workflow, and
-BEFORE the import reads them — never from the user-facing stdout prose. STATUS rides `httpx` against
-`cfg.n8n.api_url` `/healthz`: the retried `_probe_health` inner carries the `stamina.retry` liveness
-aspect (idempotent, network-fragile) and returns the bare liveness `bool`, folding the
-`httpx.HTTPStatusError` of a reached-but-non-200 service in place to `False` — a domain result, never
-a fault. Its `_status_detail` boundary then lowers the surviving transport escape (a `httpx.HTTPError`
-or `OSError` past the retry budget) to `Error(N8nFault(op=STATUS, exit_code=None))`, the same
-exhausted-retry-to-rail discipline `cloud._rclone` applies, so the STATUS leg never raises into `run`.
-`_BUILD` is the verb table, one row per `N8nOp`; the key set equals
-`N8nOp` exactly, so `run`'s subscription is total and the closed `match` proves it through
-`assert_never`. `run` folds the `Result` rail to one `completed`/`fault` envelope at this single edge,
-binding `structlog.get_logger()` once at entry to emit the receipt fields to stderr — a single bind,
-never an `@aspect` wrapper.
+`run(op, cfg)` discriminates a closed `N8nOp` and returns the domain-internal `RuntimeRail[Envelope]`
+the CLI `runtime.lower` seam collapses once at the edge — the same rail contract `schema`/`sync`/`ledger`
+expose, never a bespoke self-lowering carrier. There is no per-rail fault carrier: every boundary mints
+`BoundaryFault` directly (`config` for an absent op-injected API key, `boundary` for a non-zero
+`docker exec` grade, `wire` for a reached-but-non-200 REST status, plus the spawn/transport leaves the
+substrate `CLASSIFY` fold owns), so the typed `resource`/`deadline`/`wire` discrimination — and its retry
+receipts — survive to the projection.
+
+`_BUILD` is the verb table, one row per `N8nOp` over the shared `(cfg) -> RuntimeRail[Envelope]` shape;
+the EXPORT/IMPORT rows carry their `_Cli` policy value (the Server-CLI subcommand the container runs),
+so the two container verbs are one `_workflow` runner over a data row rather than two near-identical
+functions, and STATUS its authenticated REST probe. The key set equals `N8nOp` exactly, so `run`'s
+`_BUILD[op](cfg)` subscription is total and needs no `match`/`assert_never` ceremony around an
+already-exhaustive `frozendict`.
+
+EXPORT and IMPORT exec the n8n Server CLI into the running container through the one `runtime.spawn`
+boundary (`anyio.run_process(check=False)` under `guard(RetryClass.PROC)`, the spawn-flap retry and the
+exhausted-escape lift owned once in the substrate); this rail matches the returned `CompletedProcess`,
+awaits the async `_census` over `anyio.Path.glob` only on a zero exit, and threads it into the pure
+`_graded` exit projection (no blocking glob on the grade, the directory scan off the worker-thread pool).
+The workflow count derives from the host-mounted `workflows_dir` `*.json` census — counted AFTER the
+export writes one `<id>.json` per workflow, BEFORE the import reads them — never stdout prose.
+
+STATUS is the authenticated capability ridden through one long-lived `httpx.AsyncClient` per probe: the
+op-injected API key binds at client construction as the `_N8nAuth` flow (the `X-N8N-API-KEY` header signed
+once per request, the secret read only at the flow edge — never threaded through an interior `headers`
+map, never logged, never in `repr`), the client carries an explicit per-phase `httpx.Timeout` and pool
+`httpx.Limits`, and both legs (`GET /healthz` unauthenticated liveness, `GET /api/v1/workflows` the live
+server-side census) ride one `guarded(RetryClass.HTTP, ...)` envelope so the transport-transient retry and
+the terminal fault-lift are the runtime resilience owner's, not this rail's. The API key resolves once at
+admission through `_api_key`; an absent key is a typed `Error(BoundaryFault(config=...))` from the
+op-injected ENVIRONMENT alone (`MAGHZ_MCP__N8N_API_KEY`, vaulted `op://Tokens/N8N_API_KEY`), never a
+keychain prompt and never an interactive unlock. `structlog` binds the rail context at entry; the receipt
+fields ride the egress at the `lower` edge.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Generator
 from enum import StrEnum
-from pathlib import Path
-from typing import assert_never
+from subprocess import CompletedProcess  # noqa: S404 - the graded spawn result type `_graded` reads, never spawned here
+from typing import Final, override
 
 import anyio
 from expression import Error, Ok, Result
 from frozendict import frozendict
 import httpx
-from msgspec import UNSET, UnsetType
-import stamina
+import msgspec
 import structlog
 
-from admin.core import completed, Detail, Envelope, fault, Status
-from admin.settings import MaghzSettings
+from admin.core import completed, Detail, Envelope, Status
+from admin.runtime import BoundaryFault, guarded, RetryClass, RuntimeRail
+from admin.runtime.rails import spawn
+from admin.settings import MaghzSettings, N8nConfig
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -44,10 +60,8 @@ from admin.settings import MaghzSettings
 class N8nOp(StrEnum):
     """The closed set of n8n verbs `run` discriminates on; the `value` indexes `_BUILD` and the CLI.
 
-    The `StrEnum` value is the dispatch key into `_BUILD` and the closed `error_context["op"]`
-    vocabulary carried into `fault()` as `op.value`. The set is shaped to absorb a future BOOTSTRAP
-    case (the deferred REST `POST /api/v1/users/me/api-key` step) as one new case plus one `_BUILD`
-    row, without a parallel verb surface.
+    The set is shaped to absorb a future BOOTSTRAP case (the REST `POST /api/v1/users/me/api-key` step)
+    as one new member plus one `_BUILD` row, with every consumer untouched — never a parallel verb surface.
     """
 
     EXPORT = "export"
@@ -55,225 +69,312 @@ class N8nOp(StrEnum):
     STATUS = "status"
 
 
+# --- [CONSTANTS] -----------------------------------------------------------------------
+
+# The container path the host `workflows_dir` bind-mounts to; the n8n CLI reads/writes one `<id>.json`
+# per workflow here, and the host-side census reads the same files off `cfg.n8n.workflows_dir`.
+_CONTAINER_WORKFLOWS: Final[str] = "/home/node/workflows"
+
+# The live REST page bound: one decoded page carries the whole workflow census the count reports.
+_LIST_LIMIT: Final[int] = 250
+
+
 # --- [MODELS] --------------------------------------------------------------------------
 
 
 class N8nDetail(Detail, frozen=True, tag="n8n"):
-    """Which n8n verb ran, the workflow file count, the exec-ed container, and confirmed liveness.
+    """Which n8n verb ran, the workflow file/API count, the exec-ed container, and confirmed liveness.
 
     `healthy` is `bool | UnsetType` so a STATUS-confirmed true/false liveness is distinct from the
-    never-probed EXPORT/IMPORT ops: `msgspec.UNSET` encodes as ABSENT on the wire rather than `null`,
-    preserving that distinction for downstream agent consumers. The `tag="n8n"` discriminant encodes
-    as `$type` in `Envelope.report.detail`; the receipt folds into the existing `completed`/`fault`
-    surface from `admin.core` with no parallel DTO.
+    never-probed EXPORT/IMPORT ops: `msgspec.UNSET` encodes ABSENT on the wire rather than `null`,
+    preserving that distinction for downstream agent consumers. `workflow_count` carries the host-mounted
+    `*.json` census for EXPORT/IMPORT and the live REST `/api/v1/workflows` total for STATUS. The
+    `tag="n8n"` discriminant encodes as `$type` in `Envelope.report.detail`; the receipt folds into the
+    shared `completed`/`fault` surface with no parallel DTO.
     """
 
     op: N8nOp
     workflow_count: int = 0
     container: str = ""
-    healthy: bool | UnsetType = UNSET
+    healthy: bool | msgspec.UnsetType = msgspec.UNSET
 
 
-# --- [ERRORS] --------------------------------------------------------------------------
+class _Cli(msgspec.Struct, frozen=True, gc=False):
+    """One n8n Server-CLI verb row: the `N8nOp` stamped into the receipt and the `node`-exec subcommand.
 
-
-class N8nFault(Detail, frozen=True, tag="n8n_fault"):
-    """The sole boundary failure both n8n boundaries lift: a `docker exec` exit grade or a STATUS transport escape.
-
-    `op` is the verb; `message` is the decoded container stderr (EXPORT/IMPORT) or the transport
-    description (STATUS). `exit_code` is the non-zero `docker exec` return for the process boundary and
-    `None` for the STATUS transport escape, which carries no process exit — the same `int | None`
-    discipline `CloudFault` uses for its non-process (`spawn`) seam. `_exec` and `_status_detail` each
-    return it on the `Error` leg rather than raising, so a process failure or an exhausted-retry
-    transport escape is a domain result the `run` fold lowers to `fault()`, never an exception in
-    domain flow. `envelope()` lowers it to the stdout shape once, omitting `exit_code` when absent.
+    The behavior-carrying policy value the `_BUILD` EXPORT/IMPORT rows hold — `op` keys the receipt and
+    the fault subject, `subcommand` is the `n8n` CLI verb and flags exec-ed inside the container. A new
+    container verb is one row, never a third near-identical `_export`/`_import` function the body re-derives.
     """
 
     op: N8nOp
-    message: str
-    exit_code: int | None = None
+    subcommand: tuple[str, ...]
 
-    def envelope(self) -> Envelope:
-        """Lower this fault to the stdout `fault` envelope, stamping `op` and the `exit_code` only when present."""
-        exit_code = {"exit_code": str(self.exit_code)} if self.exit_code is not None else {}
-        return fault(self.message, {"op": self.op.value, **exit_code})
+
+class _Workflows(msgspec.Struct, frozen=True, gc=False):
+    """The n8n public REST `GET /api/v1/workflows` envelope; only the `data` length is load-bearing.
+
+    `forbid_unknown_fields` stays default so the unmodelled `nextCursor` and per-workflow object fields
+    are ignored — the census reads `len(data)` off one decoded page, the count STATUS reports. Each member
+    decodes as `msgspec.Raw` (the deferred-decode carrier), so the per-workflow object bodies are never
+    materialized — only the array length is read, the cheapest decode of a page whose only load-bearing
+    datum is its cardinality.
+    """
+
+    data: tuple[msgspec.Raw, ...] = ()
+
+
+class _Liveness(msgspec.Struct, frozen=True, gc=False):
+    """The STATUS probe census: `/healthz` liveness and the live REST workflow total, named not positional.
+
+    The two facts the `_probe` client scope yields, carried as a named leaf owner (both fields are
+    non-container leaves, so `gc=False` holds) rather than an anonymous `(bool, int)` pair the `_status`
+    receipt fold would read by magic index — the receipt destructures `healthy`/`count` by name, so a
+    third probe fact lands as one field with the fold untouched.
+    """
+
+    healthy: bool
+    count: int
+
+
+# --- [SERVICES] ------------------------------------------------------------------------
+
+
+class _N8nAuth(httpx.Auth):
+    """The n8n REST auth flow: sign each request with the op-injected `X-N8N-API-KEY`, secret read once.
+
+    The `httpx.Auth` flow is the credential seam the .api auth law mandates — the key binds at client
+    construction (`auth=`), never `None`-as-default and never an interior `headers` map threaded through
+    `_probe`. The secret is held on this flow instance (minted once at `_api_key` admission) and written
+    onto the outbound request header inside `auth_flow`, the single injection edge: `__slots__` and the
+    absent `__repr__` keep it out of logs and tracebacks, the n8n analog of `SecretStr.get_secret_value`.
+    """
+
+    __slots__ = ("_key",)
+
+    def __init__(self, key: str) -> None:
+        self._key = key
+
+    @override
+    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
+        """Set the `X-N8N-API-KEY` header on the outbound request and yield it once (single-leg flow)."""
+        request.headers["X-N8N-API-KEY"] = self._key
+        yield request
+
+
+# One process-wide decoder for the REST workflows envelope, resolved once at import rather than per probe;
+# the decode escape rides the `guarded` HTTP fence so a malformed payload lifts through the one `CLASSIFY`
+# authority (`DecodeError` -> `boundary`) rather than a hand-rolled catch.
+_WORKFLOWS_DECODER: Final[msgspec.json.Decoder[_Workflows]] = msgspec.json.Decoder(type=_Workflows)
+
+# The pool bound for the STATUS probe client: one connection carries the two sequential idempotent legs,
+# so a single keepalive connection with the default expiry is the whole pool a probe ever opens.
+_LIMITS: Final[httpx.Limits] = httpx.Limits(max_connections=1, max_keepalive_connections=1)
 
 
 # --- [OPERATIONS] ----------------------------------------------------------------------
 
 
-async def _exec(op: N8nOp, cfg: MaghzSettings, *subcommand: str) -> Result[None, N8nFault]:
-    """Exec one n8n Server CLI subcommand into the running container; grade the exit to the typed rail.
+def _api_key(cfg: MaghzSettings) -> Result[_N8nAuth, BoundaryFault]:
+    """Mint the n8n REST auth flow from the op-injected settings secret; an absent key is a config fault.
 
-    The sole subprocess boundary: `anyio.run_process(..., check=False)` so this owns exit
-    interpretation. A zero exit is `Ok(None)`; any non-zero exit is `Error(N8nFault)` carrying the
-    verb, the decoded stderr, and the exit code — never a raised exception.
+    The single secret-admission edge, minting the `_N8nAuth` flow exactly once. `cfg.mcp.n8n_api_key` is
+    the canonical owner of the key: the op-injected `N8N_API_KEY` vault value (`op://Tokens/N8N_API_KEY`)
+    reaches the process as `MAGHZ_MCP__N8N_API_KEY` and is admitted into this `SecretStr | None` field by
+    pydantic-settings — the op-injected ENVIRONMENT is the only source, never the macOS keychain (no
+    `keyring` read, no Touch-ID/password prompt). An unset field is `None`, so the rail returns
+    `Error(BoundaryFault(config=...))` rather than constructing a flow over an empty key.
+    `.get_secret_value()` is read only here, at the mint into the `_N8nAuth` flow whose `auth_flow` injects
+    the `X-N8N-API-KEY` header — never logged, never in `repr`.
 
     Args:
-        op: The verb stamped into a lifted fault (`EXPORT`/`IMPORT`).
-        cfg: The validated settings owning the n8n container name.
-        subcommand: The `n8n` Server CLI verb and its flags, exec-ed as `node` inside the container.
+        cfg: The validated settings whose `mcp.n8n_api_key` carries the op-injected secret.
 
     Returns:
-        `Ok(None)` on a zero exit, or `Error(N8nFault)` carrying the exit code and decoded stderr.
+        `Ok(_N8nAuth)` carrying the bound auth flow when the field holds a non-empty secret, or
+        `Error(BoundaryFault(config=...))` naming the `status` subject when the op-injected key is absent.
     """
-    run = await anyio.run_process(
-        ["docker", "exec", "-u", "node", cfg.n8n.container_name, "n8n", *subcommand],
-        check=False,
-    )
+    secret = cfg.mcp.n8n_api_key
+    if secret is None or not (key := secret.get_secret_value()):
+        return Error(BoundaryFault(config=("status", "n8n API key absent: set MAGHZ_MCP__N8N_API_KEY (op://Tokens/N8N_API_KEY)")))
+    return Ok(_N8nAuth(key))
+
+
+async def _census(cfg: MaghzSettings) -> int:
+    """Count the host-mounted `*.json` workflow files off `anyio.Path.glob`, never a blocking `Path.glob`.
+
+    The census reads after the container exec writes/reads one `<id>.json` per workflow. `anyio.Path.glob`
+    yields each match off the worker-thread pool, so the directory scan never blocks the event loop — the
+    house async-filesystem idiom (`cloud._staging`/`_first_dump`), not the sync `pathlib.Path.glob` that
+    would stall the loop on the mounted directory stat.
+
+    Returns:
+        The count of `*.json` workflow files in the host-mounted `workflows_dir`.
+    """
+    return len([entry async for entry in anyio.Path(cfg.n8n.workflows_dir).glob("*.json")])
+
+
+def _graded(run: CompletedProcess[bytes], cli: _Cli, count: int, container: str) -> RuntimeRail[Envelope]:
+    """Project one completed container exit to the typed rail: a zero exit censuses, any other faults.
+
+    The pure exit grade over the `CompletedProcess` `spawn` returns, the house idiom every subprocess rail
+    shares (`cloud._graded`/`schema`). A zero exit folds the already-counted host-mounted `*.json` census
+    into the EXPORT/IMPORT receipt (`healthy` stays `UNSET`, liveness was never probed); any non-zero exit
+    mints `Error(BoundaryFault(boundary=...))` directly, carrying the verb subject and the decoded container
+    stderr — never a per-rail fault carrier, never a raised exception. The census is computed off the async
+    `_census` in `_workflow` and threaded in, so this projection stays pure (no blocking I/O on the grade).
+
+    Returns:
+        `Ok(completed(OK, N8nDetail))` carrying the post-exec file count on a zero exit, or
+        `Error(BoundaryFault)` for a non-zero exit grade.
+    """
     if run.returncode == 0:
-        return Ok(None)
-    message = run.stderr.decode(errors="replace").strip() or f"{op.value} exited {run.returncode}"
-    return Error(N8nFault(op=op, message=message, exit_code=run.returncode))
+        return Ok(completed(Status.OK, N8nDetail(op=cli.op, workflow_count=count, container=container)))
+    detail = run.stderr.decode(errors="replace").strip() or f"{cli.op.value} exited {run.returncode}"
+    return Error(BoundaryFault(boundary=(f"n8n.{cli.op.value}", detail)))
 
 
-def _census(cfg: MaghzSettings) -> int:
-    """Count the `*.json` workflow files in the host-mounted `workflows_dir` (small, non-hot path)."""
-    return sum(1 for _ in Path(cfg.n8n.workflows_dir).glob("*.json"))
+async def _workflow(cli: _Cli, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
+    """Exec one n8n Server-CLI verb into the container through `runtime.spawn`, grading the exit to the rail.
 
-
-async def _export_detail(cfg: MaghzSettings) -> Result[N8nDetail, N8nFault]:
-    """Export every workflow to one `<id>.json` per file, then census the host-mounted directory.
-
-    `n8n export:workflow --all --separate` writes one JSON file per workflow into the container's
-    `/home/node/workflows`, the host bind-mount of `cfg.n8n.workflows_dir`; the count is the
-    post-exec `*.json` census, never stdout prose. A non-zero exit lifts to `Error(N8nFault)`.
+    The one container-verb runner the EXPORT/IMPORT `_BUILD` rows share: `spawn` owns the
+    `anyio.run_process(check=False)` + `guard(RetryClass.PROC)` spawn-flap retry + the exhausted-escape
+    lift, so this leg matches the one `guard`-stacked spawn rail, awaits the async `_census` only on a zero
+    exit (the count is `0` past a fault, never read), and threads it into the pure `_graded` exit projection
+    — the I/O stays on the async rail, `_graded` stays pure. `export:workflow --all --separate` writes one
+    `<id>.json` per workflow into the container's `_CONTAINER_WORKFLOWS` bind-mount of `cfg.n8n.workflows_dir`;
+    `import:workflow --separate --input` reads it back. The count is the host-mounted `*.json` census read
+    after the exec — never stdout prose; an import reads, not writes, so the host census is stable across the
+    exec and equals the post-exec read.
 
     Args:
+        cli: The `_Cli` policy row carrying the receipt `op` and the `node`-exec Server-CLI subcommand.
         cfg: The validated settings owning the n8n container name and the workflows directory.
 
     Returns:
-        `Ok(N8nDetail(op=EXPORT))` carrying the post-exec file count and the exec-ed container
-        (`healthy` stays `UNSET`, liveness was never probed), or `Error(N8nFault)` on a non-zero exit.
+        `Ok(completed(OK, N8nDetail))` carrying the host-mounted `*.json` census on a zero exit, or
+        `Error(BoundaryFault)` for a non-zero exit grade or a spawn flap past the `PROC` budget.
     """
-    return (await _exec(N8nOp.EXPORT, cfg, "export:workflow", "--all", "--output=/home/node/workflows", "--separate")).map(
-        lambda _: N8nDetail(op=N8nOp.EXPORT, workflow_count=_census(cfg), container=cfg.n8n.container_name)
-    )
+    argv = ("docker", "exec", "-u", "node", cfg.n8n.container_name, "n8n", *cli.subcommand)
+    match await spawn(argv, subject=f"n8n.{cli.op.value}", retry_class=RetryClass.PROC):
+        case Result(tag="error", error=spawn_fault):
+            return Error(spawn_fault)
+        case Result(ok=run):
+            count = await _census(cfg) if run.returncode == 0 else 0
+            return _graded(run, cli, count, cfg.n8n.container_name)
 
 
-async def _import_detail(cfg: MaghzSettings) -> Result[N8nDetail, N8nFault]:
-    """Census the host-mounted directory, then import every `<id>.json` workflow into the container.
+async def _probe(n8n: N8nConfig, auth: _N8nAuth) -> _Liveness:
+    """Probe `/healthz` liveness and the authenticated `/api/v1/workflows` census in one client scope.
 
-    The count is the pre-exec `*.json` census of `cfg.n8n.workflows_dir` (the files about to be read);
-    `n8n import:workflow --separate --input /home/node/workflows` reads that host bind-mount. A
-    non-zero exit lifts to `Error(N8nFault)`.
+    The retried inner of the STATUS boundary, idempotent and network-fragile, so the caller drives it under
+    `guarded(RetryClass.HTTP, ...)`. One long-lived `httpx.AsyncClient` carries both legs under an explicit
+    per-phase `httpx.Timeout` (the config `connect_timeout` floors connect and bounds read/write/pool) and
+    the single-connection pool `_LIMITS`: the op-injected key binds at construction as the `_N8nAuth` flow,
+    so neither leg threads a `headers` map. `/healthz` (no auth needed, but the flow signs it harmlessly)
+    grades liveness in place against `httpx.codes.OK` — a reached-but-non-200 health is `False`, a domain
+    result, not an escape — while `GET /api/v1/workflows` reads the live server-side census, decoded through
+    the shared `_WORKFLOWS_DECODER`. A reached non-200 on the API leg `raise_for_status`-es into the
+    `httpx.HTTPStatusError` the substrate `CLASSIFY` lands as `wire`, so the status code survives to the
+    projection; a transport escape past the retry budget lifts at the caller's `guarded` envelope.
 
     Args:
-        cfg: The validated settings owning the n8n container name and the workflows directory.
+        n8n: The validated n8n config owning the derived `api_url` and the connect timeout.
+        auth: The `_N8nAuth` flow minted once at admission, bound at client construction.
 
     Returns:
-        `Ok(N8nDetail(op=IMPORT))` carrying the pre-exec file count and the exec-ed container
-        (`healthy` stays `UNSET`, liveness was never probed), or `Error(N8nFault)` on a non-zero exit.
-    """
-    count = _census(cfg)
-    return (await _exec(N8nOp.IMPORT, cfg, "import:workflow", "--separate", "--input=/home/node/workflows")).map(
-        lambda _: N8nDetail(op=N8nOp.IMPORT, workflow_count=count, container=cfg.n8n.container_name)
-    )
-
-
-@stamina.retry(on=(httpx.HTTPError, OSError), attempts=3)
-async def _probe_health(cfg: MaghzSettings) -> bool:
-    """Probe `/healthz` once under the retry aspect, returning liveness; a non-200 is `False`, not an escape.
-
-    The retried inner of the STATUS boundary: idempotent and network-fragile, so it carries the
-    `stamina.retry` aspect over the transport fault set. A reached-but-non-200 service is a
-    domain-level result — `raise_for_status()`'s `httpx.HTTPStatusError` is caught in place and
-    returns `False`, so a status code never triggers the retry. Only a transport `httpx.HTTPError` or
-    `OSError` raises through the retry budget for the `_status_detail` boundary to lower.
-
-    Args:
-        cfg: The validated settings owning the derived n8n `api_url` and the connect timeout.
-
-    Returns:
-        `True` on a `/healthz` 200, `False` on a reached non-200 status.
+        The `_Liveness` census naming `/healthz` liveness and the live REST workflow total.
 
     Raises:
-        httpx.HTTPError: When the transport itself fails past the retry budget (connect/read/protocol).
+        httpx.HTTPError: When a transport leg fails past the retry budget (connect/read/protocol/status).
         OSError: When the socket layer fails past the retry budget.
     """
-    async with httpx.AsyncClient(base_url=cfg.n8n.api_url, timeout=cfg.n8n.connect_timeout) as client:
-        try:
-            response = await client.get("/healthz")
-            _ = response.raise_for_status()
-        except httpx.HTTPStatusError:
-            return False
-    return True
+    timeout = httpx.Timeout(connect=n8n.connect_timeout, read=n8n.connect_timeout, write=n8n.connect_timeout, pool=n8n.connect_timeout)
+    async with httpx.AsyncClient(base_url=n8n.api_url, auth=auth, timeout=timeout, limits=_LIMITS, headers={"accept": "application/json"}) as client:
+        health = await client.get("/healthz")
+        listing = (await client.get("/api/v1/workflows", params={"limit": _LIST_LIMIT})).raise_for_status()
+        return _Liveness(healthy=health.status_code == httpx.codes.OK, count=len(_WORKFLOWS_DECODER.decode(listing.content).data))
 
 
-async def _status_detail(cfg: MaghzSettings) -> Result[N8nDetail, N8nFault]:
-    """Run the retried `/healthz` probe, lowering an exhausted-retry transport escape to the typed rail.
+async def _status(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
+    """Probe liveness and the authenticated workflow census on the rail, the API key op-injected via settings.
 
-    `_probe_health` owns the probe and the `@stamina.retry`; this boundary lowers the surviving
-    transport escape (a `httpx.HTTPError` or `OSError` past the retry budget) to `Error(N8nFault)`,
-    so the STATUS leg honors the `Result[N8nDetail, N8nFault]` rail and `run` never sees a raised
-    exit — the same exhausted-retry-to-rail discipline `cloud._rclone` applies. The `exit_code` is
-    `None`: a transport escape carries no process exit. A reached non-200 is `healthy=False`, never a
-    fault (handled inside the probe).
+    `_api_key` mints the op-injected auth flow first (an absent key short-circuits to a typed config fault
+    before any socket opens — the synchronous admission edge whose `Error` is matched here, the sole arm the
+    async `guarded` leg cannot fold through `bind`); `guarded(RetryClass.HTTP, _probe, ...)` then drives the
+    retried probe under the runtime resilience envelope and lifts a surviving transport escape — or a
+    reached-non-200 `wire` status on the API leg — to one `Error(BoundaryFault)`. A reached non-200
+    `/healthz` is `healthy=False`, never a fault (graded inside `_probe`).
 
     Args:
-        cfg: The validated settings owning the derived n8n `api_url` and the connect timeout.
+        cfg: The validated settings owning the derived n8n `api_url`, the connect timeout, and the
+            op-injected API key in the environment.
 
     Returns:
-        `Ok(N8nDetail(op=STATUS, healthy=<liveness>))` on a reached service (200 or non-200), or
-        `Error(N8nFault(op=STATUS, exit_code=None))` when the transport fails past the retry budget.
+        `Ok(completed(OK, N8nDetail(op=STATUS, healthy=...)))` carrying the live workflow census, or
+        `Error(BoundaryFault)` for an absent key, a non-200 API status, or an exhausted-retry transport
+        escape.
     """
-    try:
-        return Ok(N8nDetail(op=N8nOp.STATUS, healthy=await _probe_health(cfg)))
-    except (httpx.HTTPError, OSError) as exc:
-        return Error(N8nFault(op=N8nOp.STATUS, message=str(exc) or f"{N8nOp.STATUS.value} transport failed"))
+    match _api_key(cfg):
+        case Result(tag="error", error=config_fault):
+            return Error(config_fault)
+        case Result(ok=auth):
+            probed = await guarded(RetryClass.HTTP, _probe, cfg.n8n, auth, subject="n8n.status")
+            return probed.map(
+                lambda live: completed(
+                    Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=live.count, container=cfg.n8n.container_name, healthy=live.healthy)
+                )
+            )
 
 
 # --- [TABLES] --------------------------------------------------------------------------
 
-# op -> its workflow/liveness builder on the typed `Result[N8nDetail, N8nFault]` rail. The key set
-# equals `N8nOp` exactly, so `run`'s subscription is total and the closed `match` proves it. EXPORT
-# and IMPORT exec the container through `_exec` and census the bind-mount; STATUS carries its own
-# retry aspect and folds a non-200 in place — each builder owns its own receipt and rail leg.
-_BUILD: frozendict[N8nOp, Callable[[MaghzSettings], Awaitable[Result[N8nDetail, N8nFault]]]] = frozendict({
-    N8nOp.EXPORT: _export_detail,
-    N8nOp.IMPORT: _import_detail,
-    N8nOp.STATUS: _status_detail,
+# The primary container-verb correspondence: each EXPORT/IMPORT op -> its `_Cli` Server-CLI policy row.
+# `export:workflow --all --separate` writes one `<id>.json` per workflow into the `_CONTAINER_WORKFLOWS`
+# bind-mount; `import:workflow --separate --input` reads it back. `_BUILD` derives its two container rows
+# from this map, so the subcommand lives once as data — a new container verb is one `_CLI` row.
+_CLI: Final[frozendict[N8nOp, _Cli]] = frozendict({
+    N8nOp.EXPORT: _Cli(op=N8nOp.EXPORT, subcommand=("export:workflow", "--all", f"--output={_CONTAINER_WORKFLOWS}", "--separate")),
+    N8nOp.IMPORT: _Cli(op=N8nOp.IMPORT, subcommand=("import:workflow", "--separate", f"--input={_CONTAINER_WORKFLOWS}")),
+})
+
+# op -> its workflow/liveness builder on the shared `(cfg) -> RuntimeRail[Envelope]` rail, derived from
+# `_CLI`: the EXPORT/IMPORT rows bind one `_workflow` runner over their `_Cli` policy row (the Server-CLI
+# subcommand is data, not a second function), STATUS rides the authenticated REST envelope under
+# `guarded(RetryClass.HTTP, ...)`. The key set equals `N8nOp` exactly, so `run`'s `_BUILD[op]` subscription
+# is total — a new verb is one member plus one row, never a branch.
+_BUILD: Final[frozendict[N8nOp, Callable[[MaghzSettings], Awaitable[RuntimeRail[Envelope]]]]] = frozendict({
+    **{op: (lambda cfg, cli=cli: _workflow(cli, cfg)) for op, cli in _CLI.items()},
+    N8nOp.STATUS: _status,
 })
 
 
 # --- [ENTRY] ---------------------------------------------------------------------------
 
 
-async def run(op: N8nOp, cfg: MaghzSettings, /) -> Envelope:
-    """Run one n8n verb by `op`, lowering the typed rail to a single `completed`/`fault` envelope at this edge.
+async def run(op: N8nOp, cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
+    """Run one n8n verb by `op` on the domain rail, dispatching through the total `_BUILD` table.
 
-    `structlog.get_logger()` binds at entry and emits the receipt fields to stderr — the sole
-    cross-cutting concern, a single bind rather than an `@aspect`. The closed `match op` (terminated
-    by `assert_never`) dispatches through the total `_BUILD` table; the selected builder returns the
-    typed `Result[N8nDetail, N8nFault]` rail. An `Ok` detail lowers to `completed(Status.OK, ...)`,
-    and an `Error(N8nFault)` lowers through `N8nFault.envelope()` with `error_context["op"]` carrying
-    `op.value` — the EXPORT/IMPORT exit grade and the STATUS transport escape both ride the one rail,
-    never a `pulumi.automation.errors.CommandError`, which is an infra/stack concern.
+    `structlog.contextvars.bind_contextvars` scopes the rail/op facts once at entry — the sole
+    cross-cutting concern, a single bind rather than an `@aspect`. `_BUILD[op](cfg)` selects the builder
+    over the exhaustive table (no `match`/`assert_never` ceremony around an already-total `frozendict`);
+    the builder returns the domain-internal `RuntimeRail[Envelope]`, which the CLI handler lowers to the
+    stdout `Envelope` through the one `runtime.lower` seam — the EXPORT/IMPORT exit grade and the STATUS
+    transport/`wire` escape both ride that single edge.
 
     Args:
         op: The n8n verb to run; selects its builder from `_BUILD`.
         cfg: The validated settings owning the n8n container name, workflows directory, and API URL.
 
     Returns:
-        One `Envelope`: `Status.OK` carrying the typed `N8nDetail` receipt (with `detail.healthy`
-        absent on the wire for EXPORT/IMPORT), or a `Status.FAULTED` envelope carrying the boundary
-        fault message and the `op` context (plus `exit_code` for the EXPORT/IMPORT process boundary).
+        The rail the selected builder produced — `Ok(Envelope)` carrying the typed `N8nDetail` receipt
+        (with `detail.healthy` absent on the wire for EXPORT/IMPORT), or `Error(BoundaryFault)` from the
+        container exit grade, the absent API key, or the REST transport boundary.
     """
-    log = structlog.get_logger()
-    match op:
-        case N8nOp.EXPORT | N8nOp.IMPORT | N8nOp.STATUS:
-            outcome = await _BUILD[op](cfg)
-        case unreachable:
-            assert_never(unreachable)
-    match outcome:
-        case Result(tag="ok", ok=detail):
-            await log.ainfo("n8n.report", op=op.value, container=detail.container, workflow_count=detail.workflow_count)
-            return completed(Status.OK, detail)
-        case Result(error=n8n_fault):
-            await log.aerror("n8n.fault", op=op.value, exit_code=n8n_fault.exit_code, detail=n8n_fault.message)
-            return n8n_fault.envelope()
+    structlog.contextvars.bind_contextvars(rail="n8n", op=op.value)
+    return await _BUILD[op](cfg)
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------
 
-__all__ = ["N8nDetail", "N8nFault", "N8nOp", "run"]
+__all__ = ["N8nDetail", "N8nOp", "run"]

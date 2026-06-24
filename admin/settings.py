@@ -1,12 +1,15 @@
-"""Typed configuration admission for the Maghz operator.
+"""Typed configuration admission: the one validated config surface the CLI, Pulumi infra, and every rail read.
 
-`MaghzSettings` is the single owner of every environment value; it feeds both the
-cyclopts CLI and the Pulumi infrastructure program. No other code reads `os.environ`.
+`MaghzSettings` is the single owner of every environment value — no other code reads `os.environ`. It
+feeds the cyclopts CLI, the Pulumi infrastructure program, and every rail through its validated subgroups
+and the process-wide `settings()` accessor. This module is the public config surface; reaching past it for
+a deeper symbol is a boundary leak. The beartype import claw installed at the `admin.*` package root
+already type-checks every re-exported callable at its boundary.
 """
 
 from collections.abc import Mapping
 from enum import StrEnum
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Annotated, Literal, override, Self
 
@@ -36,7 +39,7 @@ class Remote(StrEnum):
 
 # --- [CONSTANTS] -----------------------------------------------------------------------
 
-_GROUP = ConfigDict(frozen=True, extra="forbid", validate_by_name=True)
+_GROUP = ConfigDict(frozen=True, extra="forbid")
 
 _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
     "MAGHZ_DATABASE_DSN": ("database", "dsn"),
@@ -117,22 +120,14 @@ class InfraConfig(BaseModel):
 
 
 class N8nConfig(BaseModel):
-    """The sole owner of every n8n knob: container image/name, port, URL shape, VPS-proxy overrides, `workflows_dir`, and the encryption-key path.
+    """The sole owner of every n8n knob: container image/name, port, URL shape, VPS-proxy overrides, and `workflows_dir`.
 
-    Nested on `MaghzSettings` as `n8n`; `define()` in `admin/infra/stack.py` reads `cfg.n8n.*` for every
-    n8n docker resource and `InfraConfig` carries no n8n fields. `api_url` is a `@computed_field` derived
-    from `protocol`, `host`, and `port` so the canonical n8n URL can never drift from its parts and no
-    `MAGHZ_N8N__API_URL` env var exists — the VPS override sets `MAGHZ_N8N__PROTOCOL=https` and
-    `MAGHZ_N8N__HOST=...` and `api_url` recomputes. It returns a bare `str`, NOT an `AnyHttpUrl`, on
-    purpose: the wire contract and the `httpx` `base_url` consumer require the host:port form with no
-    trailing slash, which `AnyHttpUrl` normalization would inject. `webhook_url` stays independent because
-    the public webhook URL behind a reverse proxy differs from the internal `api_url`; it is the typed
-    `AnyHttpUrl` URL value object (the same owner `OllamaConfig.base_url` uses) so a malformed override is
-    rejected at admission, and its `__str__` round-trips byte-identically into the container
-    `WEBHOOK_URL` env. `N8N_ENCRYPTION_KEY` is NEVER
-    stored here: `encryption_key_file` is only the path injected via `N8N_ENCRYPTION_KEY_FILE` to a
-    root-owned secret file the `secrets` domain provisions. The `MAGHZ_N8N__` nested-delimiter prefix
-    resolves all non-computed fields.
+    `api_url` is a `@computed_field` over `protocol`/`host`/`port` (no `MAGHZ_N8N__API_URL` env, the VPS
+    override sets `PROTOCOL`/`HOST`); it returns a bare `str`, not `AnyHttpUrl`, because the `httpx`
+    `base_url` consumer needs the host:port form with no trailing slash that `AnyHttpUrl` would normalize in.
+    `webhook_url` is the typed `AnyHttpUrl` and stays independent: the reverse-proxy public URL differs from
+    the internal `api_url`. `N8N_ENCRYPTION_KEY` is deliberately absent — n8n self-generates and persists it
+    on the `n8n-data` volume; a `/run/secrets` `_FILE` key is a Swarm path absent on Colima and would abort startup.
     """
 
     model_config = _GROUP
@@ -146,7 +141,6 @@ class N8nConfig(BaseModel):
     proxy_hops: int = Field(default=0, ge=0)
     connect_timeout: float = Field(default=10.0, gt=0)
     workflows_dir: Path = Path("workflows/n8n")
-    encryption_key_file: str = "/run/secrets/n8n_encryption_key"
 
     @computed_field
     @property
@@ -167,11 +161,8 @@ class ObservabilityConfig(BaseModel):
 class IntegrationsConfig(BaseModel):
     """External agent-tool surfaces: the `agy` Antigravity CLI and the Google Workspace MCP OAuth context.
 
-    Carries the canonical OAuth credential names and token paths the `agy` shim and the mcp WORKSPACE
-    row both consume. The two OAuth keys are injected bare (`GOOGLE_OAUTH_CLIENT_ID`,
-    `GOOGLE_OAUTH_CLIENT_SECRET`) by the secrets bootstrap; `_BareEnvSource` folds those bare keys into
-    this group so each consumer reads its own canonical name. `SecretStr` keeps the credentials out of
-    `repr`, structlog events, and stack traces; `.get_secret_value()` is read only at the injection edge.
+    The two OAuth keys arrive bare (`GOOGLE_OAUTH_CLIENT_ID`/`SECRET`) and `_BareEnvSource` folds them into
+    this canonical group. `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()` is read only at the injection edge.
     """
 
     model_config = _GROUP
@@ -185,28 +176,24 @@ class IntegrationsConfig(BaseModel):
 
 
 class McpServerSettings(BaseModel):
-    """The MCP-exclusive secret references the `admin.mcp` `_SERVER_TABLE` placeholder rows resolve against.
+    """The MCP-exclusive secret references whose field *names* back the `admin.mcp` `${MAGHZ_MCP__<KEY>}` placeholder rows.
 
-    Carries only the secrets no other group owns: the `DATABASE_URI` the `postgres` row mirrors from
-    `DatabaseConfig.dsn`, and the four provider API surfaces (`n8n`, `exa`, `perplexity`, `tavily`).
-    Every value is a `${MAGHZ_MCP__<KEY>}` placeholder in the committed `.mcp.json`; the real secret is
-    resolved here only inside `admin.mcp.ops._render` via `.get_secret_value()`, never at settings load.
-    The Google Workspace OAuth credentials and token paths the WORKSPACE row needs are NOT duplicated
-    here — `IntegrationsConfig` is their canonical owner and `_render` reads them from `cfg.integrations`.
-    `database_uri` derives its default from `DatabaseConfig.dsn` (the sole owner of the DSN literal) so the
-    infra seam holds by construction and no env override can drift the two apart; the five provider fields
-    default `None` so an absent `MAGHZ_MCP__*` var leaves the row placeholder untouched. `repr=False` keeps
-    each secret out of `repr`, structlog events, and tracebacks.
+    Only `McpServerSettings.model_fields` (the name set) is read — `mcp/ops.py` emits each placeholder as a
+    literal `${MAGHZ_MCP__<KEY>}` (never resolved) and VALIDATE asserts every committed placeholder backs a
+    name here, so the `.mcp.json` carries no secret and no field *value* is consumed. `database_uri` is one
+    such name-backing declaration, not a second DSN mint: `DatabaseConfig.dsn` is the sole DSN owner and the
+    rendered file substitutes `${MAGHZ_MCP__DATABASE_URI}` at `op run` time. The Google OAuth credentials are
+    not duplicated — `IntegrationsConfig` owns them and the WORKSPACE overlay emits them bare. The field set
+    is exactly the four-server fleet's secret-backing names: the web-research placeholders (exa/perplexity/
+    tavily) are absent because those servers moved to the portable research skill CLIs, so no placeholder
+    backs them and none is declared here.
     """
 
     model_config = _GROUP
 
-    database_uri: SecretStr = Field(default_factory=lambda: SecretStr(str(DatabaseConfig().dsn)), repr=False)
+    database_uri: SecretStr | None = Field(default=None, repr=False)
     n8n_api_url: SecretStr | None = Field(default=None, repr=False)
     n8n_api_key: SecretStr | None = Field(default=None, repr=False)
-    exa_api_key: SecretStr | None = Field(default=None, repr=False)
-    perplexity_api_key: SecretStr | None = Field(default=None, repr=False)
-    tavily_api_key: SecretStr | None = Field(default=None, repr=False)
 
 
 class AutomationConfig(BaseModel):
@@ -227,22 +214,8 @@ class AutomationConfig(BaseModel):
     lane_keys: tuple[str, ...] = ("default",)
 
     @model_validator(mode="after")
-    def _require_default_lane(self) -> Self:  # noqa: N804 - mode="after" is an instance validator; pydantic mandates `self`, not `cls`
-        """Reject a `lane_keys` that drops `"default"` at config admission, not at the first faulted drive.
-
-        `AutomationSpec.lane` defaults to `"default"`, `_decode_spec` admits a spec only when its lane is
-        in `lane_keys`, and `drive` indexes `_lane_policies(cfg)[spec.lane]` over the `Map` built from
-        `lane_keys`. An override such as `MAGHZ_AUTOMATION__LANE_KEYS=["research","heavy"]` would therefore
-        fault every default-lane spec at admission and break the engine's own documented one-shot path. The
-        invariant `"default" in lane_keys` is enforced here, in the canonical owner of `lane_keys`, so the
-        engine's `policies[spec.lane]` total-index holds by construction rather than by assumption.
-
-        Returns:
-            This validated config when `"default"` is present in `lane_keys`.
-
-        Raises:
-            ValueError: `lane_keys` omits `"default"`, the lane every unqualified `AutomationSpec` resolves to.
-        """
+    def _require_default_lane(self) -> Self:  # noqa: N804 - mode="after" instance validator; pydantic mandates `self`
+        """Enforce `"default" in lane_keys` so the engine's `policies[spec.lane]` total-index holds by construction."""
         if "default" not in self.lane_keys:
             raise ValueError(f'lane_keys must contain "default" (the AutomationSpec.lane default); got {self.lane_keys}')
         return self
@@ -251,15 +224,10 @@ class AutomationConfig(BaseModel):
 class RemoteConfig(BaseModel):
     """SSH facts for the live VPS the `remote` domain targets: host identity, push concurrency, and timeouts.
 
-    The peer subgroup to `InfraConfig` (local Pulumi state) — `InfraConfig` owns the local docker stack,
-    `RemoteConfig` owns the remote SSH target the `exec`/`deploy` rails reach over asyncssh. `host`/`user`
-    default empty so an unconfigured operator validates and the CLI surfaces the missing target instead of
-    a partial connect. `known_hosts` stays a raw `str` here because it is untyped env ingress: the
-    `MAGHZ_REMOTE_KNOWN_HOSTS` value reaches asyncssh only after `RemoteTarget.from_config` narrows it to
-    the typed `KnownHostsPolicy` (`"insecure"` literal escape hatch, every other string a `Path`) at the
-    domain boundary — the policy collapse is owned there, never in this validated model. `sftp_*` thread
-    into every `SFTPClient.put(max_requests=...)` under the `anyio.CapacityLimiter(sftp_push_concurrency)`
-    push fan-out; the connect/keepalive columns build the one `SSHClientConnectionOptions` per connection.
+    `host`/`user` default empty so an unconfigured operator validates and the CLI surfaces the missing
+    target. `known_hosts` stays a raw `str` (untyped env ingress): `RemoteTarget.from_config` narrows it to
+    the typed `KnownHostsPolicy` at the domain boundary, never here. `sftp_*` bound the
+    `CapacityLimiter`/`SFTPClient.put` push fan-out; the connect/keepalive columns build one `SSHClientConnectionOptions`.
     """
 
     model_config = _GROUP
@@ -279,13 +247,12 @@ class RemoteConfig(BaseModel):
 class RemoteCredentials(BaseModel):
     """Per-remote OAuth credential surface the `_env_for` adapter folds into the rclone subprocess env.
 
-    Every field is remote-agnostic at the type level; the rail's `match remote` arm selects which fields
-    matter per remote. `service_account_credentials` holds the Drive service-account key as the raw JSON
-    blob rclone's `RCLONE_CONFIG_DRIVE_SERVICE_ACCOUNT_CREDENTIALS` option parses verbatim (never a
-    base64 wrapper — rclone cannot decode one), and is empty for OneDrive; `drive_id` is the OneDrive
-    personal-drive selector and is empty for Drive. `token` is the VPS env fallback read when `keyring`
-    resolves to the null backend. All fields default empty so an unconfigured remote validates and the
-    `_env_for` adapter simply omits the absent keys.
+    Remote-agnostic at the type level; the rail's `match remote` arm selects per-remote fields.
+    `service_account_credentials` is the Drive key as raw JSON (rclone parses verbatim, never base64);
+    `drive_id` is the OneDrive selector; `token` is the op-injected OAuth token
+    (`MAGHZ_CLOUD__REMOTES__<REMOTE>__TOKEN`), the sole secret source — never a keychain/`rclone.conf`
+    read, so a backup raises no Touch-ID/password prompt. All default empty so an unconfigured remote
+    validates and `_env_for` omits the absent keys.
     """
 
     model_config = _GROUP
@@ -306,13 +273,9 @@ type RemoteTable = Annotated[
 class CloudConfig(BaseModel):
     """rclone-driven off-site backup configuration: per-remote credentials, remote/local paths, and the operation deadline.
 
-    `remotes` is a typed `frozendict[Remote, RemoteCredentials]` keyed by the `Remote` enum — never a bare
-    string. `GetPydanticSchema` lets pydantic validate each value as a `RemoteCredentials`, coerce the
-    `MAGHZ_CLOUD__REMOTES__<REMOTE>__*` lowercase string keys into `Remote`, reject unknown remotes, then
-    freeze the result into a `frozendict` the rail shares across drain tasks without a defensive copy.
-    `_seed_remotes` runs first to guarantee every `tuple(Remote)` key is present so the rail's
-    `cfg.cloud.remotes[remote]` indexing is total over the closed vocabulary regardless of which remotes
-    the environment names. `op_timeout_s` is the `anyio.fail_after` deadline policy, not a call parameter.
+    `remotes` is a typed `frozendict[Remote, RemoteCredentials]`; `_seed_remotes` guarantees every
+    `tuple(Remote)` key is present so `cfg.cloud.remotes[remote]` is total over the closed vocabulary.
+    `op_timeout_s` is the sync/restore deadline as a policy value on the config, never a per-call parameter.
     """
 
     model_config = _GROUP
@@ -324,33 +287,24 @@ class CloudConfig(BaseModel):
     filter_file: Path = Path(".rclone-filter")
     op_timeout_s: float = Field(default=3600.0, gt=0)
     force_resync: bool = False
-    keyring_service: str = "maghz"
 
     @model_validator(mode="before")
     @classmethod
     def _seed_remotes(cls, data: object, /) -> object:
-        """Overlay the parsed `MAGHZ_CLOUD__REMOTES__<REMOTE>__*` partial onto a full `tuple(Remote)` seed before per-value validation.
+        """Overlay the parsed `MAGHZ_CLOUD__REMOTES__<REMOTE>__*` partial onto a full `tuple(Remote)` seed so `remotes[remote]` stays total.
 
-        The `pydantic-settings` nested-env source delivers `remotes` as `dict[str, dict]` carrying only
-        the remotes the environment names; this seeds the absent remotes with empty mappings so the typed
-        table covers the entire closed vocabulary. Inputs already keyed by `Remote` (programmatic init,
-        re-validation of an existing `frozendict`) are honored alongside string keys, and a per-remote
-        value that is not a mapping falls through unchanged to per-value validation, which raises the
-        precise pydantic error rather than being masked here. Any env-named key outside the closed
-        `Remote` vocabulary (a typo such as `MAGHZ_CLOUD__REMOTES__GDRIVE__*`) is carried through into the
-        seed so the typed `frozendict[Remote, RemoteCredentials]` schema rejects it at the `[key]` position
-        rather than this seed silently dropping a misrouted credential block.
+        The nested-env source replaces (not merges) the `default_factory`, so absent remotes are re-seeded
+        empty; `Remote` is a `StrEnum`, so member-keyed and `value`-keyed ingress collapse under `str(key)`.
+        An unknown provided key survives into the seed for the `frozendict[Remote, RemoteCredentials]` schema
+        to reject at the `[key]` position rather than being silently dropped here.
 
         Returns:
-            The input unchanged unless it is a mapping carrying a `remotes` mapping, in which case a copy
-            whose `remotes` slot holds one entry per `Remote` (the env-provided value or an empty mapping)
-            plus any unknown provided key left in place for the closed-vocabulary schema to reject.
+            The input, with `remotes` seeded over `tuple(Remote)` when it carries a `remotes` mapping.
         """
         if isinstance(data, Mapping) and isinstance(provided := data.get("remotes"), Mapping):
-            known = {remote.value: remote for remote in Remote}
-            seeded = {remote.value: provided.get(remote.value, provided.get(remote, {})) for remote in Remote}
-            unknown = {key: value for key, value in provided.items() if key not in known and key not in Remote}
-            return {**data, "remotes": {**seeded, **unknown}}
+            by_value = {str(key): value for key, value in provided.items()}
+            seeded = {remote.value: by_value.get(remote.value, {}) for remote in Remote}
+            return {**data, "remotes": seeded | {k: v for k, v in by_value.items() if k not in seeded}}
         return data
 
 
@@ -358,29 +312,26 @@ class CloudConfig(BaseModel):
 
 
 class _BareEnvSource(EnvSettingsSource):
-    """Routes flat environment keys that miss the canonical `MAGHZ_<GROUP>__<FIELD>` path to the field that owns them.
+    """Routes flat env keys that miss the canonical `MAGHZ_<GROUP>__<FIELD>` path to their owning field via the `_BARE_ENV` table.
 
-    `EnvSettingsSource` walks a nested group only through the double-underscore `MAGHZ_<GROUP>__<FIELD>`
-    path, and a `validation_alias` on a sub-model field is invisible to it. Two key shapes therefore
-    cannot reach their slot unaided: keys the secrets bootstrap or Docker toolchain export with a name
-    the operator does not control (`MAGHZ_DATABASE_DSN`, `DOCKER_HOST`, `GOOGLE_OAUTH_CLIENT_ID`,
-    `GOOGLE_OAUTH_CLIENT_SECRET`), and the single-underscore flat operator names the `remote` contract
-    fixes (`MAGHZ_REMOTE_HOST`/`PORT`/`USER`/`KNOWN_HOSTS`/`WORKROOT`), whose single underscore the
-    nested splitter never treats as a group boundary. `_BARE_ENV` is the one table mapping each such key
-    to its `(group, field)` slot. This source folds every present key into its `{group: {field: value}}`
-    overlay off the framework-loaded `self.env_vars` map (no direct `os.environ` read) and sits one rank
-    below `env_settings`, so a canonical nested `__` key still wins and a programmatic init kwarg wins
-    over both.
+    Covers bootstrap/toolchain keys the operator does not control (`MAGHZ_DATABASE_DSN`, `DOCKER_HOST`,
+    `GOOGLE_OAUTH_*`) and the single-underscore flat `remote` names whose lone `_` the nested splitter never
+    treats as a group boundary. Folds off `self.env_vars` (no direct `os.environ`) and ranks below
+    `env_settings`, so a canonical `__` key and a programmatic init kwarg both still win.
     """
 
     @override
     def __call__(self) -> dict[str, dict[str, str]]:
-        out: dict[str, dict[str, str]] = {}
-        for env_key, (group, field) in _BARE_ENV.items():
-            raw = self.env_vars.get(env_key.lower())
-            if raw:
-                out.setdefault(group, {})[field] = raw
-        return out
+        present = frozendict({
+            (group, field): raw
+            for env_key, (group, field) in _BARE_ENV.items()
+            if (raw := self.env_vars.get(env_key.lower()))
+        })
+        groups = frozendict.fromkeys(group for group, _ in present)
+        return {
+            group: {field: raw for (g, field), raw in present.items() if g == group}
+            for group in groups
+        }
 
 
 class MaghzSettings(BaseSettings):
@@ -427,7 +378,7 @@ class MaghzSettings(BaseSettings):
 # --- [COMPOSITION] ---------------------------------------------------------------------
 
 
-@lru_cache(maxsize=1)
+@cache
 def settings() -> MaghzSettings:
     """The process-wide validated settings, resolved once at first call."""
     return MaghzSettings()
@@ -441,6 +392,8 @@ __all__ = [
     "DatabaseConfig",
     "InfraConfig",
     "IntegrationsConfig",
+    "LogFormat",
+    "LogLevel",
     "MaghzSettings",
     "McpServerSettings",
     "N8nConfig",
@@ -449,5 +402,6 @@ __all__ = [
     "Remote",
     "RemoteConfig",
     "RemoteCredentials",
+    "RemoteTable",
     "settings",
 ]

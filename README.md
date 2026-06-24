@@ -22,7 +22,7 @@ Machine tooling is provisioned by [Parametric_Forge](../Parametric_Forge) (Nix, 
 - Infra: `pulumi`, `colima` Docker runtime, `docker`.
 - Data and search: `jq`, `yq-go`, `duckdb`, `fd`, `rg`, `ast-grep`.
 - Git: `git`, `gh`, `gitleaks`, `lazygit`.
-- MCP: `postgres-mcp`, `notebooklm-mcp`.
+- MCP: `postgres-mcp`, `n8n-mcp`, `exa-mcp-server`, `perplexity-mcp`, `tavily-mcp`, `workspace-mcp`, `notebooklm-mcp`.
 - CLI: `maghz`.
 
 ## Connect

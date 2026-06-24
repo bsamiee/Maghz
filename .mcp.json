@@ -17,7 +17,6 @@
         "-i",
         "--rm",
         "--init",
-        "ghcr.io/czlonkowski/n8n-mcp:latest",
         "-e",
         "MCP_MODE=stdio",
         "-e",
@@ -27,39 +26,10 @@
         "-e",
         "N8N_API_URL=${MAGHZ_MCP__N8N_API_URL}",
         "-e",
-        "N8N_API_KEY=${MAGHZ_MCP__N8N_API_KEY}"
+        "N8N_API_KEY=${MAGHZ_MCP__N8N_API_KEY}",
+        "ghcr.io/czlonkowski/n8n-mcp:latest"
       ],
       "env": {}
-    },
-    "exa": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "exa-mcp-server"
-      ],
-      "env": {
-        "EXA_API_KEY": "${MAGHZ_MCP__EXA_API_KEY}"
-      }
-    },
-    "perplexity": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "perplexity-mcp"
-      ],
-      "env": {
-        "PERPLEXITY_API_KEY": "${MAGHZ_MCP__PERPLEXITY_API_KEY}"
-      }
-    },
-    "tavily": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "tavily-mcp"
-      ],
-      "env": {
-        "TAVILY_API_KEY": "${MAGHZ_MCP__TAVILY_API_KEY}"
-      }
     },
     "workspace": {
       "command": "uvx",
@@ -71,7 +41,7 @@
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
         "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
-        "TOKEN_DIR": ".cache/workspace-mcp"
+        "WORKSPACE_MCP_CREDENTIALS_DIR": ".cache/workspace-mcp"
       }
     },
     "notebooklm": {

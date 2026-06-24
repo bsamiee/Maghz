@@ -1,11 +1,11 @@
-"""Infrastructure package: the Pulumi stack definition and its Automation API runner.
+"""Infrastructure package: the Pulumi stack runner and its folded desired-state program.
 
-`runner.run` is the single polymorphic stack verb over `StackOp`; `stack.define` is the
-desired-state program it converges. The CLI mounts `run` directly.
+`runner.run` is the single polymorphic stack verb over `StackOp`; the desired-state program it converges
+is folded into `runner` as the function-local `_define`, so the runner and the resources it converges are
+one owner. The CLI mounts `run` directly.
 """
 
 from admin.infra.runner import run, StackDetail, StackOp
-from admin.infra.stack import define
 
 
-__all__ = ["StackDetail", "StackOp", "define", "run"]
+__all__ = ["StackDetail", "StackOp", "run"]

@@ -22,9 +22,9 @@ Operate as a senior developer building the tooling for a focused second brain. H
 Use the route-owned standard for the file being edited:
 
 | [INDEX] | [FILE_TYPE]              | [ROUTE]         |
-| :-----: | ----------------------- | --------------- |
-|  [01]   | Python (`.py`)          | `coding-python` |
-|  [02]   | SQL (`.sql`)            | `coding-pg`     |
+| :-----: | ------------------------ | --------------- |
+|  [01]   | Python (`.py`)           | `coding-python` |
+|  [02]   | SQL (`.sql`)             | `coding-pg`     |
 |  [03]   | Bash/sh (`.sh`, `.bash`) | `coding-bash`   |
 
 ## [03]-[DEPENDENCY_POLICY]
@@ -96,25 +96,22 @@ Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`); inspect t
 - Infra: `pulumi`, `colima` Docker runtime, `docker`, `ollama`.
 - Data and search: `jq`, `yq-go`, `duckdb`, `fd`, `rg`, `ast-grep`, and the format/probe/file utilities.
 - Git: `git`, `gh`, `gitleaks`, `lazygit`.
-- MCP: `postgres-mcp`, `notebooklm-mcp`.
+- MCP: `postgres-mcp`, `n8n-mcp`, `exa-mcp-server`, `perplexity-mcp`, `tavily-mcp`, `workspace-mcp`, `notebooklm-mcp`.
 - CLI: `maghz` owns schema, ledger, sync, and stack lifecycle.
 
 Route each tooling concern through its owning skill:
 
-| [CONCERN]              | [SKILL]                |
-| --------------------- | ---------------------- |
-| Heptabase content     | `heptabase-cli`        |
-| Source ingestion      | `notebooklm`           |
-| Semantic web search   | `exa-tools`            |
-| Cited research        | `perplexity-tools`     |
-| Search and extraction | `tavily-tools`         |
-| Library documentation | `context7-tools`       |
-| Repository operations | `github-tools`         |
-| CI/CD pipelines       | `github-actions`       |
-| Diagrams              | `mermaid-diagramming`  |
-| Lifecycle hooks       | `hooks-builder`        |
-| Workflow authoring    | `workflow-creator`     |
-| Container images      | `dockerfile`           |
+| [CONCERN]             | [SKILL]               |
+| --------------------- | --------------------- |
+| Heptabase content     | `heptabase-cli`       |
+| Source ingestion      | `notebooklm`          |
+| Library documentation | `context7-tools`      |
+| Repository operations | `github-tools`        |
+| CI/CD pipelines       | `github-actions`      |
+| Diagrams              | `mermaid-diagramming` |
+| Lifecycle hooks       | `hooks-builder`       |
+| Workflow authoring    | `workflow-creator`    |
+| Container images      | `dockerfile`          |
 
 ## [08]-[DOCUMENTATION_AND_OUTPUT]
 

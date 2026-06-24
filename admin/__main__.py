@@ -11,7 +11,7 @@ resolve at dispatch, not import, so a config fault surfaces as a fault envelope 
 traceback. The runtime `Signals` service owns the structlog pipeline and `install(RetryMode.EMIT)`
 routes boundary-retry receipts onto stderr once at startup. The `stack`, `ledger`, `schema`, `sync`,
 and `remote` (`exec`, `deploy`) rails return the domain `RuntimeRail[Envelope]`, so their handlers
-lower it to the stdout `Envelope` through the one `project` seam — which spreads a surviving
+lower it to the stdout `Envelope` through the one `runtime.lower` seam — which spreads a surviving
 `BoundaryFault` into a `fault` envelope at the single CLI edge; the `cloud`, `mcp`, and `n8n` rails
 already lower their own typed rail to an `Envelope` at their `completed`/`fault` boundary and thread
 straight through without that lowering — `cloud`/`mcp` over `CloudSyncDetail`/`McpConfigDetail`
@@ -27,20 +27,19 @@ options.
 import functools
 from importlib.metadata import version
 import sys
-from typing import Annotated, assert_never
+from typing import Annotated
 
 import anyio
 import cyclopts
 from cyclopts import App, CycloptsError, Group, Parameter
-from expression import Result
 from pydantic import ValidationError
 import structlog
 
 from admin import rails, remote
-from admin.automation.engine import _decode_spec
+from admin.automation.engine import decode_spec
 from admin.automation.model import AutomationSpec
 from admin.core import Envelope, fault
-from admin.runtime import install, RetryMode, RuntimeRail, Signals
+from admin.runtime import install, lower, RetryMode, Signals
 from admin.settings import LogFormat, LogLevel, settings
 
 
@@ -88,43 +87,43 @@ for _subapp in (_schema, _sync, _n8n, _automation, _cloud, _mcp):
 @app.command(name="up", group=_STACK)
 async def _up() -> Envelope:
     """Converge the local docker stack and pull the embedding model."""
-    return project(await rails.stack(rails.StackOp.UP, settings()))
+    return lower(await rails.stack(rails.StackOp.UP, settings()))
 
 
 @app.command(name="down", group=_STACK)
 async def _down() -> Envelope:
     """Tear the local docker stack down, preserving named volumes."""
-    return project(await rails.stack(rails.StackOp.DOWN, settings()))
+    return lower(await rails.stack(rails.StackOp.DOWN, settings()))
 
 
 @app.command(name="status", group=_STACK)
 async def _status() -> Envelope:
     """Preview the desired-vs-live stack diff without converging."""
-    return project(await rails.stack(rails.StackOp.STATUS, settings()))
+    return lower(await rails.stack(rails.StackOp.STATUS, settings()))
 
 
 @app.command(name="ledger", group=_LEDGER)
 async def _ledger(kind: Annotated[rails.Kind, Parameter(help="The ledger projection to run.")], /) -> Envelope:
     """Run one ledger projection (coverage | gaps | stale | next | owner)."""
-    return project(await rails.ledger(kind, settings()))
+    return lower(await rails.ledger(kind, settings()))
 
 
 @_schema.command(name="apply")
 async def _schema_apply() -> Envelope:
     """Apply the declarative schema, then replay the routine objects and cron registration."""
-    return project(await rails.schema(rails.SchemaOp.APPLY, settings()))
+    return lower(await rails.schema(rails.SchemaOp.APPLY, settings()))
 
 
 @_schema.command(name="doctor")
 async def _schema_doctor() -> Envelope:
     """Probe connectivity and report the installed extension census."""
-    return project(await rails.schema(rails.SchemaOp.DOCTOR, settings()))
+    return lower(await rails.schema(rails.SchemaOp.DOCTOR, settings()))
 
 
 @_sync.command(name="diff")
 async def _sync_diff() -> Envelope:
     """Report drifted/orphaned cards and cross-check the live Heptabase total."""
-    return project(await rails.sync(settings()))
+    return lower(await rails.sync(settings()))
 
 
 @_sync.command(name="generate")
@@ -132,42 +131,42 @@ async def _sync_generate(concept: Annotated[str, Parameter(help="The canonical c
     """Materialize a Heptabase note card from one concept's canonical content."""
     # The required positional always carries a present concept, so it threads straight into the
     # modal `concept: str | None` `sync.run` owns; the `diff` command supplies no concept (None).
-    return project(await rails.sync(settings(), concept=concept))
+    return lower(await rails.sync(settings(), concept=concept))
 
 
 @_n8n.command(name="export")
 async def _n8n_export() -> Envelope:
     """Export every n8n workflow to one `<id>.json` per file under the host-mounted workflows tree."""
-    # The n8n rail folds its own `Result[N8nDetail, N8nFault]` rail to a single `completed`/`fault`
-    # envelope itself, so it threads straight through without the `project` lowering.
-    return await rails.n8n(rails.N8nOp.EXPORT, settings())
+    # The n8n rail returns the domain `RuntimeRail[Envelope]` (its `Result[N8nDetail, N8nFault]` graded at
+    # the boundary), which this handler lowers to the stdout `Envelope` through the one `runtime.lower` seam.
+    return lower(await rails.n8n(rails.N8nOp.EXPORT, settings()))
 
 
 @_n8n.command(name="import")
 async def _n8n_import() -> Envelope:
     """Import every `<id>.json` workflow from the host-mounted tree into the running container."""
-    return await rails.n8n(rails.N8nOp.IMPORT, settings())
+    return lower(await rails.n8n(rails.N8nOp.IMPORT, settings()))
 
 
 @_n8n.command(name="status")
 async def _n8n_status() -> Envelope:
     """Probe the n8n container `/healthz` liveness; a reached non-200 reports `healthy=false`, not a fault."""
-    return await rails.n8n(rails.N8nOp.STATUS, settings())
+    return lower(await rails.n8n(rails.N8nOp.STATUS, settings()))
 
 
 @_automation.command(name="run")
-async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter=_decode_spec)]) -> Envelope:
+async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter=decode_spec)]) -> Envelope:
     """Drive one automation spec: the `trigger` discriminant selects the watch/schedule/manual lane.
 
     `--spec` carries the complete `AutomationSpec` JSON; there is no `watch`/`schedule` verb alias —
-    the trigger variant inside the spec selects the lane within `drive`. `_decode_spec` is the
+    the trigger variant inside the spec selects the lane within `drive`. `decode_spec` is the
     `Parameter(converter=...)` admission boundary cyclopts runs before binding: cyclopts invokes it with
     the `--spec` `Token`, whose `.value` it decodes through the stateful `AutomationSpec` decoder and
     validates `spec.lane` against `cfg.automation.lane_keys`, raising the converter-canonical `ValueError`
     on a `msgspec.DecodeError` or an unknown lane. cyclopts wraps that into a `--spec` `CoercionError`,
     so a malformed or unadmitted spec faults at the CLI edge (exit 2) through `main()`'s `CycloptsError`
     arm instead of reaching the engine. `drive` projects its `AutomationFault` vocabulary to an
-    `Envelope` at its own boundary, so it threads straight through without the `project` lowering,
+    `Envelope` at its own boundary, so it threads straight through without the `runtime.lower` lowering,
     exactly like the `cloud`/`mcp`/`n8n` rails.
 
     Returns:
@@ -179,22 +178,22 @@ async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter
 @_cloud.command(name="sync")
 async def _cloud_sync() -> Envelope:
     """Dump the ledger and bisync the content tree to both cloud remotes."""
-    # The cloud rail lifts its `Result[CloudSyncDetail, CloudFault]` to an `Envelope` at its own
-    # `completed`/`fault` boundary, so it threads straight through without the `project` lowering.
-    return await rails.cloud(rails.CloudOp.SYNC, settings())
+    # The cloud rail returns the domain `RuntimeRail[Envelope]` (its `Result[CloudSyncDetail, CloudFault]`
+    # graded at the boundary), which this handler lowers to the stdout `Envelope` through `runtime.lower`.
+    return lower(await rails.cloud(rails.CloudOp.SYNC, settings()))
 
 
 @_cloud.command(name="restore")
 async def _cloud_restore() -> Envelope:
     """Restore the ledger from the latest remote dump and bisync the content tree back."""
-    return await rails.cloud(rails.CloudOp.RESTORE, settings())
+    return lower(await rails.cloud(rails.CloudOp.RESTORE, settings()))
 
 
 @_mcp.command(name="generate")
 async def _mcp_generate() -> Envelope:
     """Render the typed server fleet to the committed `.mcp.json` with `${VAR}` placeholders."""
     # The mcp rail lifts its `Result[McpConfigDetail, McpFault]` to an `Envelope` at its own
-    # `completed`/`fault` boundary, so it threads straight through without the `project` lowering.
+    # `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering.
     return await rails.mcp(rails.McpOp.GENERATE, settings())
 
 
@@ -202,6 +201,18 @@ async def _mcp_generate() -> Envelope:
 async def _mcp_validate() -> Envelope:
     """Round-trip-decode the committed `.mcp.json` and assert every placeholder backs a settings field."""
     return await rails.mcp(rails.McpOp.VALIDATE, settings())
+
+
+@_mcp.command(name="diff")
+async def _mcp_diff() -> Envelope:
+    """Render the fleet in memory and report every committed server entry that drifts from it (`failed` on drift)."""
+    return await rails.mcp(rails.McpOp.DIFF, settings())
+
+
+@_mcp.command(name="watch")
+async def _mcp_watch() -> Envelope:
+    """Regenerate `.mcp.json` on every settings/source change until SIGINT; one `watchfiles.awatch` stream."""
+    return await rails.mcp(rails.McpOp.WATCH, settings())
 
 
 @app.command(name="exec", group=_REMOTE)
@@ -212,45 +223,19 @@ async def _remote_exec(
     # `allow_leading_hyphen=True` lets the variadic absorb a flag-bearing remote command (`git log
     # --oneline`, `ls -la`) verbatim instead of cyclopts rejecting `-`/`--` tokens as unknown options.
     # `remote.exec` returns the domain `RuntimeRail[Envelope]` lifted at the SSH/SFTP `async_boundary`
-    # edge, so the shared `project` seam lowers it to the stdout `Envelope` once, at this CLI edge.
+    # edge, so the shared `runtime.lower` seam lowers it to the stdout `Envelope` once, at this CLI edge.
     cfg = settings()
-    return project(await remote.exec(remote.RemoteTarget.from_config(cfg.remote), argv, cfg=cfg))
+    return lower(await remote.exec(remote.RemoteTarget.from_config(cfg.remote), argv, cfg=cfg))
 
 
 @app.command(name="deploy", group=_REMOTE)
 async def _remote_deploy(*, op: Annotated[rails.StackOp, Parameter(help="The stack verb to run remotely (up | down | status).")]) -> Envelope:
     """Push the working tree to the VPS, then run the selected remote `maghz` stack verb."""
     # `--op` selects the `StackOp` discriminant `remote.deploy` matches exhaustively; it returns the
-    # domain `RuntimeRail[Envelope]` lifted at the SSH boundary, so the shared `project` seam lowers it
-    # to the stdout `Envelope` once, at this CLI edge.
+    # domain `RuntimeRail[Envelope]` lifted at the SSH boundary, so the shared `runtime.lower` seam
+    # lowers it to the stdout `Envelope` once, at this CLI edge.
     cfg = settings()
-    return project(await remote.deploy(remote.RemoteTarget.from_config(cfg.remote), op, cfg))
-
-
-# --- [OPERATIONS] ----------------------------------------------------------------------
-
-
-def project(rail: RuntimeRail[Envelope]) -> Envelope:
-    """Lower a domain `RuntimeRail[Envelope]` to the CLI `Envelope`, mapping a `BoundaryFault` to `fault`.
-
-    The runtime domain returns `RuntimeRail[T] = Result[T, BoundaryFault]`; this is the single CLI
-    boundary that lowers an `Error(BoundaryFault)` to the stdout `Envelope` wire by spreading the
-    fault's `facts()` into the `fault(...)` context. An `Ok` already carries its rail `Envelope`.
-
-    Args:
-        rail: The domain rail whose success carries an `Envelope` and whose error is a `BoundaryFault`.
-
-    Returns:
-        The carried `Envelope` on success, or a `fault` envelope projected from the boundary fault.
-    """
-    match rail:
-        case Result(tag="ok", ok=envelope):
-            return envelope
-        case Result(error=boundary_fault):
-            facts = boundary_fault.facts()
-            return fault(str(facts.get("detail", boundary_fault.tag)), {key: str(value) for key, value in facts.items()})
-        case _ as unreachable:  # pragma: no cover - exhaustive over the closed Result(Ok | Error) union
-            assert_never(unreachable)
+    return lower(await remote.deploy(remote.RemoteTarget.from_config(cfg.remote), op, cfg))
 
 
 # --- [ENTRY] ---------------------------------------------------------------------------

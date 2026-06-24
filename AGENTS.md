@@ -62,25 +62,30 @@ The `heptabase` CLI owns content read and write; the database is the ledger, not
 
 Pulumi owns infra state. The custom ParadeDB image, the service topology, and `MaghzSettings` live in `admin/infra/`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
 
-MCP servers extend reach without owning truth. `postgres-mcp` explores the live database and `notebooklm-mcp` ingests sources; both are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind.
+MCP servers extend reach without owning truth. `postgres-mcp` explores the live database, `n8n-mcp` drives workflow automation, `exa-mcp-server`/`perplexity-mcp`/`tavily-mcp` run web search and cited research, `workspace-mcp` reaches Google Workspace, and `notebooklm-mcp` ingests sources; all are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind.
 
 ## [07]-[TOOLING]
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.
 
-| [GROUP]            | [TOOLS]                                                                                                                                                                 |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Python             | `uv`, `ruff`, `ty`, `basedpyright`, `python` (3.15)                                                                                                                      |
-| Postgres/SQL       | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, postgres-language-server, `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
-| Infra/containers   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`, `ollama`; the k8s suite (`kubectl`/`k9s`/`helm`/`kustomize`) is available for the future cloud and frontend deploy |
-| Content            | `heptabase`                                                                                                                                                            |
-| HTTP/API probes    | `xh`, `curlie`, `hurl`                                                                                                                                                 |
-| Data/format        | `jq`, `jnv`, `yq-go`, `taplo`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                                                                   |
-| Search/nav         | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                                                                                         |
-| Shell/YAML/TOML    | `bash`, `shellcheck`, `shfmt`, bash-language-server, `yamlfmt`, `yamllint`, yaml-language-server                                                                        |
-| Git                | `git`, `gh`, `gitleaks`, `lazygit`                                                                                                                                     |
-| Files/misc         | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                                                                                         |
-| MCP                | `postgres-mcp`, `notebooklm-mcp`                                                                                                                                       |
+| [GROUP]          | [TOOLS]                                                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| Python           | `uv`, `ruff`, `ty`, `basedpyright`, `python` (3.15)                                                            |
+| Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                                 |
+| Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb`   |
+| Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                      |
+| Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                               |
+| Inference        | `ollama`                                                                                                       |
+| Content          | `heptabase`                                                                                                    |
+| HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                         |
+| Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                    |
+| Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                                 |
+| Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                          |
+| YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                  |
+| TOML             | `taplo`                                                                                                        |
+| Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                             |
+| Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                                 |
+| MCP              | `postgres-mcp`, `n8n-mcp`, `exa-mcp-server`, `perplexity-mcp`, `tavily-mcp`, `workspace-mcp`, `notebooklm-mcp` |
 
 ## [08]-[DOCUMENTATION]
 

@@ -15,7 +15,10 @@
 -- current on write). unschedule-then-(re)schedule makes replay idempotent with the current
 -- command body.
 
+-- [CATALOG:extensions] -- generated from admin/profile.py `cron_prelude()` (target_db == postgres).
+-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- [/CATALOG:extensions]
 
 -- --- [COMPOSITION] ----------------------------------------------------------------------
 DO $cron$

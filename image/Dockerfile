@@ -43,13 +43,16 @@ test -s /usr/share/keyrings/pigsty.gpg
 . /etc/os-release
 echo "deb [signed-by=/usr/share/keyrings/pigsty.gpg] https://repo.pigsty.io/apt/pgsql/${VERSION_CODENAME} ${VERSION_CODENAME} main" > /etc/apt/sources.list.d/pigsty.list
 apt-get update
+# [CATALOG:apt] -- generated from admin/profile.py `dockerfile_apt_block()` (layered, source != paradedb-base).
+# Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.
 apt-get install -y --no-install-recommends \
-  postgresql-18-partman \
-  postgresql-18-hll \
-  postgresql-18-hypopg \
   postgresql-18-pg-net \
   postgresql-18-pgmq \
-  postgresql-18-pg-jsonschema
+  postgresql-18-pg-jsonschema \
+  postgresql-18-hll \
+  postgresql-18-partman \
+  postgresql-18-hypopg
+# [/CATALOG:apt]
 EOF
 
 EXPOSE 5432
