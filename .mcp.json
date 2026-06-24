@@ -3,11 +3,14 @@
     "postgres": {
       "command": "uvx",
       "args": [
+        "--python",
+        "3.13",
         "postgres-mcp",
         "--access-mode=restricted"
       ],
       "env": {
-        "DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"
+        "DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}",
+        "UV_PYTHON_DOWNLOADS": "automatic"
       }
     },
     "n8n": {
@@ -48,6 +51,46 @@
       "command": "notebooklm-mcp",
       "args": [],
       "env": {}
+    },
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "${EXA_API_KEY}"
+      }
+    },
+    "perplexity": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@perplexity-ai/mcp-server"
+      ],
+      "env": {
+        "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
+      }
+    },
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "tavily-mcp@latest"
+      ],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      }
+    },
+    "hostinger": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "hostinger-api-mcp"
+      ],
+      "env": {
+        "HOSTINGER_API_TOKEN": "${HOSTINGER_TOKEN}"
+      }
     }
   }
 }

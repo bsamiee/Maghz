@@ -1,10 +1,6 @@
 # [ROOT_AGENTS]
 
-## [01]-[LOAD_ORDER]
-
-[REQUIRED]: Read and follow `CLAUDE.md` before this file.
-
-## [02]-[NAVIGATION]
+## [01]-[NAVIGATION]
 
 Use repository-native discovery before broad scans:
 - File discovery: `fd`.
@@ -14,7 +10,7 @@ Use repository-native discovery before broad scans:
 Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts.
 For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
 
-## [03]-[TRUST_AND_PRESERVATION]
+## [02]-[TRUST_AND_PRESERVATION]
 
 Skills are execution aids and mining input, not durable documentation authority. Promote portable rules through `docs/`, source, manifests, generated contracts, tool owners, or trusted instruction overlays after current behavior is verified.
 
@@ -24,7 +20,7 @@ Before finalizing non-trivial repository work, classify observed agent mistakes 
 
 Quality cadence is gated at planned milestones, not after every edit. Do not run quality commands, formatters, linters, or tests after ordinary edits, markdown changes, or one-off fixes. Batch implementation first, then run at most one narrow owner-scoped proof at the planned gate unless the user explicitly asks for more. If proof fails, patch related diagnostics as one batch and rerun once; ask before entering any longer loop. Memory, skills, rollout summaries, and old command notes cannot override this rule.
 
-## [04]-[ENGINEERING_CONTRACT]
+## [03]-[ENGINEERING_CONTRACT]
 
 Extend the canonical owner before adding a rail, object, helper, wrapper, command, confidence path, document body, or public surface; when the owner is local, use the nearest overlay, source file, standard, or tool README that owns the concern.
 
@@ -40,7 +36,7 @@ All tooling, docs, and code discover owners through manifests, configured roots,
 
 Every tool routes generated storage, caches, coverage files, snapshots, and scratch artifacts through the owning language/tool configuration. Do not rely on ambient CLI defaults or gitignore-only tolerance for root litter; configure the tool in `pyproject.toml`, tool manifests, or test conftests so outputs land under `.cache`, `.artifacts`, or another owner-declared path.
 
-## [05]-[TOPOLOGY]
+## [04]-[TOPOLOGY]
 
 Maghz is a focused second brain. Heptabase owns content, the PostgreSQL `maghz` database is the durable centralized ledger, and the `admin/` tooling moves data between them. Interpret every task through that frame before choosing shape: capability lands in the deepest owner that can absorb it, while the CLI binds intent, host edges, and output.
 
@@ -50,11 +46,11 @@ Local infra is Pulumi-managed and Forge-provided. The custom ParadeDB image (`im
 
 Retrieval is hybrid: pg_search BM25, pgvector, and pg_trgm/FTS fused through RRF, with embeddings produced by local Ollama `nomic-embed-text`. The schema and routines own that contract; agents compose it through the `maghz` CLI rather than re-deriving query shapes.
 
-## [06]-[TOOL_OWNERS]
+## [05]-[TOOL_OWNERS]
 
 The `maghz` CLI is the campaign surface. It is a cyclopts CLI under `admin/` that emits one JSON `Envelope` per invocation: stdout carries the result, stderr carries structlog diagnostics. Parse the stdout `Envelope` as the result channel; stderr is transport noise unless the envelope says otherwise.
 
-The CLI owns schema, ledger, sync, and stack lifecycle. `maghz schema apply` runs four idempotent `psql -f` steps in order — `db/routines.sql` (extensions, triggers, views), `db/schema.sql` (tables, types, indexes, all IF NOT EXISTS), `db/cron.sql` (pg_cron registration) — plus two `docker cp` steps to stage text-search dictionaries; `maghz ledger` and `maghz sync` move records between Heptabase and the database; `maghz up` and `maghz down` drive Pulumi to build the custom image and start or stop the Postgres and Ollama services.
+The CLI owns schema, ledger, sync, and stack lifecycle. `maghz schema apply` is idempotent and runs in dependency order — first two `docker cp` steps staging the `db/search/` text-search dictionaries into the container `tsearch_data` dir, then `psql -v ON_ERROR_STOP=1 -f` over `db/schema.sql` (the `CREATE EXTENSION` census, `CREATE SCHEMA maghz`, the `kb_english` text-search configuration, enum types, tables, and plain indexes, all IF NOT EXISTS), `db/routines.sql` (function, trigger, exotic-index, view, and IMMV bodies), then `db/cron.sql` (pg_cron registration); `maghz ledger` and `maghz sync` move records between Heptabase and the database; `maghz up` and `maghz down` drive Pulumi to build the custom image and start or stop the Postgres and Ollama services.
 
 `psql` and `pgcli` own ad-hoc SQL and interactive inspection over `MAGHZ_DATABASE_DSN`. Reach for `psql`/`pgcli` for one-off queries, never for durable schema change.
 
@@ -62,32 +58,32 @@ The `heptabase` CLI owns content read and write; the database is the ledger, not
 
 Pulumi owns infra state. The custom ParadeDB image, the service topology, and `MaghzSettings` live in `admin/infra/`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
 
-MCP servers extend reach without owning truth. `postgres-mcp` explores the live database, `n8n-mcp` drives workflow automation, `exa-mcp-server`/`perplexity-mcp`/`tavily-mcp` run web search and cited research, `workspace-mcp` reaches Google Workspace, and `notebooklm-mcp` ingests sources; all are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind.
+MCP servers extend reach without owning truth. The 8-server fleet is owned by `admin/mcp/ops.py`, which generates the committed `${VAR}` `.mcp.json`: `postgres` explores the live database, `n8n` drives workflow automation, `workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, and `hostinger` manages the VPS. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind.
 
-## [07]-[TOOLING]
+## [06]-[TOOLING]
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.
 
-| [GROUP]          | [TOOLS]                                                                                                        |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| Python           | `uv`, `ruff`, `ty`, `basedpyright`, `python` (3.15)                                                            |
-| Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                                 |
-| Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb`   |
-| Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                      |
-| Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                               |
-| Inference        | `ollama`                                                                                                       |
-| Content          | `heptabase`                                                                                                    |
-| HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                         |
-| Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                    |
-| Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                                 |
-| Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                          |
-| YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                  |
-| TOML             | `taplo`                                                                                                        |
-| Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                             |
-| Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                                 |
-| MCP              | `postgres-mcp`, `n8n-mcp`, `exa-mcp-server`, `perplexity-mcp`, `tavily-mcp`, `workspace-mcp`, `notebooklm-mcp` |
+| [GROUP]          | [TOOLS]                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| Python           | `uv`, `ruff`, `ty`, `basedpyright`, `python` (3.15)                                                          |
+| Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
+| Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
+| Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                    |
+| Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                             |
+| Inference        | `ollama`                                                                                                     |
+| Content          | `heptabase`                                                                                                  |
+| HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                       |
+| Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                  |
+| Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                               |
+| Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                        |
+| YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                |
+| TOML             | `taplo`                                                                                                      |
+| Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
+| Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
+| MCP              | `postgres`, `n8n`, `workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`                     |
 
-## [08]-[DOCUMENTATION]
+## [07]-[DOCUMENTATION]
 
 Route README, ADR, architecture, design-note, API, reference, code documentation, how-to, runbook, and instruction-file work through `docs/`.
 

@@ -4,16 +4,14 @@ Each rail owns one bounded concern under one polymorphic entrypoint and one sema
 `ledger` is the polymorphic ledger read over `Kind`, `cloud`/`mcp`/`n8n`/`schema`/`stack`/`sync` are
 the verb dispatchers over `CloudOp`/`McpOp`/`N8nOp`/`SchemaOp`/`StackOp`/the `concept`-presence
 discriminant, and `drive` is the single polymorphic automation entrypoint that selects its Watch /
-Schedule / Manual lane off the `AutomationSpec.trigger` discriminant. `ledger`, `schema`, `stack`, and
-`sync` return the domain-internal `RuntimeRail[Envelope]`
+Schedule / Manual lane off the `AutomationSpec.trigger` discriminant. `ledger`, `schema`, `stack`,
+`sync`, `cloud`, and `n8n` return the domain-internal `RuntimeRail[Envelope]`
 (`Result[Envelope, BoundaryFault]`) that the CLI `runtime.lower` seam collapses to the stdout
-`Envelope` once, at the edge; `cloud` lifts its own `Result[CloudSyncDetail, CloudFault]` to `Envelope` at its
-`completed`/`fault` boundary and `mcp` lifts its own `Result[McpConfigDetail, McpFault]` likewise, so
-both thread straight through without that lowering. `n8n` returns the lifted `Envelope` directly: its
-`run` lifts its own `Result[N8nDetail, N8nFault]` rail (the `_exec` exit grade plus the STATUS
-transport escape) to `completed`/`fault` itself, threading through unchanged. `drive`
-likewise returns the lifted `Envelope` directly: it projects its closed `AutomationFault` vocabulary to
-`completed`/`fault` once at the boundary via its own `_fault_envelope`, threading through unchanged. The
+`Envelope` once, at the edge. `mcp` and `drive` instead return the lifted `Envelope` directly: each
+grades its internal rail over the one closed `BoundaryFault` family — `mcp` its
+`RuntimeRail[McpConfigDetail]`, `drive` its automation lane — to `completed`/`fault` at its own
+boundary, so both thread through without that lowering. Every rail mints the one `BoundaryFault`;
+there is no per-rail `CloudFault`/`McpFault`/`N8nFault`/`AutomationFault`. The
 `CloudOp`/`Kind`/`McpOp`/`N8nOp`/`SchemaOp`/`StackOp` vocabularies are re-exported so the CLI types each
 verb parameter. The stack verb lives in `admin.infra.runner` and the `mcp` verb and its `McpOp`
 vocabulary mount from the canonical `admin.mcp` package surface; both are re-exported here so every rail

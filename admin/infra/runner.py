@@ -58,6 +58,13 @@ if TYPE_CHECKING:
     from pulumi.automation import Stack, UpResult
     from pulumi.automation.events import EngineEvent, OpType
     import pulumi_docker as docker
+else:
+    # Dual-band: the host-side pulumi types are gated out of the core load, so bind their names to `object`
+    # at runtime. The runtime closures (`_stack`/`_up.method`/`_Engine.collect`) carry these in their
+    # signatures, and the beartype claw resolves a hint at first CALL — an unbound `TYPE_CHECKING` name
+    # would raise an unresolvable-forward-reference fault there. `object` is the honest runtime check (the
+    # real type cannot be inspected without importing pulumi); static checkers read the gated imports above.
+    Stack = UpResult = EngineEvent = OpType = docker = object
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -124,6 +131,10 @@ _OCI_BASE: frozendict[str, str] = frozendict({
 # a keychain read.
 _N8N_KEY_HEX_BYTES: Final[int] = 32
 _N8N_KEY_CONTAINER_PATH: Final[str] = "/home/node/.n8n/encryptionKey"
+# The dedicated-n8n-database init script, bind-mounted read-only into the db container's
+# docker-entrypoint-initdb.d so the Postgres entrypoint creates the `n8n` database on first cluster init
+# (n8n connects to it and creates only its own tables; it never creates the database).
+_N8N_INITDB: Final[Path] = Path("db/init/n8n.sql")
 
 # The per-container memory ceilings (MB) the converge stamps onto each `docker.Container.memory`. These are
 # deployment-tuning policy values the infra runner owns, not user-facing env: the DB carries the largest
@@ -315,6 +326,7 @@ def _define(cfg: MaghzSettings) -> None:
     key_file = _n8n_key_file(cfg)  # mint-or-read the host n8n key + ensure the workflows dir before declaring the mount
     build_cache = (infra.state_dir / "buildkit-cache").resolve()
     build_cache.mkdir(parents=True, exist_ok=True)  # the local BuildKit cache backend needs its dir present before the build writes to it
+    initdb = _N8N_INITDB.resolve()  # the n8n-database init script bind-mounted into the db container's initdb.d
 
     class MaghzStack(pulumi.ComponentResource):
         """The one logical-unit component grouping every maghz docker resource for grouped converge/teardown.
@@ -392,6 +404,8 @@ def _define(cfg: MaghzSettings) -> None:
                 memory=_DB_MEMORY_MB,
                 ulimits=[nofile],
                 labels=labels("maghz-db", "db"),
+                # Trust auth on the 127.0.0.1-only port: maghz is the superuser, agents and MCP servers
+                # auto-authenticate with no password. The DSN is passwordless by design (TODO secrets).
                 envs=["POSTGRES_USER=maghz", "POSTGRES_DB=maghz", "POSTGRES_HOST_AUTH_METHOD=trust"],
                 command=[
                     "postgres",
@@ -403,11 +417,22 @@ def _define(cfg: MaghzSettings) -> None:
                     "cron.database_name=postgres",
                     "-c",
                     "cron.use_background_workers=on",
+                    # pg_net is created in the maghz ledger DB and its request queue lives there, so its
+                    # background worker must attach to maghz (the default 'postgres' leaves the worker idling
+                    # against a DB with no pg_net schema, and embed requests never egress). The embed sweep's
+                    # net.http_post -> Ollama round-trip depends on this.
+                    "-c",
+                    "pg_net.database_name=maghz",
                     "-c",
                     "max_worker_processes=24",
                 ],
                 ports=[docker.ContainerPortArgs(internal=5432, external=infra.db_port, ip="127.0.0.1")],
-                volumes=[docker.ContainerVolumeArgs(volume_name=pg_data.name, container_path="/var/lib/postgresql")],
+                volumes=[
+                    docker.ContainerVolumeArgs(volume_name=pg_data.name, container_path="/var/lib/postgresql"),
+                    # The n8n-database init script, read-only into initdb.d: the entrypoint creates the n8n
+                    # database on first cluster init (run-once-on-empty-PGDATA), so the n8n container boots.
+                    docker.ContainerVolumeArgs(host_path=str(initdb), container_path="/docker-entrypoint-initdb.d/10-n8n.sql", read_only=True),
+                ],
                 networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["db"])],
                 healthcheck=docker.ContainerHealthcheckArgs(
                     tests=["CMD", "pg_isready", "-U", "maghz", "-d", "maghz", "-q"], interval="10s", timeout="5s", retries=5, start_period="30s"

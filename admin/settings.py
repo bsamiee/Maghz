@@ -47,11 +47,28 @@ _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
     "MAGHZ_REMOTE_HOST": ("remote", "host"),
     "MAGHZ_REMOTE_PORT": ("remote", "port"),
     "MAGHZ_REMOTE_USER": ("remote", "user"),
+    "MAGHZ_REMOTE_KEY_FILE": ("remote", "key_file"),
     "MAGHZ_REMOTE_KNOWN_HOSTS": ("remote", "known_hosts"),
     "MAGHZ_REMOTE_WORKROOT": ("remote", "workroot"),
     "GOOGLE_OAUTH_CLIENT_ID": ("integrations", "google_oauth_client_id"),
     "GOOGLE_OAUTH_CLIENT_SECRET": ("integrations", "google_oauth_client_secret"),
 })
+
+
+# The docker endpoint defaults to the first reachable local socket so a Colima/Docker-Desktop/native host
+# all converge without a hand-set `DOCKER_HOST`; the `_BARE_ENV` `DOCKER_HOST` route still overrides it.
+# Probed in order: the Colima `~/.local/share` socket, the legacy `~/.colima` socket, the Docker Desktop
+# user socket, then the system socket; the Colima default is the floor when none is present yet (a stack
+# brought up later creates it, and an explicit `DOCKER_HOST` wins regardless).
+def _detect_docker_host() -> str:
+    """Return `unix://<socket>` for the first existing local docker socket, the Colima default as the floor."""
+    candidates = (
+        Path.home() / ".local/share/colima/default/docker.sock",
+        Path.home() / ".colima/default/docker.sock",
+        Path.home() / ".docker/run/docker.sock",
+        Path("/var/run/docker.sock"),
+    )
+    return f"unix://{next((socket for socket in candidates if socket.exists()), candidates[0])}"
 
 
 # --- [MODELS] --------------------------------------------------------------------------
@@ -114,7 +131,7 @@ class InfraConfig(BaseModel):
     ollama_image: str = "ollama/ollama:0.30.10"
     db_port: int = Field(default=15435, ge=1024, le=65535)
     ollama_port: int = Field(default=11434, ge=1024, le=65535)
-    docker_host: str = Field(default=f"unix://{Path.home() / '.local/share/colima/default/docker.sock'}")
+    docker_host: str = Field(default_factory=_detect_docker_host)
     state_dir: Path = Path(".cache/pulumi")
     image_context: Path = Path("image")
 
@@ -224,8 +241,11 @@ class AutomationConfig(BaseModel):
 class RemoteConfig(BaseModel):
     """SSH facts for the live VPS the `remote` domain targets: host identity, push concurrency, and timeouts.
 
-    `host`/`user` default empty so an unconfigured operator validates and the CLI surfaces the missing
-    target. `known_hosts` stays a raw `str` (untyped env ingress): `RemoteTarget.from_config` narrows it to
+    `host`/`user` default empty so an unconfigured operator validates and the `remote` rail surfaces the
+    missing target as a `config` fault rather than dialing an empty host. `key_file` is the explicit SSH
+    private key the connection authenticates with; `None` (the default) lets `asyncssh` use the running
+    agent (the Forge 1Password SSH agent) plus the default key locations, so the common path needs no key
+    path. `known_hosts` stays a raw `str` (untyped env ingress): `RemoteTarget.from_config` narrows it to
     the typed `KnownHostsPolicy` at the domain boundary, never here. `sftp_*` bound the
     `CapacityLimiter`/`SFTPClient.put` push fan-out; the connect/keepalive columns build one `SSHClientConnectionOptions`.
     """
@@ -235,6 +255,7 @@ class RemoteConfig(BaseModel):
     host: str = ""
     port: int = Field(default=22, ge=1, le=65535)
     user: str = ""
+    key_file: Path | None = None
     known_hosts: str = Field(default_factory=lambda: str(Path("~/.ssh/known_hosts").expanduser()))
     workroot: str = "~/maghz"
     sftp_push_concurrency: int = Field(default=8, ge=1)

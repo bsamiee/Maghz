@@ -7,12 +7,15 @@ A single `run` entrypoint discriminates on a closed `SchemaOp` and returns the d
 `match`/`assert_never` ceremony guarding an already-exhaustive `frozendict`.
 
 `apply` replays five `psql`/`docker cp` steps as two ordered fronts. The two text-search dictionary
-`docker cp`s and the declarative schema apply (`synonyms_cp`, `thesaurus_cp`, `atlas`) are independent and
-the concurrent front fans them out over the one substrate `drain`; `routines` then `cron` are the second
-front, awaited strictly in order — `routines` because its trigger/FK bodies bind to the tables `atlas`
-creates and the `kb_english` dictionaries reference the staged files, `cron` against the `postgres`
-maintenance DB (pg_cron lives only there; jobs execute IN maghz via `cron.schedule_in_database`). The
-concurrent fan-out is never a raw `anyio.create_task_group`: it is one `drain` over
+`docker cp`s (`synonyms_cp`, `thesaurus_cp`) are mutually independent and the concurrent front fans them
+out over the one substrate `drain`; the three `psql` applies (`schema`, `routines`, `cron`) are the second
+front, awaited strictly in declaration order — `schema` first because it creates the extensions, the
+`kb_english` configuration, and every table; `routines` next because its trigger/FK/exotic-index bodies
+bind to those tables and that configuration; `cron` last against the `postgres` maintenance DB (pg_cron
+lives only there; jobs execute IN maghz via `cron.schedule_in_database`). The concurrent front fully drains
+before the sequential front begins, so the dictionary files are staged before `schema` creates the
+`kb_english` dictionaries that reference them by name. The concurrent fan-out is never a raw
+`anyio.create_task_group`: it is one `drain` over
 `Block.of_seq(Admit.of(lambda: _grade(step)))` under the memoised `_LANE` `CapacityLimiter`, so the
 concurrency bound and the lossless `(values, faults)` fan-in are the runtime lane's, never hand-rolled
 stream/index machinery — the exact shape `cloud._fan_out` composes. The sequential front is a plain
@@ -283,9 +286,10 @@ async def _drain_front(steps: tuple[_Step, ...]) -> Block[RuntimeRail[_Step]]:
 async def _front_sequential(steps: tuple[_Step, ...]) -> Block[RuntimeRail[_Step]]:
     """Run a dependent front strictly in order, each step awaited before the next, returning its rails.
 
-    `routines` then `cron` cannot fan out: `routines` binds to the tables `atlas` created and `cron`
-    registers against the maintenance DB after the schema exists, so each awaits `_grade` in declaration
-    order — the same per-step spawn/deadline body the concurrent front drains, with no lane because a hard
+    `schema` then `routines` then `cron` cannot fan out: `schema` creates the extensions, the `kb_english`
+    configuration, and the tables; `routines` binds its triggers, FKs, and exotic indexes to them; `cron`
+    registers against the maintenance DB after those exist. So each awaits `_grade` in declaration order —
+    the same per-step spawn/deadline body the concurrent front drains, with no lane because a hard
     sequential dependency is an in-order `await`, not a bounded fan-out (the concurrency owner governs
     concurrent units, never dependent steps). Declaration order IS completion order here.
 
@@ -321,14 +325,15 @@ def _settled(graded: Block[_Step]) -> Envelope:
 
 
 async def _apply(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-    """Idempotent five-step schema apply on the rail: dictionaries and schema concurrently, then routines and cron.
+    """Idempotent five-step schema apply on the rail: stage the dictionaries concurrently, then apply schema, routines, cron.
 
     Resolves the `_STEPS` policy rows into the concurrent and sequential `_Step` fronts, drains the
     concurrent front over the substrate lane and awaits the sequential front in order, then folds every
     step's outcome rail through `traversed(ABORT)`. The two fronts run strictly in sequence —
-    `routines`/`cron` after `synonyms_cp`/`thesaurus_cp`/`atlas` — because the second front binds to
-    objects the first creates; within the concurrent front the lane fans the steps out under one
-    `CapacityLimiter`. A genuine spawn fault short-circuits the whole apply onto the rail (lowered once at
+    `schema`/`routines`/`cron` after `synonyms_cp`/`thesaurus_cp` — because the sequential applies bind to
+    the staged dictionaries and to the objects each prior apply creates; within the concurrent front the
+    lane fans the dictionary stages out under one `CapacityLimiter`. A genuine spawn fault short-circuits
+    the whole apply onto the rail (lowered once at
     the CLI edge) while non-zero `psql` exits ride the `Ok` leg as graded `_Step`s. `_settled` re-orders
     the graded steps into `_STEPS` declaration order off the step `name`, so the receipt's `exits` carry
     one code per step in declaration order regardless of completion order. A replay produces no errors and
@@ -418,17 +423,17 @@ def _lint(cfg: MaghzSettings) -> Block[RuntimeRail[_Sql]]:
 
 # The apply step policy: one row per step naming its argv builder (applied to the settings and resolved
 # DSN at plan time), its wall-clock deadline, and whether it joins the concurrent front. Declaration
-# order is the receipt order: synonyms_cp, thesaurus_cp, atlas run concurrently; routines, cron run
-# sequentially after. A third dictionary is one `_cp("<name>")` row, a fourth `psql` file one `psql`
-# lambda row — never a hand-built `_Step(...)` literal threaded through the runner. The dictionary rows
-# share the one `_cp` builder; the `psql` builders bind the DSN (`atlas`/`routines` against the ledger,
-# `cron` against the maintenance DB) so the runner spawns a fully-resolved command and the front
-# partition is data off the concurrency flag.
+# order is the receipt order: synonyms_cp, thesaurus_cp run concurrently; schema, routines, cron run
+# sequentially after, in that order. A third dictionary is one `_cp("<name>")` row, a fourth `psql` file
+# one `psql` lambda row — never a hand-built `_Step(...)` literal threaded through the runner. The
+# dictionary rows share the one `_cp` builder; the `psql` builders bind the DSN (`schema`/`routines`
+# against the ledger, `cron` against the maintenance DB) so the runner spawns a fully-resolved command and
+# the front partition is data off the concurrency flag.
 _STEPS: frozendict[str, tuple[StepArgv, float, bool]] = frozendict({
     "synonyms_cp": (_cp("synonyms.syn"), 30.0, True),
     "thesaurus_cp": (_cp("thesaurus.ths"), 30.0, True),
-    "atlas": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.schema_file)), 120.0, True),
-    "routines": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.routines_file)), 60.0, False),
+    "schema": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.schema_file)), 120.0, False),
+    "routines": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.routines_file)), 120.0, False),
     "cron": (lambda cfg, _dsn: ("psql", cfg.database.maintenance_dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.cron_file)), 60.0, False),
 })
 

@@ -2,10 +2,10 @@
 
 The single source of truth for the maghz-pg extension set. Before this owner the profile was hand-kept
 in four uncoordinated places — the `infra` `shared_preload_libraries` argv, the `image/Dockerfile` apt
-list, the `db/routines.sql` `CREATE EXTENSION` prelude, and the `db/cron.sql` pg_cron line — so a profile
+list, the `db/schema.sql` `CREATE EXTENSION` prelude, and the `db/cron.sql` pg_cron line — so a profile
 edit had to be mirrored four times or drift. Here the `_PROFILE` `frozendict[Extension, ExtensionSpec]`
 declares each extension once and the four downstream surfaces are pure projections of it: the Dockerfile
-apt block (rows whose `source` is layered, i.e. not the ParadeDB base), the routines prelude (rows whose
+apt block (rows whose `source` is layered, i.e. not the ParadeDB base), the schema prelude (rows whose
 `target_db` is `maghz`), the cron pg_cron line (rows whose `target_db` is `postgres`), and the
 `shared_preload_libraries` string (rows whose `preload` flag is set, plus the `auto_explain` library that
 carries no SQL object). A new extension is one `Extension` case plus one `_PROFILE` row, and every surface
@@ -20,9 +20,9 @@ are excluded from the maghz census by construction — `auto_explain` registers 
 against the maghz `pg_extension` rows exactly.
 
 This module is pure data and pure projection — no I/O, no rail, no settings handle. The `infra` runner
-reads `shared_preload_libraries()` for the container command, and the three SQL files are GENERATED from
-`routines_prelude()`/`cron_prelude()`/`dockerfile_apt_block()` (committed artifacts, like `.mcp.json`),
-so the catalog is imported by the generator and the runner, never the reverse.
+reads `shared_preload_libraries()` for the container command, and the three committed surfaces are
+GENERATED from `schema_prelude()`/`cron_prelude()`/`dockerfile_apt_block()` (committed artifacts, like
+`.mcp.json`), so the catalog is imported by the generator and the runner, never the reverse.
 """
 
 from collections.abc import Callable, Iterable
@@ -129,9 +129,15 @@ class Extension(StrEnum):
 # The committed-artifact paths, relative to the repository root the operator runs from. Each carries a
 # `[CATALOG:<tag>] ... [/CATALOG:<tag>]` sentinel region the `regenerate` rewriter replaces with the
 # catalog projection, so the four downstream surfaces are GENERATED from `_PROFILE` rather than hand-kept.
-_ROUTINES_SQL = Path("db/routines.sql")
+_SCHEMA_SQL = Path("db/schema.sql")
 _CRON_SQL = Path("db/cron.sql")
 _DOCKERFILE = Path("image/Dockerfile")
+
+# Extensions present in every maghz database outside the curated profile: `plpgsql` is the built-in
+# procedural language PostgreSQL installs in every database, and the PostGIS trio ships preinstalled in the
+# ParadeDB base image. `census_diff` excludes these from the undeclared-drift set so the schema `doctor`
+# flags only a genuine out-of-band install, never the base image's own extensions.
+_CENSUS_IGNORE: frozenset[str] = frozenset({"plpgsql", "postgis", "postgis_tiger_geocoder", "postgis_topology"})
 
 
 # --- [MODELS] --------------------------------------------------------------------------
@@ -210,11 +216,11 @@ _REGIONS: tuple[_Region, ...] = (
         ),
     ),
     (
-        _ROUTINES_SQL,
+        _SCHEMA_SQL,
         "extensions",
         lambda: (
             "-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb\n"
-            f"-- asserts the live pg_extension census equals this declared set (census_diff).\n{routines_prelude()}"
+            f"-- asserts the live pg_extension census equals this declared set (census_diff).\n{schema_prelude()}"
         ),
     ),
     (_CRON_SQL, "extensions", lambda: f"-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.\n{cron_prelude()}"),
@@ -294,13 +300,15 @@ def shared_preload_libraries() -> str:
     return ",".join(spec.name.value for spec in _PROFILE.values() if spec.preload)
 
 
-def routines_prelude() -> str:
-    """Project the `routines.sql` `CREATE EXTENSION` prelude: every `maghz`-target row, in catalog order.
+def schema_prelude() -> str:
+    """Project the `schema.sql` `CREATE EXTENSION` prelude: every `maghz`-target row, in catalog order.
 
     One idempotent `CREATE EXTENSION IF NOT EXISTS <name>[ CASCADE];` per `target_db == maghz` extension,
     newline-joined in declaration order so a `CASCADE` extension (`pgmq`) precedes any dependent. `pg_cron`
     (target `postgres`) and `auto_explain` (the library, target `none`) are excluded by the fold, so the
-    maghz prelude carries exactly the 19 ledger extensions.
+    maghz prelude carries exactly the 19 ledger extensions. Rendered into `db/schema.sql`, which `maghz
+    schema apply` runs before `routines.sql`, so the extensions exist when the tables reference `vector`
+    and `citext`.
 
     Returns:
         The newline-joined `CREATE EXTENSION` block for the maghz ledger database.
@@ -365,9 +373,10 @@ def census_diff(installed: Iterable[str]) -> CensusDiff:
 
     `missing` is the declared-maghz set minus the installed set (an extension the catalog declares but the
     DB lacks — an apply gap); `undeclared` is the installed set minus the declared-maghz set (an extension
-    installed out of band the catalog does not own — profile drift). The comparison is the maghz catalog
-    membership only: `auto_explain` registers no `pg_extension` row and `pg_cron` lives in the `postgres`
-    DB, so neither is in the maghz declared set and neither reads as drift against the maghz census.
+    installed out of band the catalog does not own — profile drift), after subtracting `_CENSUS_IGNORE` (the
+    built-in `plpgsql` and the ParadeDB-base PostGIS trio, present in every database outside the profile).
+    The comparison is the maghz catalog membership only: `auto_explain` registers no `pg_extension` row and
+    `pg_cron` lives in the `postgres` DB, so neither is in the maghz declared set and neither reads as drift.
 
     Args:
         installed: The `pg_extension.extname` values the maghz connectivity probe returned.
@@ -377,7 +386,7 @@ def census_diff(installed: Iterable[str]) -> CensusDiff:
         sorted for a deterministic receipt.
     """
     declared = frozenset(spec.name.value for spec in _PROFILE.values() if spec.target_db is TargetDb.MAGHZ)
-    live = frozenset(installed)
+    live = frozenset(installed) - _CENSUS_IGNORE
     return CensusDiff(missing=tuple(sorted(declared - live)), undeclared=tuple(sorted(live - declared)))
 
 
@@ -393,6 +402,6 @@ __all__ = [
     "census_diff",
     "cron_prelude",
     "dockerfile_apt_block",
-    "routines_prelude",
+    "schema_prelude",
     "shared_preload_libraries",
 ]

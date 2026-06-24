@@ -131,12 +131,15 @@ class RemoteTarget(msgspec.Struct, frozen=True, gc=False, kw_only=True):
 
         The `match` over `known_hosts` is exhaustive: `"insecure"` logs the disabled-verification warning
         and passes `known_hosts=None` (the only sanctioned route to a disabled check); a `Path` passes
-        `known_hosts=str(p)`; `assert_never` proves the vocabulary closed. The connect/login/keepalive
-        columns thread from `cfg`, so every connection carries the same typed timeout posture and no call
-        site assembles a raw `**dict`.
+        `known_hosts=str(p)`; `assert_never` proves the vocabulary closed. `client_keys` is threaded only
+        when `cfg.key_file` is set — an explicit private key; when absent the option is omitted so
+        `asyncssh` falls back to the running agent (the Forge 1Password SSH agent via `SSH_AUTH_SOCK`) plus
+        the default key locations, never the empty `client_keys=()` that would disable key auth outright.
+        The connect/login/keepalive columns thread from `cfg`, so every connection carries the same typed
+        timeout posture and no call site assembles a raw `**dict`.
 
         Args:
-            cfg: The remote configuration supplying the connect/login/keepalive timing columns.
+            cfg: The remote configuration supplying the key file, host-key policy, and timing columns.
 
         Returns:
             The single typed `SSHClientConnectionOptions` `_session` passes to `asyncssh.connect`.
@@ -149,12 +152,14 @@ class RemoteTarget(msgspec.Struct, frozen=True, gc=False, kw_only=True):
                 known_hosts = str(path)
             case _ as unreachable:  # pragma: no cover - exhaustive over the closed KnownHostsPolicy union
                 assert_never(unreachable)
+        keys = {"client_keys": [str(cfg.key_file)]} if cfg.key_file is not None else {}
         return asyncssh.SSHClientConnectionOptions(
             known_hosts=known_hosts,
             connect_timeout=cfg.connect_timeout,
             login_timeout=cfg.connect_timeout,
             keepalive_interval=cfg.keepalive_interval,
             keepalive_count_max=cfg.keepalive_count_max,
+            **keys,
         )
 
 
@@ -558,6 +563,8 @@ async def _drive(op: RemoteOp, target: RemoteTarget, cfg: MaghzSettings, body: C
         `Ok(completed(...))` carrying the verb receipt, or `Error(BoundaryFault)` the CLI seam lowers.
     """
     structlog.contextvars.bind_contextvars(rail="remote", op=op.value)
+    if not target.host or not target.user:
+        return Error(BoundaryFault(config=(op.subject, "remote host/user not configured: set MAGHZ_REMOTE_HOST and MAGHZ_REMOTE_USER")))
 
     async def _connected(staged: tuple[Manifest, str]) -> Envelope:
         manifest, commit = staged

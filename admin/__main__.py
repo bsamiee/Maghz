@@ -10,13 +10,12 @@ the matched rail through `App.run_async(backend="asyncio")` — the sole event-l
 resolve at dispatch, not import, so a config fault surfaces as a fault envelope rather than a bare
 traceback. The runtime `Signals` service owns the structlog pipeline and `install(RetryMode.EMIT)`
 routes boundary-retry receipts onto stderr once at startup. The `stack`, `ledger`, `schema`, `sync`,
-and `remote` (`exec`, `deploy`) rails return the domain `RuntimeRail[Envelope]`, so their handlers
-lower it to the stdout `Envelope` through the one `runtime.lower` seam — which spreads a surviving
-`BoundaryFault` into a `fault` envelope at the single CLI edge; the `cloud`, `mcp`, and `n8n` rails
-already lower their own typed rail to an `Envelope` at their `completed`/`fault` boundary and thread
-straight through without that lowering — `cloud`/`mcp` over `CloudSyncDetail`/`McpConfigDetail`
-(`CloudFault`/`McpFault`), and `n8n` (`export`, `import`, `status`) over `N8nDetail` from its own
-`Result[N8nDetail, N8nFault]` rail.
+`cloud`, `n8n`, and `remote` (`exec`, `deploy`) rails return the domain `RuntimeRail[Envelope]`, so
+their handlers lower it to the stdout `Envelope` through the one `runtime.lower` seam — which spreads
+a surviving `BoundaryFault` into a `fault` envelope at the single CLI edge. Only `mcp` self-lowers:
+`mcp(op, cfg)` grades its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
+`completed`/`fault` boundary, so its handler returns it without that lowering; `mcp` mounts
+`generate`/`validate`/`diff`/`watch`/`converge`.
 The `remote` commands each derive one `RemoteTarget.from_config(settings().remote)` and await the
 `admin.remote.ops` `exec`/`deploy` entrypoint at the SSH/SFTP `async_boundary` edge, with `deploy`
 discriminating the run on the `StackOp` verb; `exec` carries `allow_leading_hyphen=True` so a
@@ -137,8 +136,8 @@ async def _sync_generate(concept: Annotated[str, Parameter(help="The canonical c
 @_n8n.command(name="export")
 async def _n8n_export() -> Envelope:
     """Export every n8n workflow to one `<id>.json` per file under the host-mounted workflows tree."""
-    # The n8n rail returns the domain `RuntimeRail[Envelope]` (its `Result[N8nDetail, N8nFault]` graded at
-    # the boundary), which this handler lowers to the stdout `Envelope` through the one `runtime.lower` seam.
+    # The n8n rail returns the domain `RuntimeRail[Envelope]` (its `N8nDetail` completed/fault-graded at the
+    # boundary), which this handler lowers to the stdout `Envelope` through the one `runtime.lower` seam.
     return lower(await rails.n8n(rails.N8nOp.EXPORT, settings()))
 
 
@@ -165,9 +164,9 @@ async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter
     validates `spec.lane` against `cfg.automation.lane_keys`, raising the converter-canonical `ValueError`
     on a `msgspec.DecodeError` or an unknown lane. cyclopts wraps that into a `--spec` `CoercionError`,
     so a malformed or unadmitted spec faults at the CLI edge (exit 2) through `main()`'s `CycloptsError`
-    arm instead of reaching the engine. `drive` projects its `AutomationFault` vocabulary to an
-    `Envelope` at its own boundary, so it threads straight through without the `runtime.lower` lowering,
-    exactly like the `cloud`/`mcp`/`n8n` rails.
+    arm instead of reaching the engine. `drive` grades its `BoundaryFault` rail to an `Envelope` at its
+    own `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering,
+    exactly like the `mcp` rail.
 
     Returns:
         The single `Envelope` `drive` emits for the resolved trigger lane, lowered at the engine edge.
@@ -178,8 +177,8 @@ async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter
 @_cloud.command(name="sync")
 async def _cloud_sync() -> Envelope:
     """Dump the ledger and bisync the content tree to both cloud remotes."""
-    # The cloud rail returns the domain `RuntimeRail[Envelope]` (its `Result[CloudSyncDetail, CloudFault]`
-    # graded at the boundary), which this handler lowers to the stdout `Envelope` through `runtime.lower`.
+    # The cloud rail returns the domain `RuntimeRail[Envelope]` (its `CloudSyncDetail` completed/fault-graded
+    # at the boundary), which this handler lowers to the stdout `Envelope` through `runtime.lower`.
     return lower(await rails.cloud(rails.CloudOp.SYNC, settings()))
 
 
@@ -192,7 +191,7 @@ async def _cloud_restore() -> Envelope:
 @_mcp.command(name="generate")
 async def _mcp_generate() -> Envelope:
     """Render the typed server fleet to the committed `.mcp.json` with `${VAR}` placeholders."""
-    # The mcp rail lifts its `Result[McpConfigDetail, McpFault]` to an `Envelope` at its own
+    # The mcp rail lifts its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
     # `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering.
     return await rails.mcp(rails.McpOp.GENERATE, settings())
 
@@ -213,6 +212,12 @@ async def _mcp_diff() -> Envelope:
 async def _mcp_watch() -> Envelope:
     """Regenerate `.mcp.json` on every settings/source change until SIGINT; one `watchfiles.awatch` stream."""
     return await rails.mcp(rails.McpOp.WATCH, settings())
+
+
+@_mcp.command(name="converge")
+async def _mcp_converge() -> Envelope:
+    """Materialize every docker-run MCP server image as Pulumi desired-state so a session never cold-pulls."""
+    return await rails.mcp(rails.McpOp.CONVERGE, settings())
 
 
 @app.command(name="exec", group=_REMOTE)

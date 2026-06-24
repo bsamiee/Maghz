@@ -7,6 +7,7 @@ Operate as a senior developer building the tooling for a focused second brain. H
 [IMPORTANT]:
 - [ALWAYS] Use `.claude/skills/workflow-creator` when creating a workflow.
 - [ALWAYS] Treat tooling code as polymorphic, agnostic, and universal by default.
+- [ALWAYS] Keep every surface agent-facing and agent-only: the CLI emits one JSON `Envelope` per call with no human-facing flags, prompts, or decorative output; agents and automations are the sole consumers, and automation is central design pressure even before the automations exist.
 - [ALWAYS] Identify canonical object shapes, field names, semantics, and receipts that scale across the `maghz` CLI, the database schema, infra, automations, and downstream consumers.
 - [ALWAYS] Use one canonical semantic name per bounded concept; arity, filters, provider, and modality live in request shape, case, policy row, or boundary adapter, not parallel names.
 - [ALWAYS] Extend the canonical owner before adding rails, public surfaces, wrappers, commands, flags, provider selectors, schemas, models, helpers, or files.
@@ -81,23 +82,14 @@ Use the route-owned standard for the file being edited:
 - [NEVER] Add package versions, tool commands, hardcoded targets, or suite paths to root policy when a manifest, README, or language owner carries the exact command.
 - [ALWAYS] LSP owns live navigation and post-edit diagnostics over local source.
 - [ALWAYS] The `maghz` CLI owns schema, ledger, sync, and stack lifecycle (`up`, `down`) over the `maghz` database; invoke it through the project's `admin/` tooling and parse its JSON `Envelope`.
-- [ALWAYS] `maghz schema apply` owns idempotent schema apply: `db/routines.sql` then `db/schema.sql` then `db/cron.sql`, all via `psql -v ON_ERROR_STOP=1 -f`; a replay is a clean no-op.
+- [ALWAYS] `maghz schema apply` owns idempotent declarative schema apply over `db/schema.sql`, `db/routines.sql`, and `db/cron.sql` in dependency order; a replay is a clean no-op, and `maghz schema doctor` asserts the live extension census owned by `admin/profile.py`. `AGENTS.md [05]` carries the full apply mechanism.
+- [NEVER] Create migration files, numbered `NNN_*.sql` scripts, schema-version tables, or up/down migration pairs; the schema is declarative and idempotent — change `db/schema.sql`, `db/routines.sql`, or `db/cron.sql` in place and replay through `maghz schema apply`.
 - [ALWAYS] `psql` and `pgcli` own ad-hoc SQL and interactive inspection; reach for them for one-off queries, not durable schema change.
 - [ALWAYS] Pulumi owns infra: the custom ParadeDB image build, the Postgres and Ollama services, and local bring-up, driven by `MaghzSettings`.
 
 ## [07]-[TOOLING]
 
-Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`); inspect the Forge owner before patching local toolchain failures. `AGENTS.md` carries the full per-tool inventory by group.
-
-- Python: `uv`, `ruff`, `ty`, `basedpyright`, `python` 3.15.
-- Postgres/SQL: `psql`, `pgcli`, `usql`, `sqlfluff`, postgres-language-server, plus the dump/restore and operations suite; connect through `MAGHZ_DATABASE_DSN`.
-- Content: `heptabase`.
-- Inference: `ollama` serving local `nomic-embed-text`.
-- Infra: `pulumi`, `colima` Docker runtime, `docker`, `ollama`.
-- Data and search: `jq`, `yq-go`, `duckdb`, `fd`, `rg`, `ast-grep`, and the format/probe/file utilities.
-- Git: `git`, `gh`, `gitleaks`, `lazygit`.
-- MCP: `postgres-mcp`, `n8n-mcp`, `exa-mcp-server`, `perplexity-mcp`, `tavily-mcp`, `workspace-mcp`, `notebooklm-mcp`.
-- CLI: `maghz` owns schema, ledger, sync, and stack lifecycle.
+Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`); inspect the Forge owner before patching local toolchain failures. `AGENTS.md [06]` carries the full per-tool inventory by group, including the 8-server MCP fleet (`postgres`, `n8n`, `workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`) whose typed owner is `admin/mcp/ops.py`.
 
 Route each tooling concern through its owning skill:
 

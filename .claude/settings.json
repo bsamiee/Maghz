@@ -44,6 +44,15 @@
             "ExitWorktree",
             "ListMcpResourcesTool",
             "ReadMcpResourceTool"
+        ],
+        "deny": [
+            "Bash(maghz down*)",
+            "Bash(pulumi destroy*)",
+            "Bash(docker rm:*)",
+            "Bash(docker volume rm:*)",
+            "Bash(rm -rf:*)",
+            "Bash(dropdb:*)",
+            "Bash(*DROP DATABASE*)"
         ]
     },
     "attribution": {

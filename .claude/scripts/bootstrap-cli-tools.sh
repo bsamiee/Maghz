@@ -25,11 +25,11 @@ declare -Ar TOOLS=(
     [hyperfine]='hyperfine:binstall' [gping]='gping:binstall'
     [trip]='trippy:binstall'
     [doggo]='mr-karan/doggo:github-go'
-    [trash - put]='trash-cli:pipx'
+    [trash-put]='trash-cli:pipx'
 )
 declare -Ar STRATEGY_DISPATCH=(
     [binstall]=_install_binstall
-    [github - go]=_install_github_go
+    [github-go]=_install_github_go
     [pipx]=_install_pipx
 )
 declare -Ar COMMAND_DISPATCH=(
@@ -103,7 +103,7 @@ _ensure_path() {
     export PATH="${BIN_DIR}:${PATH}"
     [[ "${ALLOW_PROFILE_WRITE}" == "1" ]] || return 0
     [[ -f "${PROFILE_PATH}" ]] || : >"${PROFILE_PATH}"
-    rg -q --fixed-strings "${BIN_DIR}" "${PROFILE_PATH}" 2>/dev/null && return 0
+    grep -qF "${BIN_DIR}" "${PROFILE_PATH}" 2>/dev/null && return 0
     # shellcheck disable=SC2016  # Single quotes intentional -- expand when shell reads the profile.
     printf 'export PATH="%s:${PATH}"\n' "${BIN_DIR}" >>"${PROFILE_PATH}"
     printf '[PATH] Appended %s to %s\n' "${BIN_DIR}" "${PROFILE_PATH}"

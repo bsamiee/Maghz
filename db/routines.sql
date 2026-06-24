@@ -1,11 +1,12 @@
 -- --- [RUNTIME_PRELUDE] ------------------------------------------------------------------
--- Routine-owned, function/view/trigger/exotic-index layer for the Maghz ledger.
+-- Routine-owned function/trigger/exotic-index/view layer for the Maghz ledger.
 --
--- Applied second by `maghz schema apply` (after schema.sql creates all tables). Every
--- statement is CREATE ... IF NOT EXISTS or CREATE OR REPLACE so a replay is a clean
--- no-op. Ordering is load-bearing: extensions, then the text-search configuration, then
--- triggers, then exotic indexes, then the pgmq queue and embed pipeline, then the hybrid
--- search function and views.
+-- Applied by `maghz schema apply` AFTER db/schema.sql, which creates the extension census,
+-- the maghz schema, the kb_english text-search configuration, the enum types, and every
+-- table. Every statement here is CREATE OR REPLACE or CREATE ... IF NOT EXISTS (DO-guarded
+-- where no such form exists), so a replay is a clean no-op. Ordering is load-bearing within
+-- the file: the concept trigger, then the embed pipeline, then the exotic indexes, then the
+-- pgmq queue and the hybrid search function, then the incremental view and the ledger views.
 --
 -- Verified external surfaces this file binds:
 --   pg_net  : net.http_post(url,body jsonb,params jsonb,headers jsonb,timeout_milliseconds int)
@@ -17,87 +18,6 @@
 --             {"embeddings":[[...768 floats...]]} — embeddings is array-of-arrays, the
 --             single vector is at ->'embeddings'->0. nomic-embed-text is 768-dim and needs
 --             the "search_document: " task prefix prepended to indexed text.
-
--- --- [EXTENSIONS] -----------------------------------------------------------------------
--- The full curated profile carried by the maghz-pg image. CASCADE resolves dependencies.
--- ParadeDB base ships pg_search + vector + pg_ivm + contrib; the rest are layered. pg_cron
--- is NOT created here: it can live only in the `postgres` maintenance DB (the image creates
--- it there at init), so this maghz-targeted file never references the cron schema; the job
--- registration lives in cron.sql, which runs against postgres and reaches maghz via
--- cron.schedule_in_database.
-
--- [CATALOG:extensions] -- generated from admin/profile.py `routines_prelude()` (target_db == maghz).
--- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb
--- asserts the live pg_extension census equals this declared set (census_diff).
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pg_search;
-CREATE EXTENSION IF NOT EXISTS pg_ivm;
-CREATE EXTENSION IF NOT EXISTS pg_net;
-CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
-CREATE EXTENSION IF NOT EXISTS pg_jsonschema;
-CREATE EXTENSION IF NOT EXISTS hll;
-CREATE EXTENSION IF NOT EXISTS pg_partman;
-CREATE EXTENSION IF NOT EXISTS hypopg;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS unaccent;
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
-CREATE EXTENSION IF NOT EXISTS citext;
-CREATE EXTENSION IF NOT EXISTS ltree;
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS btree_gin;
-CREATE EXTENSION IF NOT EXISTS btree_gist;
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-CREATE EXTENSION IF NOT EXISTS tablefunc;
--- [/CATALOG:extensions]
-
-CREATE SCHEMA IF NOT EXISTS maghz;
-
--- --- [TYPES] ----------------------------------------------------------------------------
--- kb_english text-search configuration: thesaurus (multi-word concept collapse) and synonym
--- dictionary (single-token acronym/variant unification) fire BEFORE the snowball stemmer, so
--- a concept indexed under different terminology resolves to one canonical lexeme. The .syn
--- and .ths files install to $SHAREDIR/tsearch_data/ (placed by the image / a bootstrap
--- step); a missing file fails dictionary creation. CREATE ... guarded by a DO block since
--- text-search dictionaries/configs have no IF NOT EXISTS form.
---
--- Chain ORDER is load-bearing: the thesaurus must precede the synonym dict. A dictionary
--- list is first-match-wins — once a dict returns a result for a token, later dicts never see
--- it. A single-token synonym (similarity -> similar) that rewrites an interior word of a
--- thesaurus phrase (vector similarity search) would consume that token before the thesaurus
--- could complete the phrase. Thesaurus-first lets whole phrases collapse to one lexeme; the
--- tokens of unmatched phrases fall through (NULL) to the synonym dict, then to english_stem.
-
-DO $bootstrap$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_ts_dict WHERE dictname = 'maghz_synonym') THEN
-        CREATE TEXT SEARCH DICTIONARY maghz_synonym (
-            TEMPLATE  = synonym,
-            SYNONYMS  = maghz_synonyms,
-            CaseSensitive = false
-        );
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_ts_dict WHERE dictname = 'maghz_thesaurus') THEN
-        CREATE TEXT SEARCH DICTIONARY maghz_thesaurus (
-            TEMPLATE   = thesaurus,
-            DictFile   = maghz_thesaurus,
-            Dictionary = english_stem
-        );
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_ts_config c JOIN pg_namespace n ON n.oid = c.cfgnamespace
-        WHERE c.cfgname = 'kb_english' AND n.nspname = 'public'
-    ) THEN
-        CREATE TEXT SEARCH CONFIGURATION public.kb_english (COPY = pg_catalog.english);
-        -- Chain per token kind: unaccent -> thesaurus -> synonym -> snowball stemmer.
-        ALTER TEXT SEARCH CONFIGURATION public.kb_english
-            ALTER MAPPING FOR asciiword, asciihword, hword_asciipart,
-                              word, hword, hword_part
-            WITH unaccent, maghz_thesaurus, maghz_synonym, english_stem;
-    END IF;
-END
-$bootstrap$;
 
 -- --- [OPERATIONS] -----------------------------------------------------------------------
 
@@ -212,7 +132,7 @@ $$;
 -- NULL receipt). The `expired` branch closes such receipts past a TTL-aligned horizon so the
 -- concept re-enqueues on the next tick. The cron drain runs every minute, far inside the 6h
 -- TTL, so the join path is the steady state and `expired` only fires after an outage.
-CREATE OR REPLACE FUNCTION maghz.embed_drain(_ttl interval DEFAULT '6 hours')
+CREATE OR REPLACE FUNCTION maghz.embed_drain(_ttl interval DEFAULT '6 hours', _retention interval DEFAULT '7 days')
 RETURNS integer
 LANGUAGE plpgsql
 AS $$
@@ -257,6 +177,14 @@ BEGIN
         RETURNING r.request_id
     )
     SELECT count(*) INTO _written FROM applied;
+
+    -- Bound the append-only receipt ledger. A receipt is closed (drained_at set) on ANY
+    -- landed response so its concept re-enqueues; the closed row is never read again. Prune
+    -- receipts past the retention horizon so embed_request stays O(working set), not
+    -- O(all embeds ever).
+    DELETE FROM maghz.embed_request
+    WHERE drained_at IS NOT NULL AND drained_at < now() - _retention;
+
     RETURN _written;
 END
 $$;
@@ -292,7 +220,8 @@ AS $$
 $$;
 
 -- --- [INDEXES] --------------------------------------------------------------------------
--- EXOTIC indexes — routine-owned, mz_ prefix, excluded from Atlas. The hybrid retrieval
+-- EXOTIC indexes — routine-owned, mz_ prefix; the plain btree/unique indexes live in
+-- schema.sql. The hybrid retrieval
 -- triad: pg_search BM25 (lexical), pgvector HNSW cosine (dense semantic), and the native
 -- gin(fts) + gin_trgm_ops paths (fuzzy / terminology dedup).
 --
@@ -370,7 +299,8 @@ AS $$
     WITH lexical AS (
         SELECT c.id, row_number() OVER (ORDER BY paradedb.score(c.id) DESC, c.id)::int AS r
         FROM concept c
-        WHERE c.id @@@ paradedb.parse(query_text)
+        WHERE nullif(btrim(query_text), '') IS NOT NULL
+          AND c.id @@@ paradedb.parse(query_text)
         ORDER BY paradedb.score(c.id) DESC, c.id
         LIMIT _pool
     ),

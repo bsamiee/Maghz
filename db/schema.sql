@@ -1,17 +1,100 @@
 -- --- [RUNTIME_PRELUDE] ------------------------------------------------------------------
--- Idempotent declarative IaC for the Maghz second-brain ledger (public schema only).
+-- Idempotent declarative IaC for the Maghz second-brain ledger: the extension census, the
+-- maghz schema, the kb_english text-search configuration, the closed enum vocabularies, the
+-- tables, and the plain btree/unique indexes — the structural substrate routines.sql builds
+-- its functions, triggers, exotic indexes, and views over.
 --
--- Applied via `psql -v ON_ERROR_STOP=1 -f db/schema.sql` immediately after routines.sql
--- loads extensions (vector, citext). Every statement is guarded for replay: tables and
--- indexes use IF NOT EXISTS; enum types use DO-block catalog guards (no IF NOT EXISTS form
--- in PostgreSQL). A fresh-DB run creates everything; a replay is a clean no-op with zero
--- errors. Same tables, columns, types, constraints, indexes — only the DDL form changed.
+-- Applied FIRST by `maghz schema apply`, after the two db/search/ dictionaries are docker-cp'd
+-- into the container tsearch_data dir (the kb_english configuration below references them by
+-- name): `psql -v ON_ERROR_STOP=1 -f db/schema.sql`, then db/routines.sql, then db/cron.sql.
+-- The order is load-bearing: schema.sql creates vector/citext/pgcrypto and the kb_english
+-- config that routines.sql binds its tables, triggers, and exotic indexes to.
 --
--- Load-ordering dependency: routines.sql must run first (or be co-applied in the same
--- session) to ensure vector, citext, and pgcrypto extensions exist before this file
--- references those types. The `maghz schema apply` rail enforces this order: psql
--- schema.sql runs AFTER psql routines.sql (which loads all extensions via CREATE
--- EXTENSION IF NOT EXISTS).
+-- Every statement is guarded for replay: CREATE EXTENSION IF NOT EXISTS; enum types and the
+-- text-search objects under DO-block catalog probes (no IF NOT EXISTS form); tables and
+-- indexes IF NOT EXISTS. A fresh-DB run creates everything; a replay is a clean no-op with
+-- zero errors.
+
+-- --- [EXTENSIONS] -----------------------------------------------------------------------
+-- The full curated profile carried by the maghz-pg image. CASCADE resolves dependencies.
+-- ParadeDB base ships pg_search + vector + pg_ivm + contrib; the rest are layered. pg_cron
+-- is NOT created here: it can live only in the `postgres` maintenance DB (the image creates
+-- it there at init), so this maghz-targeted file never references the cron schema; the job
+-- registration lives in cron.sql, which runs against postgres and reaches maghz via
+-- cron.schedule_in_database.
+
+-- [CATALOG:extensions] -- generated from admin/profile.py `schema_prelude()` (target_db == maghz).
+-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb
+-- asserts the live pg_extension census equals this declared set (census_diff).
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_search;
+CREATE EXTENSION IF NOT EXISTS pg_ivm;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
+CREATE EXTENSION IF NOT EXISTS pg_jsonschema;
+CREATE EXTENSION IF NOT EXISTS hll;
+CREATE EXTENSION IF NOT EXISTS pg_partman;
+CREATE EXTENSION IF NOT EXISTS hypopg;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS ltree;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gin;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE EXTENSION IF NOT EXISTS tablefunc;
+-- [/CATALOG:extensions]
+
+CREATE SCHEMA IF NOT EXISTS maghz;
+
+-- --- [TEXT_SEARCH] ----------------------------------------------------------------------
+-- kb_english text-search configuration: thesaurus (multi-word concept collapse) and synonym
+-- dictionary (single-token acronym/variant unification) fire BEFORE the snowball stemmer, so
+-- a concept indexed under different terminology resolves to one canonical lexeme. The .syn
+-- and .ths files install to $SHAREDIR/tsearch_data/ (docker-cp'd by `maghz schema apply`
+-- before this file runs); a missing file fails dictionary creation. CREATE ... guarded by a
+-- DO block since text-search dictionaries/configs have no IF NOT EXISTS form.
+--
+-- Chain ORDER is load-bearing: the thesaurus must precede the synonym dict. A dictionary
+-- list is first-match-wins — once a dict returns a result for a token, later dicts never see
+-- it. A single-token synonym (similarity -> similar) that rewrites an interior word of a
+-- thesaurus phrase (vector similarity search) would consume that token before the thesaurus
+-- could complete the phrase. Thesaurus-first lets whole phrases collapse to one lexeme; the
+-- tokens of unmatched phrases fall through (NULL) to the synonym dict, then to english_stem.
+
+DO $bootstrap$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_dict WHERE dictname = 'maghz_synonym') THEN
+        CREATE TEXT SEARCH DICTIONARY maghz_synonym (
+            TEMPLATE  = synonym,
+            SYNONYMS  = maghz_synonyms,
+            CaseSensitive = false
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_dict WHERE dictname = 'maghz_thesaurus') THEN
+        CREATE TEXT SEARCH DICTIONARY maghz_thesaurus (
+            TEMPLATE   = thesaurus,
+            DictFile   = maghz_thesaurus,
+            Dictionary = english_stem
+        );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_ts_config c JOIN pg_namespace n ON n.oid = c.cfgnamespace
+        WHERE c.cfgname = 'kb_english' AND n.nspname = 'public'
+    ) THEN
+        CREATE TEXT SEARCH CONFIGURATION public.kb_english (COPY = pg_catalog.english);
+        -- Chain per token kind: unaccent -> thesaurus -> synonym -> snowball stemmer.
+        ALTER TEXT SEARCH CONFIGURATION public.kb_english
+            ALTER MAPPING FOR asciiword, asciihword, hword_asciipart,
+                              word, hword, hword_part
+            WITH unaccent, maghz_thesaurus, maghz_synonym, english_stem;
+    END IF;
+END
+$bootstrap$;
 
 -- --- [TYPES] ----------------------------------------------------------------------------
 -- Closed vocabularies anchored as native enums, not inline CHECK literals. PostgreSQL has

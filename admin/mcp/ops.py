@@ -51,7 +51,7 @@ from watchfiles import awatch, Change, DefaultFilter
 
 from admin.core import completed, Detail, Envelope, fault, Row, Status
 from admin.runtime import BoundaryFault, guarded, Receipt, RetryClass, RuntimeRail, Signals
-from admin.runtime.rails import spawn
+from admin.runtime.rails import async_boundary, spawn
 from admin.settings import MaghzSettings, McpServerSettings
 
 
@@ -66,20 +66,24 @@ class ServerKind(StrEnum):
     The member value is the `mcpServers` object key and the wire encoding of each `McpConfigDetail.servers`
     member, which stays a typed `ServerKind` in memory.
 
-    The fleet is the four genuinely-interactive servers with no skill-CLI equivalent: `postgres`/`n8n`
-    (deliberately DUAL-SURFACE — the rail owns deterministic truth, the MCP owns live agent exploration,
-    two distinct consumers), `workspace`, and `notebooklm`. Web research (exa/perplexity/tavily) is NOT a
-    member: it is served by the portable research skill CLIs for the single in-session agent consumer, so
-    carrying it here too would be a duplicate surface at idle context cost. Surface is chosen by consumer —
-    deterministic code -> rail, live agent exploration -> MCP, on-demand portable reach -> skill — never by
-    concern, so a future research MCP is added only if a live-exploration consumer the skill cannot serve
-    materializes.
+    The fleet is the eight servers spawned for in-session agent reach: `postgres`/`n8n` (DUAL-SURFACE — the
+    rail owns deterministic truth, the MCP owns live agent exploration, two distinct consumers), the
+    interactive `workspace` (Google) and `notebooklm` surfaces, the three web-research servers
+    `exa`/`perplexity`/`tavily`, and the `hostinger` VPS/infrastructure server. Every secret-bearing key
+    emits a `${VAR}` placeholder resolved at the `op run -- claude` boundary, never a value written to the
+    committed file; the research and hostinger keys ride bare `${EXA_API_KEY}`/`${PERPLEXITY_API_KEY}`/
+    `${TAVILY_API_KEY}`/`${HOSTINGER_TOKEN}` placeholders the env bootstrap forwards, exactly like the
+    `${GOOGLE_OAUTH_*}` workspace pair, so none backs a `McpServerSettings` field.
     """
 
     POSTGRES = "postgres"
     N8N = "n8n"
     WORKSPACE = "workspace"
     NOTEBOOKLM = "notebooklm"
+    EXA = "exa"
+    PERPLEXITY = "perplexity"
+    TAVILY = "tavily"
+    HOSTINGER = "hostinger"
 
 
 class McpOp(StrEnum):
@@ -264,9 +268,10 @@ async def _generate(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
     """Render the fleet, then format and write it to `.mcp.json`, lifting an `OSError` onto the fault rail.
 
     `_render` is a pure total fold; `msgspec.json.format(ENCODER.encode(fleet), indent=2)` produces the
-    human-readable bytes the committed git artifact needs; `anyio.Path(path).write_bytes` performs the async
-    write inside `async_boundary`-equivalent grading. An `OSError` from the filesystem boundary lifts as
-    `BoundaryFault(boundary=("mcp.write", str(exc)))`, never escaping as a raw traceback.
+    human-readable bytes the committed git artifact needs; the async `anyio.Path(path).write_bytes` rides
+    the one `async_boundary` fence, so an `OSError` from the filesystem boundary classifies through
+    `CLASSIFY` to `BoundaryFault(boundary=("mcp.write", str(exc)))`, never an inline catch and never a raw
+    traceback.
 
     Args:
         cfg: The validated settings the render reads.
@@ -276,11 +281,8 @@ async def _generate(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
         `Error(BoundaryFault(boundary="mcp.write"))` when the write boundary raises.
     """
     payload = msgspec.json.format(_ENCODER.encode(_render(cfg)), indent=2)
-    try:
-        await anyio.Path(_MCP_JSON_PATH).write_bytes(payload)
-    except OSError as exc:
-        return Error(BoundaryFault(boundary=("mcp.write", str(exc))))
-    return Ok(_detail(McpOp.GENERATE))
+    written = await async_boundary("mcp.write", lambda: anyio.Path(_MCP_JSON_PATH).write_bytes(payload), catch=OSError)
+    return written.map(lambda _bytes: _detail(McpOp.GENERATE))
 
 
 async def _validate(_cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
@@ -479,22 +481,24 @@ def _define_images(cfg: MaghzSettings) -> None:
 async def _read_committed() -> RuntimeRail[tuple[bytes, dict[str, object]]]:
     """Read `.mcp.json` and round-trip-decode it, lifting an absent/unreadable/malformed file to the rail.
 
-    The shared read boundary for VALIDATE and DIFF: `anyio.Path.read_bytes` then one `_DECODER.decode`.
-    Both faults lift explicitly as `BoundaryFault(boundary=("mcp.validate", str(exc)))` carrying the raw
-    provider message — an `OSError` (absent/unreadable) and a `msgspec.DecodeError` (malformed) — so neither
-    escapes as a raw traceback. The raw bytes feed VALIDATE's placeholder regex; the decoded object feeds
-    DIFF's compare, so the single decode serves both.
+    The shared read boundary for VALIDATE and DIFF: `anyio.Path.read_bytes` then one `_DECODER.decode`,
+    both inside the one `async_boundary` fence narrowed to `(OSError, msgspec.DecodeError)`. The absent/
+    unreadable `OSError` classifies to `boundary("mcp.validate", str(exc))` and the malformed
+    `msgspec.DecodeError` to `boundary("mcp.validate", "DecodeError")` through `CLASSIFY`, so neither
+    escapes as a raw traceback and the codec break reads its discriminating type, not its noisy message.
+    The raw bytes feed VALIDATE's placeholder regex; the decoded object feeds DIFF's compare, so the
+    single decode serves both.
 
     Returns:
         `Ok((raw_bytes, decoded_object))` when the file reads and decodes, or
         `Error(BoundaryFault(boundary="mcp.validate"))`.
     """
-    try:
+
+    async def _read_decode() -> tuple[bytes, dict[str, object]]:
         raw = await anyio.Path(_MCP_JSON_PATH).read_bytes()
-        decoded = _DECODER.decode(raw)
-    except (OSError, msgspec.DecodeError) as exc:
-        return Error(BoundaryFault(boundary=("mcp.validate", str(exc))))
-    return Ok((raw, decoded))
+        return raw, _DECODER.decode(raw)
+
+    return await async_boundary("mcp.validate", _read_decode, catch=(OSError, msgspec.DecodeError))
 
 
 def _detail(op: McpOp, *, drift: tuple[str, ...] = (), result: str = "") -> McpConfigDetail:
@@ -535,7 +539,12 @@ def _workspace_overlay(cfg: MaghzSettings) -> dict[str, str]:
 # materializes. The key set equals `ServerKind` exactly, so direct subscription is total.
 _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     ServerKind.POSTGRES: ServerSpec(
-        command="uvx", args=("postgres-mcp", "--access-mode=restricted"), env=frozendict({"DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"})
+        # Pin Python 3.13: postgres-mcp's psycopg2-binary has no wheel for the bleeding-edge system 3.15, so an
+        # unpinned uvx tries a source build and fails. UV_PYTHON_DOWNLOADS=automatic overrides the Forge
+        # `never` policy for this one tool so a fresh box fetches 3.13 rather than breaking — the turnkey path.
+        command="uvx",
+        args=("--python", "3.13", "postgres-mcp", "--access-mode=restricted"),
+        env=frozendict({"DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}", "UV_PYTHON_DOWNLOADS": "automatic"}),
     ),
     ServerKind.N8N: ServerSpec(
         command="docker",
@@ -555,6 +564,12 @@ _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
         env=frozendict({"GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}", "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}"}),
     ),
     ServerKind.NOTEBOOKLM: ServerSpec(command="notebooklm-mcp"),
+    ServerKind.EXA: ServerSpec(command="npx", args=("-y", "exa-mcp-server"), env=frozendict({"EXA_API_KEY": "${EXA_API_KEY}"})),
+    ServerKind.PERPLEXITY: ServerSpec(
+        command="npx", args=("-y", "@perplexity-ai/mcp-server"), env=frozendict({"PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"})
+    ),
+    ServerKind.TAVILY: ServerSpec(command="npx", args=("-y", "tavily-mcp@latest"), env=frozendict({"TAVILY_API_KEY": "${TAVILY_API_KEY}"})),
+    ServerKind.HOSTINGER: ServerSpec(command="npx", args=("-y", "hostinger-api-mcp"), env=frozendict({"HOSTINGER_API_TOKEN": "${HOSTINGER_TOKEN}"})),
 })
 
 # The lone settings-sourced env overlay, keyed by `ServerKind`; an absent key resolves to no overlay
