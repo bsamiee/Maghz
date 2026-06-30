@@ -29,7 +29,7 @@ class Remote(StrEnum):
     """The closed cloud-backup remote vocabulary; `value` is the rclone remote name and the `RCLONE_CONFIG_<REMOTE>_*` env prefix key.
 
     Owned here because it is the typed key of `CloudConfig.remotes` and the settings layer cannot
-    depend upward on the `admin.rails.cloud` rail that consumes it. The rail imports this enum from
+    depend upward on the `admin.rails` rail that consumes it. The rail imports this enum from
     `admin.settings`; it is never re-declared there.
     """
 
@@ -40,7 +40,6 @@ class Remote(StrEnum):
 # --- [CONSTANTS] -----------------------------------------------------------------------
 
 _GROUP = ConfigDict(frozen=True, extra="forbid")
-
 _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
     "CODERABBIT_API_KEY": ("integrations", "coderabbit_api_key"),
     "CONTEXT7_API_KEY": ("integrations", "context7_api_key"),

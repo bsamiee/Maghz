@@ -39,7 +39,7 @@ from pg8000 import DatabaseError
 from pg8000.core import Context
 import pg8000.native
 
-from admin.runtime import guarded, LanePolicy, RetryClass, RuntimeRail
+from admin.runtime import guarded, LaneKey, LanePolicy, RetryClass, RuntimeRail
 from admin.settings import MaghzSettings
 
 
@@ -154,9 +154,7 @@ def _materialize(ctx: Context | None) -> QueryResult:
     if ctx is None:
         return QueryResult(columns=(), rows=())
     return QueryResult(
-        columns=tuple(column["name"] for column in ctx.columns or ()),
-        rows=tuple(tuple(row) for row in ctx.rows or ()),
-        affected=ctx.row_count,
+        columns=tuple(column["name"] for column in ctx.columns or ()), rows=tuple(tuple(row) for row in ctx.rows or ()), affected=ctx.row_count
     )
 
 
@@ -226,20 +224,14 @@ def _run_prepared(conn: pg8000.native.Connection, sql: str, params: Params) -> C
 # RUN and SCRIPT bind the one `_run` arm (the simple-vs-extended protocol split is internal to
 # `Connection.run`); the key set equals `Exec` exactly, so `_EXEC[mode]` subscription is total — a new
 # modality is one member plus one row, never an `if mode ==` ladder.
-_EXEC: Final[frozendict[Exec, ExecFn]] = frozendict({
-    Exec.RUN: _run,
-    Exec.SCRIPT: _run,
-    Exec.PREPARED: _run_prepared,
-})
+_EXEC: Final[frozendict[Exec, ExecFn]] = frozendict({Exec.RUN: _run, Exec.SCRIPT: _run, Exec.PREPARED: _run_prepared})
 
 
 # --- [COMPOSITION] ---------------------------------------------------------------------
 
-# The pg8000 worker-thread fan-out rides the substrate-memoised `CapacityLimiter` keyed on this frozen
-# `LanePolicy` identity (`LanePolicy.limiter` -> `lanes._limiter`, `functools.cache`-bound), so every
-# `run_sync` offload across the process — and any identical `LanePolicy(capacity=8)` elsewhere —
-# borrows the one bound pool the runtime drain limiter keys on, never a second uncoordinated allocator.
-_DB_LANE: Final[LanePolicy] = LanePolicy(capacity=8)
+# The pg8000 worker-thread fan-out rides the substrate-memoised `CapacityLimiter` under the semantic
+# `db.query` lane key, so every DB offload in the process borrows the same bound pool.
+_DB_LANE: Final[LanePolicy] = LanePolicy(capacity=8, key=LaneKey("db.query"))
 
 
 async def query(sql: str, cfg: MaghzSettings, /, *, exec: Exec = Exec.RUN, **params: Scalar) -> RuntimeRail[QueryResult]:
@@ -271,7 +263,7 @@ async def query(sql: str, cfg: MaghzSettings, /, *, exec: Exec = Exec.RUN, **par
         with _connect(cfg) as conn:
             return _materialize(_classified(_EXEC[exec], conn, sql, params))
 
-    return await guarded(RetryClass.DB, run_sync, _unit, subject=f"db.{exec.value}", limiter=_DB_LANE.limiter)
+    return await guarded(RetryClass.DB, lambda: run_sync(_unit, limiter=_DB_LANE.limiter), subject=f"db.{exec.value}")
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------

@@ -34,9 +34,7 @@ from cyclopts import App, CycloptsError, Group, Parameter
 from pydantic import ValidationError
 import structlog
 
-from admin import rails, remote
-from admin.automation.engine import decode_spec
-from admin.automation.model import AutomationSpec
+from admin import automation, infra, mcp, rails, remote
 from admin.core import Envelope, fault
 from admin.runtime import install, lower, RetryMode, Signals
 from admin.settings import LogFormat, LogLevel, settings
@@ -86,19 +84,19 @@ for _subapp in (_schema, _sync, _n8n, _automation, _cloud, _mcp):
 @app.command(name="up", group=_STACK)
 async def _up() -> Envelope:
     """Converge the local docker stack and pull the embedding model."""
-    return lower(await rails.stack(rails.StackOp.UP, settings()))
+    return lower(await infra.run(infra.StackOp.UP, settings()))
 
 
 @app.command(name="down", group=_STACK)
 async def _down() -> Envelope:
     """Tear the local docker stack down, preserving named volumes."""
-    return lower(await rails.stack(rails.StackOp.DOWN, settings()))
+    return lower(await infra.run(infra.StackOp.DOWN, settings()))
 
 
 @app.command(name="status", group=_STACK)
 async def _status() -> Envelope:
     """Preview the desired-vs-live stack diff without converging."""
-    return lower(await rails.stack(rails.StackOp.STATUS, settings()))
+    return lower(await infra.run(infra.StackOp.STATUS, settings()))
 
 
 @app.command(name="ledger", group=_LEDGER)
@@ -154,7 +152,7 @@ async def _n8n_status() -> Envelope:
 
 
 @_automation.command(name="run")
-async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter=decode_spec)]) -> Envelope:
+async def _automation_run(*, spec: Annotated[automation.AutomationSpec, Parameter(converter=automation.decode_spec)]) -> Envelope:
     """Drive one automation spec: the `trigger` discriminant selects the watch/schedule/manual lane.
 
     `--spec` carries the complete `AutomationSpec` JSON; there is no `watch`/`schedule` verb alias —
@@ -171,7 +169,7 @@ async def _automation_run(*, spec: Annotated[AutomationSpec, Parameter(converter
     Returns:
         The single `Envelope` `drive` emits for the resolved trigger lane, lowered at the engine edge.
     """
-    return await rails.drive(spec, settings())
+    return await automation.drive(spec, settings())
 
 
 @_cloud.command(name="sync")
@@ -193,31 +191,31 @@ async def _mcp_generate() -> Envelope:
     """Render the typed server fleet to the committed `.mcp.json` with `${VAR}` placeholders."""
     # The mcp rail lifts its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
     # `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering.
-    return await rails.mcp(rails.McpOp.GENERATE, settings())
+    return await mcp.mcp(mcp.McpOp.GENERATE, settings())
 
 
 @_mcp.command(name="validate")
 async def _mcp_validate() -> Envelope:
     """Round-trip-decode the committed `.mcp.json` and assert every placeholder backs a settings field."""
-    return await rails.mcp(rails.McpOp.VALIDATE, settings())
+    return await mcp.mcp(mcp.McpOp.VALIDATE, settings())
 
 
 @_mcp.command(name="diff")
 async def _mcp_diff() -> Envelope:
     """Render the fleet in memory and report every committed server entry that drifts from it (`failed` on drift)."""
-    return await rails.mcp(rails.McpOp.DIFF, settings())
+    return await mcp.mcp(mcp.McpOp.DIFF, settings())
 
 
 @_mcp.command(name="watch")
 async def _mcp_watch() -> Envelope:
     """Regenerate `.mcp.json` on every settings/source change until SIGINT; one `watchfiles.awatch` stream."""
-    return await rails.mcp(rails.McpOp.WATCH, settings())
+    return await mcp.mcp(mcp.McpOp.WATCH, settings())
 
 
 @_mcp.command(name="converge")
 async def _mcp_converge() -> Envelope:
     """Materialize every docker-run MCP server image as Pulumi desired-state so a session never cold-pulls."""
-    return await rails.mcp(rails.McpOp.CONVERGE, settings())
+    return await mcp.mcp(mcp.McpOp.CONVERGE, settings())
 
 
 @app.command(name="exec", group=_REMOTE)
@@ -227,20 +225,20 @@ async def _remote_exec(
     """Run one command on the VPS: push the working tree, execute it, and pull artifacts back."""
     # `allow_leading_hyphen=True` lets the variadic absorb a flag-bearing remote command (`git log
     # --oneline`, `ls -la`) verbatim instead of cyclopts rejecting `-`/`--` tokens as unknown options.
-    # `remote.exec` returns the domain `RuntimeRail[Envelope]` lifted at the SSH/SFTP `async_boundary`
+    # `remote.run(RemoteExec)` returns the domain `RuntimeRail[Envelope]` lifted at the SSH/SFTP `async_boundary`
     # edge, so the shared `runtime.lower` seam lowers it to the stdout `Envelope` once, at this CLI edge.
     cfg = settings()
-    return lower(await remote.exec(remote.RemoteTarget.from_config(cfg.remote), argv, cfg=cfg))
+    return lower(await remote.run(remote.RemoteExec(argv), cfg))
 
 
 @app.command(name="deploy", group=_REMOTE)
-async def _remote_deploy(*, op: Annotated[rails.StackOp, Parameter(help="The stack verb to run remotely (up | down | status).")]) -> Envelope:
+async def _remote_deploy(*, op: Annotated[infra.StackOp, Parameter(help="The stack verb to run remotely (up | down | status).")]) -> Envelope:
     """Push the working tree to the VPS, then run the selected remote `maghz` stack verb."""
-    # `--op` selects the `StackOp` discriminant `remote.deploy` matches exhaustively; it returns the
+    # `--op` selects the `StackOp` carried by `RemoteDeploy`; `remote.run` returns the
     # domain `RuntimeRail[Envelope]` lifted at the SSH boundary, so the shared `runtime.lower` seam
     # lowers it to the stdout `Envelope` once, at this CLI edge.
     cfg = settings()
-    return lower(await remote.deploy(remote.RemoteTarget.from_config(cfg.remote), op, cfg))
+    return lower(await remote.run(remote.RemoteDeploy(op), cfg))
 
 
 # --- [ENTRY] ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ dependencies = [
     "expression>=5.6.0",           # runtime: Result/Option ROP rails
     "stamina>=26.1.0",             # runtime: typed retry for boundary calls
     "structlog>=26.1.0",           # observability: structured JSON diagnostics to stderr
+    "opentelemetry-api>=1.42.1",   # observability: API-only trace context propagation; no SDK configuration
     "psutil>=7.2.2",               # runtime: resource snapshots for envelope receipts
     "watchfiles>=1.1.0",           # automation: filesystem-change watch trigger; anyio stop_event-driven awatch generator
     "apscheduler>=4.0.0a6",        # automation: 4.x AsyncScheduler cron trigger; native anyio, async ctx-mgr lifecycle. 4.x final unpublished — pinned to the latest 4.x prerelease; lift to >=4.0.0 when it lands.
@@ -154,6 +155,14 @@ ignore = [
     "TRY301",  # `@safe` ROP boundaries may raise inside the guarded call
     "TRY400",  # structlog `.error()` is valid outside exception handlers
     # --- [DOCSTRINGS]
+    "D100",   # compact owner modules are not padded with file docstrings
+    "D101",   # typed structures carry meaning through fields and tags, not narrative class docstrings
+    "D102",   # method names and typed signatures carry local API intent
+    "D103",   # function signatures and Result rails are the source contract
+    "D104",   # package README/doc owner carries package prose
+    "D105",   # dunder protocol names carry their own standard contract
+    "D106",   # nested owner structs do not get repeated prose
+    "D107",   # constructors are field admission, not prose surfaces
     "DOC502",  # Raises sections may document propagated helper exceptions
     # --- [SEMANTIC_ORDER]
     "RUF022",  # semantic public-surface order beats alphabetical `__all__`

@@ -11,26 +11,20 @@
 
 ## Architecture (`admin/` layout)
 
-Flat-file owners:
-
 | File | Owns |
 | --- | --- |
+| `__init__.py` | package import bootstrap: beartype claw and warning suppression only |
+| `__main__.py` | the `cyclopts` CLI entrypoint: modal verbs over owner rails, lowering every outcome to the JSON `Envelope` and exit code |
+| `automation.py` | the `Trigger × Action` automation ADT and engine over `watchfiles`, APScheduler, lane admission, psutil receipts, and NDJSON ledger writes |
 | `core.py` | the JSON `Envelope` / `Status` / `Detail` / `Row` receipt owners (the result + fault rail) |
 | `db.py` | the `pg8000` query boundary (every call offloads off the event loop; faults lift to the one `BoundaryFault` family) |
+| `infra.py` | Pulumi Automation API stack for the custom PG image, `db`, `ollama`, and `n8n` containers behind `StackOp` (`up` / `down` / `status`) |
+| `mcp.py` | MCP-as-IaC: the 12-server fleet and the Claude `.mcp.json` plus Codex `.codex/config.toml` projections |
 | `profile.py` | the typed PG extension catalog (`_PROFILE` / `Extension`) rendering the `image/Dockerfile` apt block and the `db/schema.sql` `CREATE EXTENSION` census |
+| `rails.py` | schema apply/doctor, ledger projections, Heptabase sync, cloud backup/restore, and n8n workflow rails |
+| `remote.py` | the `exec`/`deploy` request rail: one scoped `asyncssh` connection, git working-tree push, remote `maghz`, and SFTP artifact pull |
+| `runtime.py` | boundary rails, retry policy, lane admission, structured drains, typed receipts, and `Signals` logging |
 | `settings.py` | `MaghzSettings` — the one validated config owner; no other code reads `os.environ` |
-| `remote.py` | the `exec`/`deploy` commands: one scoped `asyncssh` connection, a `git ls-files` working-tree push, remote `maghz up`/`schema apply`, SFTP artifact pull, an `ExecReceipt`; the live Hostinger VPS deploy |
-| `__main__.py` | the `cyclopts` CLI entrypoint — modal-arity verbs over the rails, mapping every outcome to the JSON `Envelope` and its exit code |
-
-Subpackages:
-
-| Package | Owns |
-| --- | --- |
-| `runtime/` | the lean substrate every arm composes: lanes (`lanes.py`), resilience (`resilience.py` — `RetryClass` + a `POLICY` table + `guard`), receipts (`receipts.py` — a `Receipt` tagged-union + `Signals` over the Envelope/structlog), rails (`rails.py` — `async_boundary` over `expression`) |
-| `rails/` | `schema.py` (idempotent psql apply + doctor), `ledger.py` (the read projections), `sync.py` (Heptabase reconcile), `cloud.py` (Drive + OneDrive backup/bisync), `n8n.py` (workflow export/import) |
-| `infra/` | `runner.py` — the Pulumi Automation API stack (the custom ParadeDB image build, `db` + `ollama` + `n8n` containers) behind one `StackOp` (`up`/`down`/`status`) verb |
-| `mcp/` | MCP-as-IaC: `ops.py` models the 12-server fleet and generates + validates the committed Claude `.mcp.json` and Codex `.codex/config.toml` |
-| `automation/` | **the lynchpin** — `model.py` (a `Trigger` × `Action` ADT + a typed `AutomationReceipt`), `engine.py` (`drive(trigger, action)` over `watchfiles`, an APScheduler scheduler, a `psutil` governor, a `CapacityLimiter`, an NDJSON ledger) |
 
 ## CLI surface (`maghz <verb>`)
 
@@ -51,8 +45,8 @@ Subpackages:
 A fully parameterized `Automation = Trigger × Action`, agent-invocable:
 
 - **`Trigger`** = `Watch` (`watchfiles` file events) · `Schedule` (APScheduler cron) · `Manual`.
-- **`Action`** = `DeepResearch` · `Refine` · `CreateEntry` · `Notify` · `Embed` · `Sync` · `Sequence` · `Debounce`.
-- Agents drive it via `maghz automation run`; each run emits a typed `AutomationReceipt`, retries under `RetryClass.AGENT`, admits through lane-keyed capacity, is governed by a `psutil` resource snapshot, and appends to an NDJSON ledger. No health-monitoring noise.
+- **`Action`** = `AgentAction` · `Notify` · `Embed` · `Sync`.
+- Agents drive it via `maghz automation run`; each run emits a typed `AutomationReceipt`, retries under the action-owned `RetryClass`, admits through lane-keyed capacity, is governed by a `psutil` resource snapshot, and appends to an NDJSON ledger.
 
 ## Data layer (`db/`)
 
@@ -70,7 +64,7 @@ A fully parameterized `Automation = Trigger × Action`, agent-invocable:
 
 ## MCP + skills
 
-- **MCP-as-IaC** — `admin/mcp/ops.py` models the 12-server fleet (`postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter`) and emits the committed Claude `.mcp.json` plus Codex `.codex/config.toml` projections from one table. Secret values stay in environment variables and never in generated config files.
+- **MCP-as-IaC** — `admin/mcp.py` models the 12-server fleet (`postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter`) and emits the committed Claude `.mcp.json` plus Codex `.codex/config.toml` projections from one table. Secret values stay in environment variables and never in generated config files.
 - **n8n** — future workflow automation surface; not part of the active MCP fleet until n8n is deliberately configured.
 - **Owned skills** — `maghz-operator`, `automations`, `cloud-sync`, `agy`, `forge-usage`. **Adopted** — `workspace-mcp`, `postgres-mcp`, `heptabase-cli`.
 

@@ -52,19 +52,16 @@ from pydantic import SecretStr
 import structlog
 
 from admin.core import completed, Detail, Envelope, Status
-from admin.infra.runner import StackDetail, StackOp
-from admin.rails.schema import SchemaDetail
-from admin.runtime import Admit, async_boundary, BoundaryFault, drain, DrainReceipt, guard, LanePolicy, RetryClass, RuntimeRail
-from admin.runtime.rails import spawn
+from admin.infra import StackDetail, StackOp
+from admin.rails import SchemaDetail
+from admin.runtime import Admit, async_boundary, BoundaryFault, drain, DrainReceipt, guard, LaneKey, LanePolicy, RetryClass, RuntimeRail, spawn
 from admin.settings import MaghzSettings, RemoteConfig
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
 
 type KnownHostsPolicy = Literal["insecure"] | Path
-# The tracked working tree partitioned at admission: the non-lfs paths to transfer and the lfs pointer
-# paths held out, minted once by `_manifest` and threaded through the push without re-derivation.
-type Manifest = tuple[tuple[str, ...], tuple[str, ...]]
+type Manifest = Worktree
 
 
 class RemoteOp(StrEnum):
@@ -108,7 +105,7 @@ class RemoteTarget(msgspec.Struct, frozen=True, gc=False, kw_only=True):
     workroot: str
 
     @classmethod
-    def from_config(cls, cfg: RemoteConfig) -> Self:
+    def from_config(cls, cfg: RemoteConfig) -> RuntimeRail[Self]:
         """Project a validated `RemoteConfig` into a `RemoteTarget`, narrowing `known_hosts` to policy.
 
         The raw `cfg.known_hosts: str` is the sole untyped ingress: `"insecure"` maps to the literal
@@ -119,8 +116,10 @@ class RemoteTarget(msgspec.Struct, frozen=True, gc=False, kw_only=True):
         Returns:
             A frozen `RemoteTarget` carrying the SSH facts and the narrowed host-key policy.
         """
+        if not cfg.host or not cfg.user:
+            return Error(BoundaryFault(config=("remote.target", "remote host/user not configured: set MAGHZ_REMOTE_HOST and MAGHZ_REMOTE_USER")))
         policy: KnownHostsPolicy = "insecure" if cfg.known_hosts == "insecure" else Path(cfg.known_hosts)
-        return cls(host=cfg.host, port=cfg.port, user=cfg.user, known_hosts=policy, workroot=cfg.workroot)
+        return Ok(cls(host=cfg.host, port=cfg.port, user=cfg.user, known_hosts=policy, workroot=cfg.workroot))
 
     @property
     def label(self) -> str:
@@ -162,6 +161,49 @@ class RemoteTarget(msgspec.Struct, frozen=True, gc=False, kw_only=True):
             keepalive_count_max=cfg.keepalive_count_max,
             **keys,
         )
+
+
+class RemoteExec(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="exec"):
+    argv: tuple[str, ...]
+
+
+class RemoteDeploy(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="deploy"):
+    op: StackOp
+
+
+type RemoteRequest = RemoteExec | RemoteDeploy
+
+
+class PushGroup(msgspec.Struct, frozen=True, gc=False):
+    relative: str
+    paths: tuple[str, ...]
+
+
+class Worktree(msgspec.Struct, frozen=True, gc=False):
+    root: Path
+    pushable: tuple[str, ...]
+    skipped_lfs: tuple[str, ...]
+
+    def groups(self) -> tuple[PushGroup, ...]:
+        keyed = sorted((str(PurePosixPath(path).parent), path) for path in self.pushable)
+        return tuple(
+            PushGroup(relative=relative, paths=tuple(path for _, path in group))
+            for relative, group in itertools.groupby(keyed, key=operator.itemgetter(0))
+        )
+
+
+class RemoteEnv(msgspec.Struct, frozen=True, gc=False):
+    rows: frozendict[str, str]
+
+    @staticmethod
+    def of(cfg: MaghzSettings) -> RuntimeRail[RemoteEnv]:
+        try:
+            return Ok(RemoteEnv(frozendict((key, project(cfg)) for key, project in _REMOTE_ENV.items())))
+        except ValueError as exc:
+            return Error(BoundaryFault(config=("remote.env", str(exc))))
+
+    def shell(self) -> str:
+        return " ".join(f"{key}={shlex.quote(value)}" for key, value in self.rows.items())
 
 
 class ExecReceipt(Detail, frozen=True, gc=False, tag="remote_exec"):
@@ -232,6 +274,7 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
     target: RemoteTarget
     cfg: MaghzSettings
     manifest: Manifest
+    env: RemoteEnv
     commit: str
 
     async def run(self, *argv: str) -> asyncssh.SSHCompletedProcess:
@@ -245,11 +288,10 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
         Returns:
             The clean `SSHCompletedProcess`; `encoding=None` keeps `stdout`/`stderr` as raw bytes.
         """
-        exports = " ".join(f"{key}={shlex.quote(project(self.cfg))}" for key, project in _REMOTE_ENV.items())
         body = " ".join(shlex.quote(token) for token in argv)
-        return await self.conn.run(f"cd {shlex.quote(self.target.workroot)} && {exports} {body}", check=True, encoding=None)
+        return await self.conn.run(f"cd {shlex.quote(self.target.workroot)} && {self.env.shell()} {body}", check=True, encoding=None)
 
-    async def maghz[T: Detail](self, kind: type[T], *subcommand: str) -> T | None:
+    async def maghz[T: Detail](self, kind: type[T], *subcommand: str) -> RuntimeRail[T]:
         """Run one remote `maghz` subcommand (`uv run --project <workroot> python -m admin <sub>`) and decode its detail.
 
         `uv` is pre-installed on the VPS by bootstrap; the pushed `pyproject.toml` drives the project run.
@@ -260,7 +302,7 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
             The narrowed `StackDetail`/`SchemaDetail`, or `None` when the wire carries no matching detail.
         """
         process = await self.run("uv", "run", "--project", self.target.workroot, "python", "-m", "admin", *subcommand)
-        return _narrow(process.stdout or b"", kind)
+        return _narrow(process.stdout or b"", kind, "remote.decode")
 
     async def push(self) -> tuple[int, tuple[str, ...]]:
         """Push the tracked working tree to the remote workroot, drained per directory under the memoised lane limiter.
@@ -277,18 +319,14 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
             A `(pushed_count, notes)` pair: the files transferred and the per-directory failure plus
             held-out-lfs notes folded from the drain receipt.
         """
-        pushable, skipped = self.manifest
-        notes = tuple(f"lfs-skipped {path}" for path in skipped)
+        pushable = self.manifest.pushable
+        notes = tuple(f"lfs-skipped {path}" for path in self.manifest.skipped_lfs)
         if not pushable:
             return 0, notes
         workroot = PurePosixPath(self.target.workroot)
         await self.sftp.makedirs(self.target.workroot, exist_ok=True)
-        policy = LanePolicy(capacity=self.cfg.remote.sftp_push_concurrency)
-        keyed = sorted((str(PurePosixPath(path).parent), path) for path in pushable)
-        units = Block.of_seq(
-            Admit.of(self._dir(workroot, relative, tuple(path for _, path in group)))
-            for relative, group in itertools.groupby(keyed, key=operator.itemgetter(0))
-        )
+        policy = LanePolicy(capacity=self.cfg.remote.sftp_push_concurrency, key=LaneKey("remote.sftp.push"))
+        units = Block.of_seq(Admit.of(self._dir(workroot, group.relative, group.paths)) for group in self.manifest.groups())
         receipt: DrainReceipt[object] = await drain(policy, units)
         pushed = sum(int(value) for value in receipt.values if isinstance(value, int))
         return pushed, (*notes, *(fault.headline() for fault in receipt.faults))
@@ -311,9 +349,8 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
         async def put() -> int:
             failures: list[str] = []
             await self.sftp.makedirs(remotedir, exist_ok=True)
-            await self.sftp.put(
-                list(files), remotedir, max_requests=self.cfg.remote.sftp_max_requests, error_handler=lambda exc: failures.append(str(exc))
-            )
+            local = [str(self.manifest.root / path) for path in files]
+            await self.sftp.put(local, remotedir, max_requests=self.cfg.remote.sftp_max_requests, error_handler=lambda exc: failures.append(str(exc)))
             return len(files) - len(failures)
 
         return lambda: async_boundary("remote.sftp", put, catch=asyncssh.SFTPError)
@@ -365,7 +402,7 @@ _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
 
 # --- [OPERATIONS] ----------------------------------------------------------------------
 
-# --- [GIT_PROBE] -----------------------------------------------------------------------
+# --- [GIT_PROBE]
 
 
 async def _git(cfg: MaghzSettings, *argv: str, stdin: bytes | None = None) -> RuntimeRail[bytes]:
@@ -420,13 +457,13 @@ async def _manifest(cfg: MaghzSettings) -> RuntimeRail[Manifest]:
     def _split(tracked: tuple[str, ...], attrs: bytes) -> Manifest:
         fields = attrs.decode().split("\0")
         lfs = {fields[index] for index in range(0, len(fields) - 2, 3) if fields[index + 2] == "lfs"}
-        return tuple(path for path in tracked if path not in lfs), tuple(sorted(lfs))
+        return Worktree(root=cfg.artifacts_dir.parent, pushable=tuple(path for path in tracked if path not in lfs), skipped_lfs=tuple(sorted(lfs)))
 
     match await _git(cfg, "ls-files", "--cached", "--exclude-standard", "-z"):
         case Result(tag="ok", ok=listed):
             tracked = tuple(path for path in listed.decode().split("\0") if path)
             if not tracked:
-                return Ok(((), ()))
+                return Ok(Worktree(root=cfg.artifacts_dir.parent, pushable=(), skipped_lfs=()))
             attrs = await _git(cfg, "check-attr", "filter", "-z", "--stdin", stdin="\0".join(tracked).encode())
             return attrs.map(lambda raw: _split(tracked, raw))
         case Result(error=manifest_fault):
@@ -446,7 +483,7 @@ async def _commit(cfg: MaghzSettings) -> RuntimeRail[str]:
     return (await _git(cfg, "rev-parse", "--short", "HEAD")).map(lambda raw: raw.decode().strip())
 
 
-# --- [SSH_OPS] -------------------------------------------------------------------------
+# --- [SSH_OPS]
 
 
 def _frozen_map(_kind: object, value: Mapping[object, object]) -> object:
@@ -464,7 +501,7 @@ def _frozen_map(_kind: object, value: Mapping[object, object]) -> object:
     return frozendict(value)  # the field annotation narrowed `value` to the decoded mapping msgspec hands the hook
 
 
-def _narrow[T: Detail](stdout: bytes | str, kind: type[T]) -> T | None:
+def _narrow[T: Detail](stdout: bytes | str, kind: type[T], subject: str) -> RuntimeRail[T]:
     """Decode one remote `maghz` stdout and re-narrow its `report.detail` to the expected `Detail` subclass.
 
     The shared `Detail` base is an OPEN tagged struct, so `msgspec` cannot decode `report.detail` straight
@@ -483,13 +520,15 @@ def _narrow[T: Detail](stdout: bytes | str, kind: type[T]) -> T | None:
     try:
         wire = msgspec.json.decode(stdout, type=_StdoutWire) if stdout else None
         detail = wire.report.detail if wire is not None and wire.report is not None else msgspec.Raw()
-        return msgspec.json.decode(detail, type=kind, dec_hook=_frozen_map) if bytes(detail) else None
-    except msgspec.MsgspecError:
-        return None
+        if not bytes(detail):
+            return Error(BoundaryFault(boundary=(subject, f"missing {kind.__name__} detail")))
+        return Ok(msgspec.json.decode(detail, type=kind, dec_hook=_frozen_map))
+    except msgspec.MsgspecError as exc:
+        return Error(BoundaryFault(boundary=(subject, type(exc).__name__)))
 
 
 @asynccontextmanager
-async def _open(target: RemoteTarget, cfg: MaghzSettings, manifest: Manifest, commit: str) -> AsyncIterator[_Session]:
+async def _open(target: RemoteTarget, cfg: MaghzSettings, manifest: Manifest, env: RemoteEnv, commit: str) -> AsyncIterator[_Session]:
     """Open one scoped connection under `guard(RetryClass.HTTP)` plus its SFTP client, yielding the `_Session`.
 
     `asyncssh.connect` is driven through the member-cached `guard(RetryClass.HTTP)` caller so the transient
@@ -504,10 +543,10 @@ async def _open(target: RemoteTarget, cfg: MaghzSettings, manifest: Manifest, co
     """
     conn = await guard(RetryClass.HTTP)(asyncssh.connect, target.host, port=target.port, username=target.user, options=target.options(cfg.remote))
     async with conn, conn.start_sftp_client() as sftp:
-        yield _Session(conn=conn, sftp=sftp, target=target, cfg=cfg, manifest=manifest, commit=commit)
+        yield _Session(conn=conn, sftp=sftp, target=target, cfg=cfg, manifest=manifest, env=env, commit=commit)
 
 
-async def _exec(session: _Session, argv: tuple[str, ...]) -> Detail:
+async def _exec(session: _Session, argv: tuple[str, ...]) -> RuntimeRail[Detail]:
     """`EXEC` body: push the tree, run the command, pull the workroot back, project the `ExecReceipt`.
 
     The clean `SSHCompletedProcess` projects into the receipt; the pull rides `sftp.mget(..., recurse=True)`
@@ -529,30 +568,40 @@ async def _exec(session: _Session, argv: tuple[str, ...]) -> Detail:
         error_handler=lambda exc: pull_notes.append(f"pull-error {exc}"),
     )
     signal = process.exit_signal
-    return ExecReceipt(
-        target=session.target.label,
-        host=session.target.host,
-        commit=session.commit,
-        exit_status=process.exit_status,
-        exit_signal=signal[0] if isinstance(signal, tuple) else signal,
-        pushed=pushed,
-        pulled=len(pulled),
-        notes=(*push_notes, *pull_notes),
+    return Ok(
+        ExecReceipt(
+            target=session.target.label,
+            host=session.target.host,
+            commit=session.commit,
+            exit_status=process.exit_status,
+            exit_signal=signal[0] if isinstance(signal, tuple) else signal,
+            pushed=pushed,
+            pulled=len(pulled),
+            notes=(*push_notes, *pull_notes),
+        )
     )
 
 
-async def _up(session: _Session, op: StackOp) -> DeployReceipt:
+async def _up(session: _Session, op: StackOp) -> RuntimeRail[DeployReceipt]:
     """`UP` arm: push the working tree, run `maghz up` then `maghz schema apply`, decode both inner receipts."""
     pushed, push_notes = await session.push()
-    stack_detail = await session.maghz(StackDetail, "up")
-    schema_detail = await session.maghz(SchemaDetail, "schema", "apply")
-    return DeployReceipt(op=op, commit=session.commit, pushed=pushed, push_notes=push_notes, stack_detail=stack_detail, schema_detail=schema_detail)
+    match await session.maghz(StackDetail, "up"):
+        case Result(error=stack_fault):
+            return Error(stack_fault)
+        case Result(ok=stack):
+            return (await session.maghz(SchemaDetail, "schema", "apply")).map(
+                lambda schema: DeployReceipt(
+                    op=op, commit=session.commit, pushed=pushed, push_notes=push_notes, stack_detail=stack, schema_detail=schema
+                )
+            )
 
 
-async def _single(session: _Session, op: StackOp) -> DeployReceipt:
+async def _single(session: _Session, op: StackOp) -> RuntimeRail[DeployReceipt]:
     """`DOWN`/`STATUS` arm: run the matching remote `maghz` verb with no push, surfacing its `StackDetail`."""
     stack_detail = await session.maghz(StackDetail, op.value)
-    return DeployReceipt(op=op, commit=session.commit, pushed=0, push_notes=(), stack_detail=stack_detail, schema_detail=None)
+    return stack_detail.map(
+        lambda stack: DeployReceipt(op=op, commit=session.commit, pushed=0, push_notes=(), stack_detail=stack, schema_detail=None)
+    )
 
 
 async def _prelude(cfg: MaghzSettings) -> RuntimeRail[tuple[Manifest, str]]:
@@ -573,7 +622,9 @@ async def _prelude(cfg: MaghzSettings) -> RuntimeRail[tuple[Manifest, str]]:
             return Error(manifest_fault)
 
 
-async def _drive(op: RemoteOp, target: RemoteTarget, cfg: MaghzSettings, body: Callable[[_Session], Awaitable[Detail]]) -> RuntimeRail[Envelope]:
+async def _drive(
+    op: RemoteOp, target: RemoteTarget, cfg: MaghzSettings, body: Callable[[_Session], Awaitable[RuntimeRail[Detail]]]
+) -> RuntimeRail[Envelope]:
     """The one connection-scoped spine: bind context, resolve the git prelude, open the session, fence the body.
 
     Both verbs share this spine — only `body` differs. `structlog` binds the rail/op facts once; the
@@ -594,29 +645,36 @@ async def _drive(op: RemoteOp, target: RemoteTarget, cfg: MaghzSettings, body: C
     Returns:
         `Ok(completed(...))` carrying the verb receipt, or `Error(BoundaryFault)` the CLI seam lowers.
     """
-    structlog.contextvars.bind_contextvars(rail="remote", op=op.value)
-    if not target.host or not target.user:
-        return Error(BoundaryFault(config=(op.subject, "remote host/user not configured: set MAGHZ_REMOTE_HOST and MAGHZ_REMOTE_USER")))
+    match RemoteEnv.of(cfg):
+        case Result(error=env_fault):
+            return Error(env_fault)
+        case Result(ok=remote_env):
+            env = remote_env
 
-    async def _connected(staged: tuple[Manifest, str]) -> Envelope:
+    async def _connected(staged: tuple[Manifest, str]) -> RuntimeRail[Envelope]:
         manifest, commit = staged
-        async with _open(target, cfg, manifest, commit) as session:
-            return completed(Status.OK, await body(session))
 
-    match await _prelude(cfg):
-        case Result(tag="ok", ok=staged):
-            return await async_boundary(op.subject, lambda: _connected(staged))
-        case Result(error=prelude_fault):
-            return Error(prelude_fault)
+        async def _session() -> RuntimeRail[Envelope]:
+            async with _open(target, cfg, manifest, env, commit) as session:
+                return (await body(session)).map(lambda detail: completed(Status.OK, detail))
+
+        return (await async_boundary(op.subject, _session)).bind(lambda rail: rail)
+
+    with structlog.contextvars.bound_contextvars(rail="remote", op=op.value):
+        match await _prelude(cfg):
+            case Result(tag="ok", ok=staged):
+                return await _connected(staged)
+            case Result(error=prelude_fault):
+                return Error(prelude_fault)
 
 
-# --- [TABLES] --------------------------------------------------------------------------
+# --- [TABLES]
 
 # StackOp -> its deploy arm over the shared `(session, op) -> DeployReceipt` signature. The key set equals
 # `StackOp` exactly, so `deploy`'s `_STACK[op]` subscription is total — `UP` pushes the tree and decodes
 # both inner receipts, `DOWN`/`STATUS` run their bare verb. A new verb is one row; the dropped
 # match/assert_never ceremony is the redundant form when the table is already exhaustive.
-_STACK: frozendict[StackOp, Callable[[_Session, StackOp], Awaitable[DeployReceipt]]] = frozendict({
+_STACK: frozendict[StackOp, Callable[[_Session, StackOp], Awaitable[RuntimeRail[DeployReceipt]]]] = frozendict({
     StackOp.UP: _up,
     StackOp.DOWN: _single,
     StackOp.STATUS: _single,
@@ -626,48 +684,31 @@ _STACK: frozendict[StackOp, Callable[[_Session, StackOp], Awaitable[DeployReceip
 # --- [ENTRY] ---------------------------------------------------------------------------
 
 
-async def exec(target: RemoteTarget, argv: tuple[str, ...], *, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-    """Run one command on the VPS over a scoped connection: probe the tree, push, execute, pull artifacts.
-
-    The single modal entrypoint for remote execution, delegating the stage/connect/sftp/fence prelude to
-    the shared `_drive` spine and supplying only the `EXEC` body: push the working tree, run the command
-    with `check=True` (a non-zero exit raises `ProcessError`, lifted to `BoundaryFault.boundary`, never
-    inspected by hand), then pull the workroot back with `sftp.mget(..., recurse=True)`. A git-probe
-    `Error(BoundaryFault)` short-circuits before any connection opens; the clean `SSHCompletedProcess`
-    projects into an `ExecReceipt`; any SSH/SFTP/decode escape rides the rail to the one CLI lowering.
-
-    Args:
-        target: The resolved remote target (host, port, user, known-hosts policy, workroot).
-        argv: The remote command and its arguments, quoted into one shell-safe command.
-        cfg: The validated settings owning the connection, env projection, and SFTP bounds.
-
-    Returns:
-        `Ok(completed(...))` carrying the `ExecReceipt`, or `Error(BoundaryFault)` the CLI seam lowers.
-    """
-    return await _drive(RemoteOp.EXEC, target, cfg, lambda session: _exec(session, argv))
-
-
-async def deploy(target: RemoteTarget, op: StackOp, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-    """Deploy the stack on the VPS: total `_STACK` dispatch over `StackOp`, pushing then running remote `maghz`.
-
-    The single modal entrypoint for remote deployment, delegating the stage/connect/sftp/fence prelude to
-    the shared `_drive` spine and supplying the `DEPLOY` body that dispatches through the total `_STACK`
-    table (one row per relocated `StackOp`). `UP` transfers the working tree, runs `maghz up` then `maghz
-    schema apply` over SSH, and narrows each remote stdout to the read-only `StackDetail`/`SchemaDetail`;
-    `DOWN`/`STATUS` run the matching `maghz` verb without a push, both decoded details `None`. Every
-    SSH/decode escape lifts through the `_drive` `async_boundary` to the one CLI `runtime.lower` lowering.
-
-    Args:
-        target: The resolved remote target (host, port, user, known-hosts policy, workroot).
-        op: The stack verb to run remotely; selects the `_STACK` row.
-        cfg: The validated settings owning the connection, env projection, and SFTP bounds.
-
-    Returns:
-        `Ok(completed(...))` carrying the `DeployReceipt`, or `Error(BoundaryFault)` the CLI seam lowers.
-    """
-    return await _drive(RemoteOp.DEPLOY, target, cfg, lambda session: _STACK[op](session, op))
+async def run(request: RemoteRequest, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
+    match RemoteTarget.from_config(cfg.remote):
+        case Result(error=target_fault):
+            return Error(target_fault)
+        case Result(ok=target):
+            match request:
+                case RemoteExec(argv=argv):
+                    return await _drive(RemoteOp.EXEC, target, cfg, lambda session: _exec(session, argv))
+                case RemoteDeploy(op=op):
+                    return await _drive(RemoteOp.DEPLOY, target, cfg, lambda session: _STACK[op](session, op))
+                case _ as unreachable:
+                    assert_never(unreachable)
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------
 
-__all__ = ["DeployReceipt", "ExecReceipt", "KnownHostsPolicy", "Manifest", "RemoteOp", "RemoteTarget", "deploy", "exec"]
+__all__ = [
+    "DeployReceipt",
+    "ExecReceipt",
+    "KnownHostsPolicy",
+    "Manifest",
+    "RemoteDeploy",
+    "RemoteExec",
+    "RemoteOp",
+    "RemoteRequest",
+    "RemoteTarget",
+    "run",
+]

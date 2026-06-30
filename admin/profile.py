@@ -198,34 +198,6 @@ class CensusDiff(msgspec.Struct, frozen=True, gc=False):
 
 # --- [TABLES] --------------------------------------------------------------------------
 
-# The committed-file generation regions: each `(path, sentinel-tag, projection)` row the `regenerate`
-# rewriter folds. The projection thunk emits the region INTERIOR — the header comment line(s) plus the
-# catalog block — between the `[CATALOG:<tag>]` open and `[/CATALOG:<tag>]` close sentinels the rewriter
-# preserves, read at call time so the write reflects the current catalog, never an import-time snapshot.
-# Placed after `[OPERATIONS]` because the thunks call the projections (`dockerfile_apt_block` et al.), the
-# Python overlay law that a runtime table follows the callables it references. The Dockerfile region carries
-# the apt-install header line; the two SQL regions carry the catalog `CREATE EXTENSION` block under their
-# own preservation header.
-_REGIONS: tuple[_Region, ...] = (
-    (
-        _DOCKERFILE,
-        "apt",
-        lambda: (
-            "# Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.\n"
-            f"apt-get install -y --no-install-recommends \\\n{dockerfile_apt_block()}"
-        ),
-    ),
-    (
-        _SCHEMA_SQL,
-        "extensions",
-        lambda: (
-            "-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb\n"
-            f"-- asserts the live pg_extension census equals this declared set (census_diff).\n{schema_prelude()}"
-        ),
-    ),
-    (_CRON_SQL, "extensions", lambda: f"-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.\n{cron_prelude()}"),
-)
-
 # The one extension catalog: `Extension` -> its full `ExtensionSpec` row. Every downstream surface is a
 # pure projection of this map — the Dockerfile apt block (layered rows), the routines `CREATE EXTENSION`
 # prelude (`maghz` rows), the cron pg_cron line (`postgres` row), and the `shared_preload_libraries` string
@@ -342,6 +314,27 @@ def dockerfile_apt_block() -> str:
         The backslash-continued, two-space-indented apt package block for the image build heredoc.
     """
     return " \\\n".join(f"  {spec.apt_line}" for spec in _PROFILE.values() if spec.source.is_layered)
+
+
+_REGIONS: tuple[_Region, ...] = (
+    (
+        _DOCKERFILE,
+        "apt",
+        lambda: (
+            "# Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.\n"
+            f"apt-get install -y --no-install-recommends \\\n{dockerfile_apt_block()}"
+        ),
+    ),
+    (
+        _SCHEMA_SQL,
+        "extensions",
+        lambda: (
+            "-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block. The schema `doctor` verb\n"
+            f"-- asserts the live pg_extension census equals this declared set (census_diff).\n{schema_prelude()}"
+        ),
+    ),
+    (_CRON_SQL, "extensions", lambda: f"-- Edit the `_PROFILE` catalog and regenerate; do not hand-edit this block.\n{cron_prelude()}"),
+)
 
 
 def regenerate() -> tuple[Path, ...]:
