@@ -13,38 +13,16 @@
         "UV_PYTHON_DOWNLOADS": "automatic"
       }
     },
-    "n8n": {
-      "command": "docker",
+    "google-workspace": {
+      "command": "forge-workspace-mcp",
       "args": [
-        "run",
-        "-i",
-        "--rm",
-        "--init",
-        "-e",
-        "MCP_MODE=stdio",
-        "-e",
-        "LOG_LEVEL=error",
-        "-e",
-        "DISABLE_CONSOLE_OUTPUT=true",
-        "-e",
-        "N8N_API_URL=${MAGHZ_MCP__N8N_API_URL}",
-        "-e",
-        "N8N_API_KEY=${MAGHZ_MCP__N8N_API_KEY}",
-        "ghcr.io/czlonkowski/n8n-mcp:latest"
-      ],
-      "env": {}
-    },
-    "workspace": {
-      "command": "uvx",
-      "args": [
-        "workspace-mcp",
         "--tool-tier",
         "extended"
       ],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
         "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
-        "WORKSPACE_MCP_CREDENTIALS_DIR": ".cache/workspace-mcp"
+        "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}"
       }
     },
     "notebooklm": {
@@ -53,13 +31,10 @@
       "env": {}
     },
     "exa": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "exa-mcp-server"
-      ],
-      "env": {
-        "EXA_API_KEY": "${EXA_API_KEY}"
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa,web_search_advanced_exa,agent_tools",
+      "headers": {
+        "x-api-key": "${EXA_API_KEY}"
       }
     },
     "perplexity": {
@@ -89,8 +64,39 @@
         "hostinger-api-mcp"
       ],
       "env": {
-        "HOSTINGER_API_TOKEN": "${HOSTINGER_TOKEN}"
+        "HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"
       }
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GH_PROJECTS_TOKEN}"
+      }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    },
+    "greptile": {
+      "type": "http",
+      "url": "https://api.greptile.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GREPTILE_API_KEY}"
+      }
+    },
+    "nuget": {
+      "command": "nuget-mcp",
+      "args": [],
+      "env": {}
+    },
+    "jupyter": {
+      "command": "forge-jupyter-mcp",
+      "args": [],
+      "env": {}
     }
   }
 }

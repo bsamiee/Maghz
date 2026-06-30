@@ -13,7 +13,7 @@ Invoke the `agy` Antigravity CLI through one modal Python shim that maps the bin
 
 ## [01]-[OPS]
 
-| [OP]   | [agy SURFACE]           | [SYNC] | [RECEIPT FIELD]        |
+| [OP]   | [agy_SURFACE]           | [SYNC] | [RECEIPT_FIELD]        |
 | ------ | ----------------------- | ------ | ---------------------- |
 | prompt | `agy -p "<text>"`       | yes    | `output: Some(text)`   |
 | task   | `agy task create "<…>"` | no     | `task_id: Some(id)`    |

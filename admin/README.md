@@ -29,7 +29,7 @@ Subpackages:
 | `runtime/` | the lean substrate every arm composes: lanes (`lanes.py`), resilience (`resilience.py` — `RetryClass` + a `POLICY` table + `guard`), receipts (`receipts.py` — a `Receipt` tagged-union + `Signals` over the Envelope/structlog), rails (`rails.py` — `async_boundary` over `expression`) |
 | `rails/` | `schema.py` (idempotent psql apply + doctor), `ledger.py` (the read projections), `sync.py` (Heptabase reconcile), `cloud.py` (Drive + OneDrive backup/bisync), `n8n.py` (workflow export/import) |
 | `infra/` | `runner.py` — the Pulumi Automation API stack (the custom ParadeDB image build, `db` + `ollama` + `n8n` containers) behind one `StackOp` (`up`/`down`/`status`) verb |
-| `mcp/` | MCP-as-IaC: `ops.py` models the 8-server fleet and generates + validates the committed `${VAR}` `.mcp.json` |
+| `mcp/` | MCP-as-IaC: `ops.py` models the 12-server fleet and generates + validates the committed Claude `.mcp.json` and Codex `.codex/config.toml` |
 | `automation/` | **the lynchpin** — `model.py` (a `Trigger` × `Action` ADT + a typed `AutomationReceipt`), `engine.py` (`drive(trigger, action)` over `watchfiles`, an APScheduler scheduler, a `psutil` governor, a `CapacityLimiter`, an NDJSON ledger) |
 
 ## CLI surface (`maghz <verb>`)
@@ -43,7 +43,7 @@ Subpackages:
 | `cloud sync` / `cloud restore` | back up + bisync content to Google Drive + OneDrive; restore |
 | `n8n export` / `n8n import` / `n8n status` | move committed workflows in and out of the n8n container |
 | `automation run` | drive an automation (a `Trigger × Action`); emits a typed `AutomationReceipt` |
-| `mcp generate` / `validate` / `diff` / `watch` | emit, check, diff, and watch the committed `.mcp.json` from the typed server model |
+| `mcp generate` / `validate` / `diff` / `watch` | emit, check, diff, and watch the committed Claude and Codex MCP configs from the typed server model |
 | `exec` / `deploy` | run any verb against, or deploy the whole stack to, the remote VPS |
 
 ## The automation arm (the lynchpin)
@@ -70,9 +70,9 @@ A fully parameterized `Automation = Trigger × Action`, agent-invocable:
 
 ## MCP + skills
 
-- **MCP-as-IaC** — `admin/mcp/ops.py` models the 8-server fleet (`postgres`, `n8n`, `workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`) and emits the committed `${VAR}`/`${VAR:-default}` `.mcp.json`, run under `op run -- claude` so secrets inject at the boundary and travel to the VPS unchanged.
-- **n8n** — a Pulumi-managed container (local + VPS) with `N8N_MCP_ACCESS_ENABLED`, workflows committed via the native CLI, authored through the adopted `n8n-mcp` + `n8n-skills`.
-- **Owned skills** — `maghz-operator`, `automations`, `cloud-sync`, `agy`, `forge-usage`. **Adopted** — `n8n-mcp`, `workspace-mcp`, `postgres-mcp`, `heptabase-cli`.
+- **MCP-as-IaC** — `admin/mcp/ops.py` models the 12-server fleet (`postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter`) and emits the committed Claude `.mcp.json` plus Codex `.codex/config.toml` projections from one table. Secret values stay in environment variables and never in generated config files.
+- **n8n** — future workflow automation surface; not part of the active MCP fleet until n8n is deliberately configured.
+- **Owned skills** — `maghz-operator`, `automations`, `cloud-sync`, `agy`, `forge-usage`. **Adopted** — `workspace-mcp`, `postgres-mcp`, `heptabase-cli`.
 
 ## Secrets
 

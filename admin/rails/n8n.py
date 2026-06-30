@@ -1,9 +1,9 @@
-"""n8n rail: one polymorphic verb over workflow export/import and the authenticated REST liveness census.
+"""n8n rail: one polymorphic verb over workflow export/import and the pending REST liveness census.
 
 `run(op, cfg)` discriminates a closed `N8nOp` and returns the domain-internal `RuntimeRail[Envelope]`
 the CLI `runtime.lower` seam collapses once at the edge — the same rail contract `schema`/`sync`/`ledger`
 expose, never a bespoke self-lowering carrier. There is no per-rail fault carrier: every boundary mints
-`BoundaryFault` directly (`config` for an absent op-injected API key, `boundary` for a non-zero
+`BoundaryFault` directly (`config` for the pending REST auth setup, `boundary` for a non-zero
 `docker exec` grade, `wire` for a reached-but-non-200 REST status, plus the spawn/transport leaves the
 substrate `CLASSIFY` fold owns), so the typed `resource`/`deadline`/`wire` discrimination — and its retry
 receipts — survive to the projection.
@@ -23,17 +23,11 @@ awaits the async `_census` over `anyio.Path.glob` only on a zero exit, and threa
 The workflow count derives from the host-mounted `workflows_dir` `*.json` census — counted AFTER the
 export writes one `<id>.json` per workflow, BEFORE the import reads them — never stdout prose.
 
-STATUS is the authenticated capability ridden through one long-lived `httpx.AsyncClient` per probe: the
-op-injected API key binds at client construction as the `_N8nAuth` flow (the `X-N8N-API-KEY` header signed
-once per request, the secret read only at the flow edge — never threaded through an interior `headers`
-map, never logged, never in `repr`), the client carries an explicit per-phase `httpx.Timeout` and pool
-`httpx.Limits`, and both legs (`GET /healthz` unauthenticated liveness, `GET /api/v1/workflows` the live
-server-side census) ride one `guarded(RetryClass.HTTP, ...)` envelope so the transport-transient retry and
-the terminal fault-lift are the runtime resilience owner's, not this rail's. The API key resolves once at
-admission through `_api_key`; an absent key is a typed `Error(BoundaryFault(config=...))` from the
-op-injected ENVIRONMENT alone (`MAGHZ_MCP__N8N_API_KEY`, vaulted `op://Tokens/N8N_API_KEY`), never a
-keychain prompt and never an interactive unlock. `structlog` binds the rail context at entry; the receipt
-fields ride the egress at the `lower` edge.
+STATUS is currently gated because n8n is not configured and no API-token owner exists. `_api_key` returns
+one typed `Error(BoundaryFault(config=...))` before any socket opens; once n8n is deliberately configured,
+the dormant `_N8nAuth`/`_probe` path can bind the admitted key at client construction and ride the existing
+`guarded(RetryClass.HTTP, ...)` envelope without introducing keychain prompts or interactive unlocks.
+`structlog` binds the rail context at entry; the receipt fields ride the egress at the `lower` edge.
 """
 
 from collections.abc import Awaitable, Callable, Generator
@@ -141,12 +135,12 @@ class _Liveness(msgspec.Struct, frozen=True, gc=False):
 
 
 class _N8nAuth(httpx.Auth):
-    """The n8n REST auth flow: sign each request with the op-injected `X-N8N-API-KEY`, secret read once.
+    """Dormant n8n REST auth flow for the future admitted `X-N8N-API-KEY`.
 
-    The `httpx.Auth` flow is the credential seam the .api auth law mandates — the key binds at client
-    construction (`auth=`), never `None`-as-default and never an interior `headers` map threaded through
-    `_probe`. The secret is held on this flow instance (minted once at `_api_key` admission) and written
-    onto the outbound request header inside `auth_flow`, the single injection edge: `__slots__` and the
+    The `httpx.Auth` flow is the credential seam the .api auth law mandates once n8n setup admits a real
+    API-key owner: the key binds at client construction (`auth=`), never `None`-as-default and never an
+    interior `headers` map threaded through `_probe`. The secret is held on this flow instance and written
+    onto the outbound request header inside `auth_flow`, the single injection edge; `__slots__` and the
     absent `__repr__` keep it out of logs and tracebacks, the n8n analog of `SecretStr.get_secret_value`.
     """
 
@@ -175,29 +169,19 @@ _LIMITS: Final[httpx.Limits] = httpx.Limits(max_connections=1, max_keepalive_con
 # --- [OPERATIONS] ----------------------------------------------------------------------
 
 
-def _api_key(cfg: MaghzSettings) -> Result[_N8nAuth, BoundaryFault]:
-    """Mint the n8n REST auth flow from the op-injected settings secret; an absent key is a config fault.
+def _api_key(_cfg: MaghzSettings) -> Result[_N8nAuth, BoundaryFault]:
+    """Return the current n8n REST auth state.
 
-    The single secret-admission edge, minting the `_N8nAuth` flow exactly once. `cfg.mcp.n8n_api_key` is
-    the canonical owner of the key: the op-injected `N8N_API_KEY` vault value (`op://Tokens/N8N_API_KEY`)
-    reaches the process as `MAGHZ_MCP__N8N_API_KEY` and is admitted into this `SecretStr | None` field by
-    pydantic-settings — the op-injected ENVIRONMENT is the only source, never the macOS keychain (no
-    `keyring` read, no Touch-ID/password prompt). An unset field is `None`, so the rail returns
-    `Error(BoundaryFault(config=...))` rather than constructing a flow over an empty key.
-    `.get_secret_value()` is read only here, at the mint into the `_N8nAuth` flow whose `auth_flow` injects
-    the `X-N8N-API-KEY` header — never logged, never in `repr`.
+    n8n is not set up yet, so there is no admitted API-token owner. The status rail fails truthfully instead
+    of advertising a fake environment variable or vault item.
 
     Args:
-        cfg: The validated settings whose `mcp.n8n_api_key` carries the op-injected secret.
+        _cfg: The validated settings; unused until n8n is configured.
 
     Returns:
-        `Ok(_N8nAuth)` carrying the bound auth flow when the field holds a non-empty secret, or
-        `Error(BoundaryFault(config=...))` naming the `status` subject when the op-injected key is absent.
+        `Error(BoundaryFault(config=...))` naming the `status` subject while n8n is not configured.
     """
-    secret = cfg.mcp.n8n_api_key
-    if secret is None or not (key := secret.get_secret_value()):
-        return Error(BoundaryFault(config=("status", "n8n API key absent: set MAGHZ_MCP__N8N_API_KEY (op://Tokens/N8N_API_KEY)")))
-    return Ok(_N8nAuth(key))
+    return Error(BoundaryFault(config=("status", "n8n API key is not configured; n8n setup is pending")))
 
 
 async def _census(cfg: MaghzSettings) -> int:
@@ -268,10 +252,10 @@ async def _probe(n8n: N8nConfig, auth: _N8nAuth) -> _Liveness:
     """Probe `/healthz` liveness and the authenticated `/api/v1/workflows` census in one client scope.
 
     The retried inner of the STATUS boundary, idempotent and network-fragile, so the caller drives it under
-    `guarded(RetryClass.HTTP, ...)`. One long-lived `httpx.AsyncClient` carries both legs under an explicit
-    per-phase `httpx.Timeout` (the config `connect_timeout` floors connect and bounds read/write/pool) and
-    the single-connection pool `_LIMITS`: the op-injected key binds at construction as the `_N8nAuth` flow,
-    so neither leg threads a `headers` map. `/healthz` (no auth needed, but the flow signs it harmlessly)
+    `guarded(RetryClass.HTTP, ...)` after n8n setup admits a real API key. One long-lived `httpx.AsyncClient`
+    carries both legs under an explicit per-phase `httpx.Timeout` (the config `connect_timeout` floors connect
+    and bounds read/write/pool) and the single-connection pool `_LIMITS`: the admitted key binds at
+    construction as the `_N8nAuth` flow, so neither leg threads a `headers` map. `/healthz` (no auth needed, but the flow signs it harmlessly)
     grades liveness in place against `httpx.codes.OK` — a reached-but-non-200 health is `False`, a domain
     result, not an escape — while `GET /api/v1/workflows` reads the live server-side census, decoded through
     the shared `_WORKFLOWS_DECODER`. A reached non-200 on the API leg `raise_for_status`-es into the
@@ -297,23 +281,19 @@ async def _probe(n8n: N8nConfig, auth: _N8nAuth) -> _Liveness:
 
 
 async def _status(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-    """Probe liveness and the authenticated workflow census on the rail, the API key op-injected via settings.
+    """Return the current n8n status rail.
 
-    `_api_key` mints the op-injected auth flow first (an absent key short-circuits to a typed config fault
-    before any socket opens — the synchronous admission edge whose `Error` is matched here, the sole arm the
-    async `guarded` leg cannot fold through `bind`); `guarded(RetryClass.HTTP, _probe, ...)` then drives the
-    retried probe under the runtime resilience envelope and lifts a surviving transport escape — or a
-    reached-non-200 `wire` status on the API leg — to one `Error(BoundaryFault)`. A reached non-200
-    `/healthz` is `healthy=False`, never a fault (graded inside `_probe`).
+    `_api_key` is the synchronous admission edge: because n8n setup is still pending and no API-key owner
+    exists, it short-circuits to a typed config fault before any socket opens. Once n8n is configured, the
+    same edge can mint `_N8nAuth` and `guarded(RetryClass.HTTP, _probe, ...)` will drive the retried probe
+    under the runtime resilience envelope.
 
     Args:
-        cfg: The validated settings owning the derived n8n `api_url`, the connect timeout, and the
-            op-injected API key in the environment.
+        cfg: The validated settings owning the derived n8n `api_url` and the connect timeout.
 
     Returns:
-        `Ok(completed(OK, N8nDetail(op=STATUS, healthy=...)))` carrying the live workflow census, or
-        `Error(BoundaryFault)` for an absent key, a non-200 API status, or an exhausted-retry transport
-        escape.
+        `Ok(completed(OK, N8nDetail(op=STATUS, healthy=...)))` carrying the live workflow census after
+        n8n is configured, or `Error(BoundaryFault)` while setup is pending.
     """
     match _api_key(cfg):
         case Result(tag="error", error=config_fault):
@@ -369,7 +349,7 @@ async def run(op: N8nOp, cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
     Returns:
         The rail the selected builder produced — `Ok(Envelope)` carrying the typed `N8nDetail` receipt
         (with `detail.healthy` absent on the wire for EXPORT/IMPORT), or `Error(BoundaryFault)` from the
-        container exit grade, the absent API key, or the REST transport boundary.
+        container exit grade, pending n8n auth setup, or the REST transport boundary.
     """
     structlog.contextvars.bind_contextvars(rail="n8n", op=op.value)
     return await _BUILD[op](cfg)

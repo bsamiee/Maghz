@@ -1,14 +1,6 @@
 {
     "$schema": "https://json.schemastore.org/claude-code-settings.json",
     "effortLevel": "xhigh",
-    "alwaysThinkingEnabled": true,
-    "showThinkingSummaries": true,
-    "skillListingBudgetFraction": 0.02,
-    "respectGitignore": true,
-    "autoMemoryEnabled": true,
-    "showClearContextOnPlanAccept": true,
-    "viewMode": "verbose",
-    "useAutoModeDuringPlan": true,
     "claudeMdExcludes": [
         "**/.cache/**/CLAUDE.md",
         "**/node_modules/**/CLAUDE.md",
@@ -16,49 +8,6 @@
         "**/obj/**/CLAUDE.md",
         "**/.artifacts/**/CLAUDE.md"
     ],
-    "permissions": {
-        "allow": [
-            "Bash(*)",
-            "Read",
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Glob",
-            "Grep",
-            "WebSearch",
-            "WebFetch",
-            "Skill",
-            "SlashCommand",
-            "Agent",
-            "Workflow",
-            "TaskCreate",
-            "TaskUpdate",
-            "TaskList",
-            "TaskGet",
-            "TaskOutput",
-            "TaskStop",
-            "LSP",
-            "EnterPlanMode",
-            "ExitPlanMode",
-            "EnterWorktree",
-            "ExitWorktree",
-            "ListMcpResourcesTool",
-            "ReadMcpResourceTool"
-        ],
-        "deny": [
-            "Bash(maghz down*)",
-            "Bash(pulumi destroy*)",
-            "Bash(docker rm:*)",
-            "Bash(docker volume rm:*)",
-            "Bash(rm -rf:*)",
-            "Bash(dropdb:*)",
-            "Bash(*DROP DATABASE*)"
-        ]
-    },
-    "attribution": {
-        "commit": "",
-        "pr": ""
-    },
     "hooks": {
         "SessionStart": [
             {
@@ -71,6 +20,31 @@
                     }
                 ]
             }
+        ]
+    },
+    "permissions": {
+        "allow": [
+            "mcp__postgres__*",
+            "mcp__google-workspace__*",
+            "mcp__notebooklm__*",
+            "mcp__exa__*",
+            "mcp__perplexity__*",
+            "mcp__tavily__*",
+            "mcp__hostinger__*",
+            "mcp__github__*",
+            "mcp__context7__*",
+            "mcp__greptile__*",
+            "mcp__nuget__*",
+            "mcp__jupyter__*"
+        ],
+        "deny": [
+            "Bash(git push --force:*)",
+            "Bash(git push -f:*)",
+            "Bash(git reset --hard:*)",
+            "Bash(maghz down:*)",
+            "Bash(pulumi destroy:*)",
+            "Bash(dropdb:*)",
+            "Bash(docker volume rm:*)"
         ]
     },
     "enabledPlugins": {}

@@ -1,6 +1,6 @@
 # [API][WORKSPACE-MCP]
 
-Capability catalog for the Google Workspace MCP server consumed via `uvx workspace-mcp`. The server is a row in the mcp blueprint's `_SERVER_TABLE` (`ServerKind.WORKSPACE`), not a `libs/python` import. This catalog is the authoritative contract the mcp WORKSPACE row and `IntegrationsConfig` absorb: `IntegrationsConfig` is the sole canonical owner of the workspace credentials dir, OAuth redirect URI, and OAuth credentials, mcp owns the generated row, and `McpServerSettings` carries no workspace fields (`_render` overlays the WORKSPACE arm straight off `cfg.integrations.*`). The two settings-sourced env keys `_render` emits are the server's real variable names — `WORKSPACE_MCP_CREDENTIALS_DIR` (the credentials directory; alias `GOOGLE_MCP_CREDENTIALS_DIR`) and `GOOGLE_OAUTH_REDIRECT_URI` (the redirect override) — not `TOKEN_DIR`/`OAUTH_REDIRECT_URI`, which the server does not read.
+Capability catalog for the Google Workspace MCP server consumed via the Forge-owned `forge-workspace-mcp` wrapper. The server is a row in the mcp blueprint's `_SERVER_TABLE` (`ServerKind.GOOGLE_WORKSPACE`, emitted as `google-workspace`), not a `libs/python` import. This catalog is the authoritative contract the mcp Google Workspace row and `IntegrationsConfig` absorb: Forge owns the workspace credentials dir and OAuth credentials, Maghz owns only the optional OAuth redirect URI, mcp owns the generated row, and `McpServerSettings` carries no workspace fields. The env keys `_render` emits are the server's real variable names — `WORKSPACE_MCP_CREDENTIALS_DIR` (the credentials directory; alias `GOOGLE_MCP_CREDENTIALS_DIR`) and `GOOGLE_OAUTH_REDIRECT_URI` (the redirect override) — not `TOKEN_DIR`/`OAUTH_REDIRECT_URI`, which the server does not read.
 
 ## [01]-[SERVICE_GROUPS]
 
@@ -30,7 +30,7 @@ command:  uvx
 args:     ["workspace-mcp", "--tool-tier", "extended"]
 ```
 
-The mcp WORKSPACE row carries exactly this `args` list. OAuth 2.0 over stdio is the default transport; OAuth 2.1 multi-user (`MCP_ENABLE_OAUTH21=true` + `--transport streamable-http`) is out of scope for the single-user local + VPS pattern.
+The mcp `google-workspace` row carries exactly this `args` list. OAuth 2.0 over stdio is the default transport; OAuth 2.1 multi-user (`MCP_ENABLE_OAUTH21=true` + `--transport streamable-http`) is out of scope for the single-user local + VPS pattern.
 
 ## [03]-[ENV_CONTRACT]
 
@@ -38,10 +38,10 @@ The mcp WORKSPACE row carries exactly this `args` list. OAuth 2.0 over stdio is 
 | ----------------------- | ----------------- | -------------------------------------------------------------- |
 | `GOOGLE_OAUTH_CLIENT_ID`     | yes          | bare key folded by `_BareEnvSource` into `IntegrationsConfig.google_oauth_client_id` (`SecretStr \| None`); emitted as a bare `${GOOGLE_OAUTH_CLIENT_ID}` placeholder, never resolved into `.mcp.json` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | yes          | bare key folded by `_BareEnvSource` into `IntegrationsConfig.google_oauth_client_secret` (`SecretStr \| None`); emitted as a bare `${GOOGLE_OAUTH_CLIENT_SECRET}` placeholder |
-| `WORKSPACE_MCP_CREDENTIALS_DIR` | yes       | `IntegrationsConfig.workspace_token_dir` (default `.cache/workspace-mcp`); `_render` overlays it as a filesystem literal off `cfg.integrations.workspace_token_dir`. This is the server's canonical credentials-dir key (alias `GOOGLE_MCP_CREDENTIALS_DIR`); the default when unset is `~/.google_workspace_mcp/credentials` |
+| `WORKSPACE_MCP_CREDENTIALS_DIR` | yes       | Machine-level env var owned by Forge; `_render` commits `${WORKSPACE_MCP_CREDENTIALS_DIR}` so Claude, Codex, and Maghz share one token cache. This is the server's canonical credentials-dir key (alias `GOOGLE_MCP_CREDENTIALS_DIR`); the server default when unset is `~/.google_workspace_mcp/credentials` |
 | `GOOGLE_OAUTH_REDIRECT_URI`  | headless only | `IntegrationsConfig.workspace_oauth_redirect_uri` (`str \| None`); `_render` emits it only when `cfg.integrations.workspace_oauth_redirect_uri` is non-None (the redirect override the server reads via `os.getenv("GOOGLE_OAUTH_REDIRECT_URI")`) |
 
-`GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` are bare env keys in the WORKSPACE row — NOT `MAGHZ_MCP__`-prefixed. `_BareEnvSource` folds them into `IntegrationsConfig`; in the committed `.mcp.json` they render as bare `${GOOGLE_OAUTH_*}` placeholders. The mcp `_validate` coverage check matches only `${MAGHZ_MCP__<KEY>}` via `_PLACEHOLDER`, so these two bare placeholders never match and are exempt by construction — there is no `IntegrationsConfig`-backed coverage assertion. The `workspace_token_dir` / `workspace_oauth_redirect_uri` pydantic field names are unchanged; only the emitted env-key string literals are the server-real `WORKSPACE_MCP_CREDENTIALS_DIR` / `GOOGLE_OAUTH_REDIRECT_URI`.
+`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `WORKSPACE_MCP_CREDENTIALS_DIR` are bare env keys in the `google-workspace` row — NOT `MAGHZ_MCP__`-prefixed. In the committed `.mcp.json` they render as bare `${GOOGLE_OAUTH_*}` and `${WORKSPACE_MCP_CREDENTIALS_DIR}` placeholders. The mcp `_validate` coverage check matches only `${MAGHZ_MCP__<KEY>}` via `_PLACEHOLDER`, so these bare placeholders never match and are exempt by construction. `GOOGLE_OAUTH_REDIRECT_URI` is emitted only when the settings field is present.
 
 ## [04]-[OAUTH_FLOW]
 

@@ -39,6 +39,7 @@ from contextlib import asynccontextmanager
 from enum import StrEnum
 import itertools
 import operator
+from os import getenv
 from pathlib import Path, PurePosixPath
 import shlex
 from typing import assert_never, Literal, Self
@@ -325,9 +326,30 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
 # from the validated settings, so `MAGHZ_DATABASE_DSN` tracks `cfg.database.dsn` by construction and
 # `MAGHZ_LOG__FORMAT` is pinned to the machine-readable renderer; `run` folds each row into a
 # `KEY=<shlex.quote(value)>` export ahead of the remote argv.
+def _env_required(key: str) -> str:
+    value = getenv(key)
+    if not value:
+        raise ValueError(f"missing required remote environment variable: {key}")
+    return value
+
+
 _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
     "MAGHZ_DATABASE_DSN": lambda cfg: str(cfg.database.dsn),
     "MAGHZ_LOG__FORMAT": lambda _cfg: "json",
+    "CODERABBIT_API_KEY": lambda _cfg: _env_required("CODERABBIT_API_KEY"),
+    "OP_SERVICE_ACCOUNT_TOKEN": lambda _cfg: _env_required("OP_SERVICE_ACCOUNT_TOKEN"),
+    "GOOGLE_OAUTH_CLIENT_ID": lambda _cfg: _env_required("GOOGLE_OAUTH_CLIENT_ID"),
+    "GOOGLE_OAUTH_CLIENT_SECRET": lambda _cfg: _env_required("GOOGLE_OAUTH_CLIENT_SECRET"),
+    "JUPYTER_TOKEN": lambda _cfg: _env_required("JUPYTER_TOKEN"),
+    "GREPTILE_API_KEY": lambda _cfg: _env_required("GREPTILE_API_KEY"),
+    "GH_TOKEN": lambda _cfg: _env_required("GH_TOKEN"),
+    "GITHUB_TOKEN": lambda _cfg: _env_required("GITHUB_TOKEN"),
+    "GH_PROJECTS_TOKEN": lambda _cfg: _env_required("GH_PROJECTS_TOKEN"),
+    "HOSTINGER_API_TOKEN": lambda _cfg: _env_required("HOSTINGER_API_TOKEN"),
+    "CONTEXT7_API_KEY": lambda _cfg: _env_required("CONTEXT7_API_KEY"),
+    "EXA_API_KEY": lambda _cfg: _env_required("EXA_API_KEY"),
+    "PERPLEXITY_API_KEY": lambda _cfg: _env_required("PERPLEXITY_API_KEY"),
+    "TAVILY_API_KEY": lambda _cfg: _env_required("TAVILY_API_KEY"),
 })
 
 

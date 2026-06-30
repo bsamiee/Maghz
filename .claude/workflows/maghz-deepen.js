@@ -101,7 +101,7 @@ const DEEP_FORM = [
 const DOC2 = [DOC, '', CONCURRENCY, '', BANDS].join('\n')
 
 // --- [MODELS] -- NO-KEYCHAIN LAW (security-critical: op-injected env primary, never login keychain) -
-const NO_KEYCHAIN = 'NO-KEYCHAIN LAW (security-critical, non-negotiable): admin/rails/cloud.py and the n8n API-key path use the op-injected ENVIRONMENT as the PRIMARY and only secret source — the macOS login keychain is NEVER read or written. REMOVE every keyring usage (no keyring.get_password fallback that could surface a Touch-ID/password prompt); a secret resolves from os.environ (op-injected MAGHZ_*/provider env) or it is absent and the rail returns a typed BoundaryFault, never a keychain prompt and never an interactive unlock. N8N_API_KEY is vaulted as op://Tokens/N8N_API_KEY and reaches the process as env; it is never stored in or read from a keychain. rclone cloud tokens ride MAGHZ_CLOUD__REMOTES__* env, never a keychain/rclone.conf secret. Demote keyring to nothing — if a settings field defaulted to a keyring lookup, repoint it at the env owner.'
+const NO_KEYCHAIN = 'NO-KEYCHAIN LAW (security-critical, non-negotiable): admin/rails/cloud.py uses the op-injected ENVIRONMENT as the PRIMARY and only secret source — the macOS login keychain is NEVER read or written. REMOVE every keyring usage (no keyring.get_password fallback that could surface a Touch-ID/password prompt); a secret resolves from os.environ (op-injected MAGHZ_*/provider env) or it is absent and the rail returns a typed BoundaryFault, never a keychain prompt and never an interactive unlock. n8n has no admitted API-token owner yet; do not invent one or route it through keychain. rclone cloud tokens ride MAGHZ_CLOUD__REMOTES__* env, never a keychain/rclone.conf secret. Demote keyring to nothing — if a settings field defaulted to a keyring lookup, repoint it at the env owner.'
 
 // --- the rebuild-python critique/redteam SPEC, reused verbatim + the DEEP_FORM extension ----
 const T = {
@@ -199,7 +199,7 @@ const CONSUMER_FILES = [
   { file: 'admin/rails/ledger.py', folder: 'rails', note: '', extra: '' },
   { file: 'admin/rails/schema.py', folder: 'rails', note: '', extra: '' },
   { file: 'admin/rails/sync.py', folder: 'rails', note: '', extra: '' },
-  { file: 'admin/rails/n8n.py', folder: 'rails', note: 'Compose runtime.spawn for the n8n CLI legs; the n8n API key is op-injected env.', extra: NO_KEYCHAIN },
+  { file: 'admin/rails/n8n.py', folder: 'rails', note: 'Compose runtime.spawn for the n8n CLI legs; n8n has no admitted API-token owner yet.', extra: NO_KEYCHAIN },
   { file: 'admin/rails/cloud.py', folder: 'rails', note: 'rclone Drive/OneDrive sync rail; tokens are MAGHZ_CLOUD__REMOTES__* env.', extra: NO_KEYCHAIN },
   { file: 'admin/infra.py', folder: 'infra', note: 'FILEMAP merge: fold admin/infra/stack.py INTO admin/infra.py (the runner dispatch absorbs the Pulumi program define()). Hold the dual-band import law: gate heavy pulumi/pulumi-docker imports function-locally with # noqa: PLC0415 where define() is built.', extra: '' },
   { file: 'admin/remote.py', folder: 'remote', note: 'FILEMAP merge: merge admin/remote/connection.py + ops.py into admin/remote.py (target/connection lifecycle + exec/deploy ops over asyncssh; the git push/pull pair composes runtime.spawn).', extra: '' },

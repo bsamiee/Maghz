@@ -179,14 +179,14 @@ class IntegrationsConfig(BaseModel):
     """External agent-tool surfaces: the `agy` Antigravity CLI and the Google Workspace MCP OAuth context.
 
     The two OAuth keys arrive bare (`GOOGLE_OAUTH_CLIENT_ID`/`SECRET`) and `_BareEnvSource` folds them into
-    this canonical group. `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()` is read only at the injection edge.
+    this canonical group. The Workspace token cache path is machine-owned by Forge as `WORKSPACE_MCP_CREDENTIALS_DIR`.
+    `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()` is read only at the injection edge.
     """
 
     model_config = _GROUP
 
     google_oauth_client_id: SecretStr | None = Field(default=None, repr=False)
     google_oauth_client_secret: SecretStr | None = Field(default=None, repr=False)
-    workspace_token_dir: Path = Path(".cache/workspace-mcp")
     workspace_oauth_redirect_uri: str | None = None
     agy_binary: Path = Path("agy")
     agy_process_timeout_s: float = Field(default=120.0, gt=0)
@@ -200,17 +200,13 @@ class McpServerSettings(BaseModel):
     name here, so the `.mcp.json` carries no secret and no field *value* is consumed. `database_uri` is one
     such name-backing declaration, not a second DSN mint: `DatabaseConfig.dsn` is the sole DSN owner and the
     rendered file substitutes `${MAGHZ_MCP__DATABASE_URI}` at `op run` time. The Google OAuth credentials are
-    not duplicated — `IntegrationsConfig` owns them and the WORKSPACE overlay emits them bare. The field set
-    is exactly the four-server fleet's secret-backing names: the web-research placeholders (exa/perplexity/
-    tavily) are absent because those servers moved to the portable research skill CLIs, so no placeholder
-    backs them and none is declared here.
+    not duplicated — `IntegrationsConfig` owns them and the Google Workspace overlay emits them bare. n8n has
+    no MCP/API token configured yet, so it declares no secret-backed field here.
     """
 
     model_config = _GROUP
 
     database_uri: SecretStr | None = Field(default=None, repr=False)
-    n8n_api_url: SecretStr | None = Field(default=None, repr=False)
-    n8n_api_key: SecretStr | None = Field(default=None, repr=False)
 
 
 class AutomationConfig(BaseModel):

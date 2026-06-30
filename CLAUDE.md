@@ -68,10 +68,6 @@ Use the route-owned standard for the file being edited:
 - [ALWAYS] Tools over internal knowledge: read files, search code, verify assumptions through source, manifests, docs, and tool output.
 - [ALWAYS] Parallelize independent searches, reads, and checks.
 - [ALWAYS] Use bounded subagents for independent exploration, research, verification, and disjoint implementation when the user asks for subagents or parallel agent work.
-- [ALWAYS] Invoke real executables on `PATH`; use `zsh -ic` only when testing interactive zsh configuration.
-- [ALWAYS] Run Bash-only snippets through `bash -lc`, a Bash heredoc, or an executable with a Bash shebang.
-- [ALWAYS] Treat workflow globals such as `args` as workflow-runtime state, separate from shell, Nix, aliases, and `PATH`.
-- [NEVER] Use emojis.
 
 ## [06]-[OWNER_ROUTING]
 
@@ -89,7 +85,7 @@ Use the route-owned standard for the file being edited:
 
 ## [07]-[TOOLING]
 
-Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`); inspect the Forge owner before patching local toolchain failures. `AGENTS.md [06]` carries the full per-tool inventory by group, including the 8-server MCP fleet (`postgres`, `n8n`, `workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`) whose typed owner is `admin/mcp/ops.py`.
+Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`); inspect the Forge owner before patching local toolchain failures. `AGENTS.md [06]` carries the full per-tool inventory by group, including the 12-server MCP fleet whose typed owner is `admin/mcp/ops.py`.
 
 Route each tooling concern through its owning skill:
 
@@ -97,13 +93,15 @@ Route each tooling concern through its owning skill:
 | --------------------- | --------------------- |
 | Heptabase content     | `heptabase-cli`       |
 | Source ingestion      | `notebooklm`          |
-| Library documentation | `context7-tools`      |
-| Repository operations | `github-tools`        |
+| Library documentation | `context7-mcp`        |
 | CI/CD pipelines       | `github-actions`      |
 | Diagrams              | `mermaid-diagramming` |
 | Lifecycle hooks       | `hooks-builder`       |
 | Workflow authoring    | `workflow-creator`    |
 | Container images      | `dockerfile`          |
+| Notebook research     | `jupyter`             |
+
+Resolve any external library's current API through `context7` before internalizing it into a canonical owner — newest-stable usage, never training-data. The web and docs research selection law (`Exa`/`Tavily` over built-in fetch, the async Exa Agent and slow `Perplexity` for deep questions, `mcp__github__*` for the GitHub API versus `gh` for local repo ops, context-isolated bulk reads) is the user-global doctrine and is not restated here.
 
 ## [08]-[DOCUMENTATION_AND_OUTPUT]
 

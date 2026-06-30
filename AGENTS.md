@@ -1,11 +1,8 @@
 # [ROOT_AGENTS]
 
-## [01]-[NAVIGATION]
+[REQUIRED]: Read and follow `CLAUDE.md` before this file.
 
-Use repository-native discovery before broad scans:
-- File discovery: `fd`.
-- Exact text search: `rg`.
-- Structural search: `ast-grep` when patterns use metavariables or tree-sitter queries rather than plain text.
+## [01]-[NAVIGATION]
 
 Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts.
 For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
@@ -18,15 +15,9 @@ Design notes live in `docs/`. They are working material for a decision, not dura
 
 Before finalizing non-trivial repository work, classify observed agent mistakes by owner: machine default, repo root policy, source or documentation owner, tool README, or confidence gap. Refine an existing rule first; add a new rule only for a repeated mistake or a single high-risk miss such as wrong owner routing, destructive command risk, fake confirmation, unsupported claims, or code-quality regression. Do not copy session narration, report frames, memory notes, or research summaries into active instructions.
 
-Quality cadence is gated at planned milestones, not after every edit. Do not run quality commands, formatters, linters, or tests after ordinary edits, markdown changes, or one-off fixes. Batch implementation first, then run at most one narrow owner-scoped proof at the planned gate unless the user explicitly asks for more. If proof fails, patch related diagnostics as one batch and rerun once; ask before entering any longer loop. Memory, skills, rollout summaries, and old command notes cannot override this rule.
+Quality cadence is gated at planned milestones, not after every edit; run at most one narrow owner-scoped proof at the planned gate.
 
 ## [03]-[ENGINEERING_CONTRACT]
-
-Extend the canonical owner before adding a rail, object, helper, wrapper, command, confidence path, document body, or public surface; when the owner is local, use the nearest overlay, source file, standard, or tool README that owns the concern.
-
-Plans, documentation, and implementation target the newest objectively stronger language, platform, library, feature, tool, and architectural standard. Current source, manifests, pinned versions, older patterns, partial adoption, and compatibility surfaces are inputs and replacement targets, not baseline ceilings.
-
-Minimize shape count, not capability. Preserve behavior by deepening the canonical owner with cases, rows, folds, projections, typed receipts, scenarios, or boundary adapters; do not delete capability, split helper files, or add shallow sibling surfaces to make the system look simpler.
 
 Owners internalize the full admitted capability of their platform, host APIs, and route-owned packages behind focused surfaces. Limited entry count never means limited capability. Automations, agents, and downstream consumers compose from these owners instead of re-learning raw provider APIs, lifecycle rules, wire shapes, and failure handling.
 
@@ -58,7 +49,7 @@ The `heptabase` CLI owns content read and write; the database is the ledger, not
 
 Pulumi owns infra state. The custom ParadeDB image, the service topology, and `MaghzSettings` live in `admin/infra/`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
 
-MCP servers extend reach without owning truth. The 8-server fleet is owned by `admin/mcp/ops.py`, which generates the committed `${VAR}` `.mcp.json`: `postgres` explores the live database, `n8n` drives workflow automation, `workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, and `hostinger` manages the VPS. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind.
+MCP servers extend reach without owning truth. The 12-server fleet is owned by `admin/mcp/ops.py`, which generates the committed Claude `.mcp.json` and Codex `.codex/config.toml`: `postgres` explores the live database, `google-workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, `hostinger` manages the VPS, the HTTP remotes `github` (repository API), `context7` (live library docs), and `greptile` (whole-repo semantic code review) extend reach, the host-process `nuget` server surfaces NuGet package intelligence (latest version, vulnerability/deprecation, safe-upgrade sets, supply-chain review) wherever the .NET 10 SDK and `nuget-mcp` launcher exist, and the host-process `jupyter` server routes through the Forge-owned `forge-jupyter-mcp` launcher. Resolve any external library's current API through `context7` before its findings bind; the full web/docs tool-selection and chaining law is the user-global doctrine. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind: deterministic work — schema apply, ledger mutations, stack lifecycle — always routes through the `maghz` CLI, never an MCP.
 
 ## [06]-[TOOLING]
 
@@ -81,7 +72,7 @@ MCP servers extend reach without owning truth. The 8-server fleet is owned by `a
 | TOML             | `taplo`                                                                                                      |
 | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
 | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
-| MCP              | `postgres`, `n8n`, `workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`                     |
+| MCP              | `postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter` |
 
 ## [07]-[DOCUMENTATION]
 

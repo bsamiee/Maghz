@@ -17,8 +17,8 @@ the one progress fact the receipt stream owns over and above the verb-result `En
 
 The fleet projects through `ServerSpec`, never a per-kind `match`: each row owns its `argv` (docker `-e
 KEY=VAL` pairs splice ahead of the image, where Docker requires options, and the trailing command follows)
-and its static `environ`; the lone settings-sourced overlay (the WORKSPACE credentials dir and conditional
-OAuth redirect) is one `_ENV_OVERLAY` row keyed by `ServerKind`, defaulting empty, so adding a server is one
+and its static `environ`; the lone settings-sourced overlay (the Google Workspace credentials-dir placeholder and
+conditional OAuth redirect) is one `_ENV_OVERLAY` row keyed by `ServerKind`, defaulting empty, so adding a server is one
 `ServerKind` case plus one `_SERVER_TABLE` row with no branch proliferation. Every secret-bearing key emits
 a `${VAR}` placeholder, never a resolved value: secrets inject at the `op run -- claude` process boundary
 and are never written to the file.
@@ -38,6 +38,7 @@ remote boundary, ridden through the substrate `runtime.spawn` probe plus the one
 from collections.abc import Awaitable, Callable, Mapping
 from enum import StrEnum
 from functools import partial
+import json
 from pathlib import Path
 import re
 from typing import override
@@ -66,24 +67,34 @@ class ServerKind(StrEnum):
     The member value is the `mcpServers` object key and the wire encoding of each `McpConfigDetail.servers`
     member, which stays a typed `ServerKind` in memory.
 
-    The fleet is the eight servers spawned for in-session agent reach: `postgres`/`n8n` (DUAL-SURFACE — the
-    rail owns deterministic truth, the MCP owns live agent exploration, two distinct consumers), the
-    interactive `workspace` (Google) and `notebooklm` surfaces, the three web-research servers
-    `exa`/`perplexity`/`tavily`, and the `hostinger` VPS/infrastructure server. Every secret-bearing key
-    emits a `${VAR}` placeholder resolved at the `op run -- claude` boundary, never a value written to the
-    committed file; the research and hostinger keys ride bare `${EXA_API_KEY}`/`${PERPLEXITY_API_KEY}`/
-    `${TAVILY_API_KEY}`/`${HOSTINGER_TOKEN}` placeholders the env bootstrap forwards, exactly like the
-    `${GOOGLE_OAUTH_*}` workspace pair, so none backs a `McpServerSettings` field.
+    The fleet is the twelve servers spawned for in-session agent reach: `postgres` for live database
+    exploration, the interactive `google-workspace` and `notebooklm` surfaces, the three web-research servers
+    `exa`/`perplexity`/`tavily`, the `hostinger` VPS/infrastructure server, the three HTTP-transport
+    remotes `github` (the GitHub MCP), `context7` (live, version-pinned library docs), and `greptile`
+    (whole-repo semantic code review over the indexed codebase), the host-process `nuget`
+    package-intelligence server (the `nuget-mcp` launcher: NuGet.Mcp.Server via `dotnet tool exec`,
+    requiring the .NET 10 SDK), and the host-process `jupyter` notebook-research server (the Forge-owned
+    `forge-jupyter-mcp` connector over a live JupyterLab kernel); the two host-process servers are
+    inert where their launcher or backing server is absent. Every
+    secret-bearing key emits a `${VAR}` placeholder resolved at the `op run -- claude` boundary, never a
+    value written to the committed file; the research, hostinger, github, and context7 keys ride bare
+    `${EXA_API_KEY}`/`${PERPLEXITY_API_KEY}`/`${TAVILY_API_KEY}`/`${HOSTINGER_API_TOKEN}`/`${GH_PROJECTS_TOKEN}`/
+    `${CONTEXT7_API_KEY}` placeholders the env bootstrap forwards, exactly like the `${GOOGLE_OAUTH_*}`
+    Google Workspace pair, so none backs a `McpServerSettings` field.
     """
 
     POSTGRES = "postgres"
-    N8N = "n8n"
-    WORKSPACE = "workspace"
+    GOOGLE_WORKSPACE = "google-workspace"
     NOTEBOOKLM = "notebooklm"
     EXA = "exa"
     PERPLEXITY = "perplexity"
     TAVILY = "tavily"
     HOSTINGER = "hostinger"
+    GITHUB = "github"
+    CONTEXT7 = "context7"
+    GREPTILE = "greptile"
+    NUGET = "nuget"
+    JUPYTER = "jupyter"
 
 
 class McpOp(StrEnum):
@@ -113,23 +124,33 @@ class ServerSpec(msgspec.Struct, frozen=True, gc=False):
     image — and before any trailing `command` args) is the launch vector. `env` is the top-level Claude
     Code `env` object; `docker_env` carries the docker `-e` pairs. A non-empty `image` is the one
     discriminant the CONVERGE verb folds over (`is_docker`): a docker-run server's image is materialized as
-    Pulumi desired-state, a host-process server (`uvx`/`npx`/bare) carries none. Both maps are
-    `frozendict[str, str]`; values are `${MAGHZ_MCP__*}` (or bare `${GOOGLE_OAUTH_*}`) placeholder literals
-    resolved at the process boundary. `gc=False` is load-bearing: only `str`/`frozendict` fields, no cycles.
+    Pulumi desired-state, a host-process server (`uvx`/`npx`/bare) carries none. A non-empty `http_url` makes
+    the row an HTTP-transport remote (`is_http`): `_render` emits the `{type:http, url, headers}` wire shape
+    from `http_url`/`http_headers` instead of the stdio `command`/`args`/`env` triple, and `command` defaults
+    empty so such a row omits it. Both maps are `frozendict[str, str]`; values are `${MAGHZ_MCP__*}` (or bare
+    `${GOOGLE_OAUTH_*}`/`${GH_PROJECTS_TOKEN}`/`${CONTEXT7_API_KEY}`) placeholder literals resolved at the
+    process boundary. `gc=False` is load-bearing: only `str`/`frozendict` fields, no cycles.
     """
 
-    command: str
+    command: str = ""
     args: tuple[str, ...] = ()
     image: str = ""
     env: frozendict[str, str] = frozendict()
     docker_env: frozendict[str, str] = frozendict()
+    http_url: str = ""
+    http_headers: frozendict[str, str] = frozendict()
 
     @property
     def is_docker(self) -> bool:
         """Whether this server runs as a container — the CONVERGE-fold discriminant off the `image` slot."""
         return bool(self.image)
 
-    def argv(self) -> list[str]:
+    @property
+    def is_http(self) -> bool:
+        """Whether this server is an HTTP-transport remote — the `_render` discriminant for the `type:http` shape."""
+        return bool(self.http_url)
+
+    def argv(self, docker_overlay: Mapping[str, str] | None = None) -> list[str]:
         """Project the full argument vector: `args`, then the docker `-e` pairs, then the image.
 
         The `-e KEY=VAL` pairs splice between `args` and `image` so a docker-run invocation reads
@@ -140,14 +161,15 @@ class ServerSpec(msgspec.Struct, frozen=True, gc=False):
         Returns:
             The argument list committed to the server's `.mcp.json` `args` array.
         """
-        flags = [token for key, value in self.docker_env.items() for token in ("-e", f"{key}={value}")]
+        env = {**self.docker_env, **(docker_overlay or {})}
+        flags = [token for key, value in env.items() for token in ("-e", f"{key}={value}")]
         return [*self.args, *flags, *([self.image] if self.image else [])]
 
     def environ(self, overlay: Mapping[str, str]) -> dict[str, str]:
         """Project the server's env object, the static `env` overlaid by the settings-sourced `overlay`.
 
         Args:
-            overlay: The settings-sourced keys for this server (the WORKSPACE credentials dir and
+        overlay: The settings-sourced keys for this server (the Google Workspace credentials dir and
                 conditional OAuth redirect), empty for every server `_ENV_OVERLAY` does not key.
 
         Returns:
@@ -191,6 +213,7 @@ _DECODER = msgspec.json.Decoder(type=dict[str, object])
 # The committed artifact path, relative to the repository root the operator runs from. `.mcp.json` travels
 # to the VPS unchanged; the `${VAR}` placeholders resolve from that host's process environment.
 _MCP_JSON_PATH = ".mcp.json"
+_CODEX_CONFIG_PATH = ".codex/config.toml"
 
 # The `McpServerSettings` field set that backs every `${MAGHZ_MCP__<KEY>}` placeholder; VALIDATE
 # lower-cases each captured key and asserts membership here, so a placeholder whose backing field a
@@ -239,29 +262,111 @@ def _render(cfg: MaghzSettings) -> dict[str, object]:
 
     Each row projects itself: `ServerSpec.argv()` builds the argument vector (docker `-e` pairs ahead of
     the image), and `ServerSpec.environ(overlay)` projects the env, overlaid by the lone settings-sourced
-    `_ENV_OVERLAY` row — the WORKSPACE credentials dir from `cfg.integrations.workspace_token_dir` plus a
-    conditional `GOOGLE_OAUTH_REDIRECT_URI` from `cfg.integrations.workspace_oauth_redirect_uri`. No
-    per-kind `match` and no `SecretStr.get_secret_value()`: secret-bearing keys emit their placeholder
-    literals from the table, so the file never carries a resolved secret. The fold is total over the closed
-    fleet, so the projection is a pure builtin map, not a rail — a malformed row cannot exist by
-    construction (the `frozendict` keys equal `ServerKind`), so there is no admission fault to lift.
+    `_ENV_OVERLAY` row — the Google Workspace credentials-dir placeholder plus a conditional
+    `GOOGLE_OAUTH_REDIRECT_URI` from `cfg.integrations.workspace_oauth_redirect_uri`. An
+    `is_http` row instead emits the `{type:http, url, headers}` shape off `http_url`/`http_headers` — the
+    GitHub and Context7 remotes' wire form. No per-kind `match` and no `SecretStr.get_secret_value()`:
+    secret-bearing keys emit their placeholder literals from the table, so the file never carries a resolved
+    secret. The fold is total over the closed fleet, so the projection is a pure builtin map, not a rail — a
+    malformed row cannot exist by construction (the `frozendict` keys equal `ServerKind`), so there is no
+    admission fault to lift.
 
     Args:
         cfg: The validated settings; `cfg.integrations` owns the literal workspace credentials dir and the
-            conditional OAuth redirect URI the WORKSPACE overlay reads.
+            conditional OAuth redirect URI the Google Workspace overlay reads.
 
     Returns:
         `{"mcpServers": {...}}` carrying one entry per `ServerKind` in declaration order.
     """
-    servers = {
-        kind.value: {
-            "command": (spec := _SERVER_TABLE[kind]).command,
-            "args": spec.argv(),
-            "env": spec.environ(overlay(cfg) if (overlay := _ENV_OVERLAY.get(kind)) else {}),
-        }
-        for kind in ServerKind
-    }
+    servers: dict[str, object] = {}
+    for kind in ServerKind:
+        spec = _SERVER_TABLE[kind]
+        overlay = _ENV_OVERLAY.get(kind)
+        docker_overlay = _DOCKER_ENV_OVERLAY.get(kind)
+        servers[kind.value] = (
+            {"type": "http", "url": spec.http_url, "headers": dict(spec.http_headers)}
+            if spec.is_http
+            else {
+                "command": spec.command,
+                "args": spec.argv(docker_overlay(cfg) if docker_overlay else None),
+                "env": spec.environ(overlay(cfg) if overlay else {}),
+            }
+        )
     return {"mcpServers": servers}
+
+
+def _render_codex(cfg: MaghzSettings) -> str:
+    lines = ["# Generated by `maghz mcp generate`; edit admin/mcp/ops.py instead.", ""]
+    for kind in ServerKind:
+        lines.extend(_codex_server(kind, _SERVER_TABLE[kind], cfg))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _codex_server(kind: ServerKind, spec: ServerSpec, cfg: MaghzSettings) -> list[str]:
+    header = [f"[mcp_servers.{_toml_key(kind.value)}]"]
+    if spec.is_http:
+        rows = [*header, f"url = {_toml_str(spec.http_url)}"]
+        if bearer := _bearer_env(spec.http_headers):
+            return [*rows, f"bearer_token_env_var = {_toml_str(bearer)}"]
+        if headers := _env_headers(spec.http_headers):
+            return [*rows, f"env_http_headers = {_toml_inline(headers)}"]
+        return rows
+    match kind:
+        case ServerKind.POSTGRES:
+            return [
+                *header,
+                'command = "bash"',
+                "args = "
+                + _toml_array((
+                    "-lc",
+                    'DATABASE_URI="$MAGHZ_MCP__DATABASE_URI" UV_PYTHON_DOWNLOADS=automatic exec uvx --python 3.13 postgres-mcp --access-mode=restricted',
+                )),
+                'env_vars = ["MAGHZ_MCP__DATABASE_URI"]',
+            ]
+        case _:
+            rows = [*header, f"command = {_toml_str(spec.command)}"]
+            if spec.args:
+                rows.append("args = " + _toml_array(spec.args))
+            overlay = _ENV_OVERLAY.get(kind)
+            env = spec.environ(overlay(cfg) if overlay else {})
+            env_vars = tuple(name for value in env.values() if (name := _placeholder_name(value)))
+            if env_vars:
+                rows.append("env_vars = " + _toml_array(env_vars))
+            return rows
+
+
+def _toml_key(value: str) -> str:
+    return value if re.fullmatch(r"[A-Za-z0-9_-]+", value) else json.dumps(value)
+
+
+def _toml_str(value: str) -> str:
+    return json.dumps(value)
+
+
+def _toml_array(values: tuple[str, ...]) -> str:
+    return "[" + ", ".join(_toml_str(value) for value in values) + "]"
+
+
+def _toml_inline(values: Mapping[str, str]) -> str:
+    return "{ " + ", ".join(f"{_toml_str(key)} = {_toml_str(value)}" for key, value in values.items()) + " }"
+
+
+def _placeholder_name(value: str) -> str | None:
+    matched = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", value)
+    return matched.group(1) if matched else None
+
+
+def _env_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    return {key: name for key, value in headers.items() if (name := _placeholder_name(value))}
+
+
+def _bearer_env(headers: Mapping[str, str]) -> str | None:
+    value = headers.get("Authorization")
+    if value is None:
+        return None
+    matched = re.fullmatch(r"Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}", value)
+    return matched.group(1) if matched else None
 
 
 async def _generate(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
@@ -281,7 +386,14 @@ async def _generate(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
         `Error(BoundaryFault(boundary="mcp.write"))` when the write boundary raises.
     """
     payload = msgspec.json.format(_ENCODER.encode(_render(cfg)), indent=2)
-    written = await async_boundary("mcp.write", lambda: anyio.Path(_MCP_JSON_PATH).write_bytes(payload), catch=OSError)
+    codex = _render_codex(cfg).encode()
+
+    async def _write_all() -> None:
+        await anyio.Path(_MCP_JSON_PATH).write_bytes(payload)
+        await anyio.Path(_CODEX_CONFIG_PATH).parent.mkdir(parents=True, exist_ok=True)
+        await anyio.Path(_CODEX_CONFIG_PATH).write_bytes(codex)
+
+    written = await async_boundary("mcp.write", _write_all, catch=OSError)
     return written.map(lambda _bytes: _detail(McpOp.GENERATE))
 
 
@@ -508,22 +620,21 @@ def _detail(op: McpOp, *, drift: tuple[str, ...] = (), result: str = "") -> McpC
 
 
 def _workspace_overlay(cfg: MaghzSettings) -> dict[str, str]:
-    """The WORKSPACE settings overlay: the canonical credentials-dir key and the conditional OAuth redirect.
+    """The Google Workspace settings overlay: the canonical credentials-dir key and the conditional OAuth redirect.
 
-    `WORKSPACE_MCP_CREDENTIALS_DIR` is the server's canonical credentials-dir env key, sourced from
-    `cfg.integrations.workspace_token_dir`; `GOOGLE_OAUTH_REDIRECT_URI` is emitted only when
-    `cfg.integrations.workspace_oauth_redirect_uri` is set. Both are filesystem/URL literals the
-    integrations group owns, never secrets — no placeholder, the resolved value is committed.
+    `WORKSPACE_MCP_CREDENTIALS_DIR` is the server's canonical credentials-dir env key, projected as a
+    machine-level placeholder so Claude, Codex, and project MCP sessions share one cache. `GOOGLE_OAUTH_REDIRECT_URI`
+    is emitted only when `cfg.integrations.workspace_oauth_redirect_uri` is set.
 
     Args:
         cfg: The validated settings; `cfg.integrations` owns both values.
 
     Returns:
-        The WORKSPACE-only env overlay folded onto the static `env` by `ServerSpec.environ`.
+        The Google Workspace-only env overlay folded onto the static `env` by `ServerSpec.environ`.
     """
-    redirect = cfg.integrations.workspace_oauth_redirect_uri
+    redirect = str(cfg.integrations.workspace_oauth_redirect_uri or "")
     return {
-        "WORKSPACE_MCP_CREDENTIALS_DIR": str(cfg.integrations.workspace_token_dir),
+        "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}",
         **({"GOOGLE_OAUTH_REDIRECT_URI": redirect} if redirect else {}),
     }
 
@@ -534,9 +645,7 @@ def _workspace_overlay(cfg: MaghzSettings) -> dict[str, str]:
 # `ServerSpec` runtime class (Python overlay law: a runtime table follows the model it builds). Each row is
 # the EXCLUSIVE invocation surface for its server; `env`/`docker_env` values are the `${MAGHZ_MCP__*}`
 # placeholder literals committed to `.mcp.json` verbatim, except `GOOGLE_OAUTH_*` which emit bare per the
-# integrations seam. The N8N row splits the docker run-options (`args`) from the `image` so the `-e` pairs
-# splice ahead of the image where Docker requires them, and its non-empty `image` is the one CONVERGE
-# materializes. The key set equals `ServerKind` exactly, so direct subscription is total.
+# integrations seam. The key set equals `ServerKind` exactly, so direct subscription is total.
 _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     ServerKind.POSTGRES: ServerSpec(
         # Pin Python 3.13: postgres-mcp's psycopg2-binary has no wheel for the bleeding-edge system 3.15, so an
@@ -546,37 +655,45 @@ _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
         args=("--python", "3.13", "postgres-mcp", "--access-mode=restricted"),
         env=frozendict({"DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}", "UV_PYTHON_DOWNLOADS": "automatic"}),
     ),
-    ServerKind.N8N: ServerSpec(
-        command="docker",
-        args=("run", "-i", "--rm", "--init"),
-        image="ghcr.io/czlonkowski/n8n-mcp:latest",
-        docker_env=frozendict({
-            "MCP_MODE": "stdio",
-            "LOG_LEVEL": "error",
-            "DISABLE_CONSOLE_OUTPUT": "true",
-            "N8N_API_URL": "${MAGHZ_MCP__N8N_API_URL}",
-            "N8N_API_KEY": "${MAGHZ_MCP__N8N_API_KEY}",
-        }),
-    ),
-    ServerKind.WORKSPACE: ServerSpec(
-        command="uvx",
-        args=("workspace-mcp", "--tool-tier", "extended"),
+    ServerKind.GOOGLE_WORKSPACE: ServerSpec(
+        command="forge-workspace-mcp",
+        args=("--tool-tier", "extended"),
         env=frozendict({"GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}", "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}"}),
     ),
     ServerKind.NOTEBOOKLM: ServerSpec(command="notebooklm-mcp"),
-    ServerKind.EXA: ServerSpec(command="npx", args=("-y", "exa-mcp-server"), env=frozendict({"EXA_API_KEY": "${EXA_API_KEY}"})),
+    ServerKind.EXA: ServerSpec(
+        http_url="https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa,web_search_advanced_exa,agent_tools",
+        http_headers=frozendict({"x-api-key": "${EXA_API_KEY}"}),
+    ),
     ServerKind.PERPLEXITY: ServerSpec(
         command="npx", args=("-y", "@perplexity-ai/mcp-server"), env=frozendict({"PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"})
     ),
     ServerKind.TAVILY: ServerSpec(command="npx", args=("-y", "tavily-mcp@latest"), env=frozendict({"TAVILY_API_KEY": "${TAVILY_API_KEY}"})),
-    ServerKind.HOSTINGER: ServerSpec(command="npx", args=("-y", "hostinger-api-mcp"), env=frozendict({"HOSTINGER_API_TOKEN": "${HOSTINGER_TOKEN}"})),
+    ServerKind.HOSTINGER: ServerSpec(
+        command="npx", args=("-y", "hostinger-api-mcp"), env=frozendict({"HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"})
+    ),
+    ServerKind.GITHUB: ServerSpec(
+        http_url="https://api.githubcopilot.com/mcp/", http_headers=frozendict({"Authorization": "Bearer ${GH_PROJECTS_TOKEN}"})
+    ),
+    ServerKind.CONTEXT7: ServerSpec(http_url="https://mcp.context7.com/mcp", http_headers=frozendict({"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"})),
+    # HTTP code-review remote: whole-repo semantic review over the indexed codebase. Bears the bare
+    # `${GREPTILE_API_KEY}` the env bootstrap forwards (the github/context7 placeholder shape), so it backs no
+    # `McpServerSettings` field and resolves at the `op run -- claude` boundary.
+    ServerKind.GREPTILE: ServerSpec(http_url="https://api.greptile.com/mcp", http_headers=frozendict({"Authorization": "Bearer ${GREPTILE_API_KEY}"})),
+    # Host-process package-intelligence server: the Forge-provided `nuget-mcp` launcher runs NuGet.Mcp.Server
+    # via `dotnet tool exec` (the launcher fixes DOTNET_ROOT for the .NET 10 apphost). No secret, no image, no
+    # http — a bare command like NOTEBOOKLM. Carried for parity wherever a session has the .NET 10 SDK; inert
+    # where the `nuget-mcp` launcher is absent (e.g. the Postgres-only VPS), which an MCP client tolerates.
+    ServerKind.NUGET: ServerSpec(command="nuget-mcp"),
+    ServerKind.JUPYTER: ServerSpec(command="forge-jupyter-mcp"),
 })
 
 # The lone settings-sourced env overlay, keyed by `ServerKind`; an absent key resolves to no overlay
-# (`_render` projects an empty map for every kind `.get` misses). Only WORKSPACE overlays the static `env`
+# (`_render` projects an empty map for every kind `.get` misses). Only Google Workspace overlays the static `env`
 # (with filesystem/URL literals the integrations group owns). This is the DERIVED collapse of the former
 # per-kind `match` arm into one table row.
-_ENV_OVERLAY: frozendict[ServerKind, Callable[[MaghzSettings], dict[str, str]]] = frozendict({ServerKind.WORKSPACE: _workspace_overlay})
+_ENV_OVERLAY: frozendict[ServerKind, Callable[[MaghzSettings], dict[str, str]]] = frozendict({ServerKind.GOOGLE_WORKSPACE: _workspace_overlay})
+_DOCKER_ENV_OVERLAY: frozendict[ServerKind, Callable[[MaghzSettings], dict[str, str]]] = frozendict()
 
 # op -> its builder on the typed `RuntimeRail[McpConfigDetail]` rail. The key set equals `McpOp` exactly, so
 # `mcp`'s subscription is total — `mcp` runs `await _BUILD[op](cfg)` with no `match`/`assert_never` ceremony

@@ -32,13 +32,13 @@ Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW
 | `sync`               | Reconcile Heptabase cards against the ledger (`diff` the drift, `generate` the writes).                     |
 | `cloud`              | rclone off-site backup: `pg_dump` plus bisync to the configured remotes, and restore.                       |
 | `n8n`                | n8n workflow file export/import and an API status probe.                                                    |
-| `mcp`                | The `.mcp.json` fleet as IaC: `generate`, `validate` (every `${MAGHZ_MCP__*}` placeholder is backed), `diff` against the committed file, `watch` to regenerate on change, `converge` the docker-run server images. |
+| `mcp`                | The Claude `.mcp.json` and Codex `.codex/config.toml` fleet as IaC: `generate`, `validate` (every `${MAGHZ_MCP__*}` placeholder is backed), `diff` against the committed file, `watch` to regenerate on change, `converge` the docker-run server images. |
 | `exec` / `deploy`    | VPS operation over asyncssh: `exec` a command or `deploy` the stack, pushing the working tree and running `maghz` on the host. |
 | `automation run`     | Drive one automation spec (`--spec`); the `trigger` selects the watch/schedule/manual lane. The agent skills it dispatches are pending. |
 
 ## MCP fleet
 
-`admin/mcp/ops.py` is the typed owner of the 8-server fleet and generates the committed `${VAR}`-placeholder `.mcp.json`; secrets resolve at the `op run -- claude` boundary and are never written to the file.
+`admin/mcp/ops.py` is the typed owner of the 12-server fleet and generates the committed `${VAR}`-placeholder Claude `.mcp.json` plus Codex `.codex/config.toml`; secrets resolve from environment variables and are never written to either file.
 
 | [SERVER]     | [REACH]                          | [STATUS]                                                |
 | ------------ | -------------------------------- | ------------------------------------------------------- |
@@ -46,10 +46,14 @@ Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW
 | `exa`        | web search                       | live                                                    |
 | `perplexity` | cited research                   | live                                                    |
 | `tavily`     | web search                       | live                                                    |
-| `hostinger`  | VPS management                   | live                                                    |
-| `workspace`  | Google Workspace                 | pending the Google OAuth credentials                    |
-| `n8n`        | workflow automation              | pending the n8n API key                                 |
+| `hostinger`  | VPS management                   | live (`${HOSTINGER_API_TOKEN}`)                         |
+| `google-workspace` | Google Workspace          | OAuth client configured; each account may need first-use consent |
 | `notebooklm` | source ingestion                 | local cookie auth                                       |
+| `github`     | repository API                   | live (HTTP, `${GH_PROJECTS_TOKEN}`)                     |
+| `context7`   | live library docs                | live (HTTP, `${CONTEXT7_API_KEY}`)                      |
+| `nuget`      | NuGet package intelligence       | local (`nuget-mcp`; needs .NET 10 SDK; inert on VPS)    |
+| `greptile`   | whole-repo semantic code review  | live (HTTP, `${GREPTILE_API_KEY}`)                     |
+| `jupyter`    | notebook research                | local (`forge-jupyter-mcp`; needs a JupyterLab server)  |
 
 ## Bring-up
 
@@ -81,4 +85,4 @@ Secret flow: `op inject` runs at `home-manager switch` against `~/.config/op/env
 | Container runtime    | `modules/home/programs/container-tools/colima.nix` (`colima`, `docker`), `modules/home/environments/containers.nix` (session vars) |
 | Pulumi / Node / Git  | `…/languages/dev-tools.nix` (`pulumi`), `…/languages/node-tools.nix` (`node`/`npx`), `…/git-tools/` (`git`, `gh`) |
 
-Gaps Forge does not cover: `GOOGLE_OAUTH_*` and `N8N_API_KEY` are absent from the vault template; `ollama` has no Forge owner; Forge is local-macOS only and provisions no remote/VPS box.
+Gaps Forge does not cover: `ollama` has no Forge owner; Forge is local-macOS only and provisions no remote/VPS box.
