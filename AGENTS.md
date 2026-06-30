@@ -53,6 +53,8 @@ MCP servers extend reach without owning truth. The 12-server fleet is owned by `
 
 Remote Workspace automation uses `gws` with `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/maghz-agent/.config/gws/credentials.json`; the `google-workspace` MCP remains the interactive MCP surface, while `gws` owns batch/headless Workspace scripts.
 
+Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth remains local-first until an official portable/headless credential flow is verified. Do not copy opaque `~/.gemini` auth state to the VPS by default.
+
 ## [06]-[TOOLING]
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.

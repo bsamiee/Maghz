@@ -1,186 +1,119 @@
-"""agy boundary shim — the single modal entrypoint over the Antigravity CLI.
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.15"
+# dependencies = [
+#   "anyio>=4.0",
+#   "msgspec>=0.19",
+#   "pydantic>=2.0",
+#   "pydantic-settings>=2.0",
+# ]
+# ///
+"""Antigravity CLI JSON wrapper for Claude/Codex skills."""
 
-Delegates entirely to the closed-source `agy` Go binary: one synchronous `prompt` op (covers review,
-research, summarization, adversarial critique — all are `agy -p`) and the asynchronous `task` lifecycle
-(`task`/`status`/`cancel`/`result`). Maps exit code + stderr patterns to a closed `AgyFault` vocabulary onto
-the one `Result[AgyReceipt, AgyFail]` rail chosen at the spawn boundary and carried through the match, then
-folds that rail to the `AgyReceipt`/`AgyFail` egress pair encoded to stdout. The spawn fence composes the
-canonical `guard(RetryClass.PROC)` resilience owner (transient `OSError` flaps retried under the runtime
-`POLICY[PROC]` schedule) inside the outer `anyio.move_on_after(agy_process_timeout_s)` deadline; the surviving
-escape and the non-zero exit are classified to `AgyFault`, never re-deriving the retry locally. Run via
-`uv run -m`; it imports `admin.runtime`/`admin.settings`, so it is not a standalone `--script`.
-"""
-
-from collections.abc import Sequence
-import functools
+import argparse
+from enum import StrEnum
+import shutil
 import sys
-from types import MappingProxyType
-from typing import assert_never, Literal
+from typing import assert_never
 
 import anyio
-from expression import Error, Nothing, Ok, Option, Result, Some
 import msgspec
-
-from admin.runtime import guard, RetryClass
-from admin.settings import settings
-
-
-# --- [TYPES] ---------------------------------------------------------------------------
-
-type AgyOp = Literal["prompt", "task", "status", "cancel", "result"]
-type AgyFault = Literal["binary_not_found", "auth_required", "quota_exceeded", "process_error"]
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# --- [CONSTANTS] -----------------------------------------------------------------------
-
-_TIER: MappingProxyType[str, str] = MappingProxyType(
-    {
-        "pro": "gemini-3-pro",
-        "flash": "gemini-3-flash",
-        "nano": "gemini-3-nano",
-    }
-)
+class _Op(StrEnum):
+    PROMPT = "prompt"
+    MODELS = "models"
 
 
-# --- [MODELS] --------------------------------------------------------------------------
+class _Fault(StrEnum):
+    AUTH = "auth_required"
+    BINARY = "binary_not_found"
+    PROCESS = "process_error"
+    QUOTA = "quota_exceeded"
 
 
-class AgyReceipt(msgspec.Struct, frozen=True, gc=False):
-    """Success arm: prompt output text and/or task identifier, each absent for ops that do not carry it."""
+class _Settings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore", frozen=True)
 
-    op: AgyOp
-    output: Option[str]
-    task_id: Option[str]
+    agy_bin: str = Field(default="agy", validation_alias="AGY_BIN")
+    agy_model: str = Field(default="Gemini 3.1 Pro (High)", validation_alias="AGY_MODEL")
+    agy_print_timeout: str = Field(default="5m", validation_alias="AGY_PRINT_TIMEOUT")
 
 
-class AgyFail(msgspec.Struct, frozen=True, gc=False):
-    """Fault arm: the closed fault discriminant plus the raw stderr/exception detail, never optional."""
+class _Receipt(msgspec.Struct, frozen=True, gc=False):
+    op: _Op
+    output: str
 
-    op: AgyOp
-    fault: AgyFault
+
+class _Fail(msgspec.Struct, frozen=True, gc=False):
+    op: _Op
+    fault: _Fault
     detail: str
 
 
-# --- [BOUNDARIES] ----------------------------------------------------------------------
+def _classify(text: str) -> _Fault:
+    lowered = text.lower()
+    return (
+        _Fault.AUTH
+        if any(token in lowered for token in ("sign in", "login", "unauthorized", "please sign in", "auth"))
+        else _Fault.QUOTA
+        if any(token in lowered for token in ("quota", "rate limit", "exhausted"))
+        else _Fault.PROCESS
+    )
 
 
-def _egress(outcome: AgyReceipt | AgyFail) -> bytes:
-    """Encode the egress arm to stdout JSON, collapsing each `Option[str]` field to msgspec-native `str | None`.
-
-    The struct fields are lifted to a plain `dict` through `msgspec.structs.asdict` and each `Option[str]`
-    is projected to its `str | None` payload before `msgspec.json.encode`. msgspec cannot introspect an
-    `expression.Option[str]` struct-field type (the generic alias has no `__parameters__`), so neither a
-    typed `Encoder` over the struct nor a `dec_hook`-equipped `Decoder(type=AgyReceipt)` can be built —
-    the dict projection is the one viable egress, and the consumer decodes the wire as `str | None` and
-    lifts to `Option` on its own side. The struct type still distinguishes the arm by presence of `fault`.
-
-    Returns:
-        The egress JSON bytes with `Option[str]` fields collapsed to `str | None`.
-    """
-    fields = {name: value.default_value(None) if isinstance(value, Option) else value for name, value in msgspec.structs.asdict(outcome).items()}
-    return msgspec.json.encode(fields)
+def _emit(outcome: _Receipt | _Fail) -> int:
+    sys.stdout.buffer.write(msgspec.json.encode(outcome))
+    sys.stdout.buffer.write(b"\n")
+    return 0
 
 
-# --- [OPERATIONS] ----------------------------------------------------------------------
-
-
-def _classify(returncode: int, stderr: str) -> AgyFault:
-    """Map a non-zero exit + stderr pattern to the closed fault vocabulary; everything else is transient."""
-    lowered = stderr.lower()
-    match returncode:
-        case 1 if "auth" in lowered or "login" in lowered or "unauthorized" in lowered:
-            return "auth_required"
-        case 2 if "quota" in lowered or "rate limit" in lowered or "exhausted" in lowered:
-            return "quota_exceeded"
-        case _:
-            return "process_error"
-
-
-def _receipt(op: AgyOp, stdout: str) -> AgyReceipt:
-    """Distribute stdout into the typed optionals by op: prompt carries output, task ops carry a task id."""
-    match op:
-        case "prompt":
-            return AgyReceipt(op=op, output=Some(stdout), task_id=Nothing)
-        case "task" | "status":
-            return AgyReceipt(op=op, output=Nothing, task_id=Some(stdout))
-        case "result":
-            return AgyReceipt(op=op, output=Some(stdout), task_id=Nothing)
-        case "cancel":
-            return AgyReceipt(op=op, output=Nothing, task_id=Nothing)
-        case _:
-            assert_never(op)
-
-
-def _command(op: AgyOp, args: Sequence[str]) -> Sequence[str]:
-    """Build the `agy` argv for the op, resolving `--model <tier>` aliases against the `_TIER` table."""
-    binary = str(settings().integrations.agy_binary)
-    match op:
-        case "prompt":
-            head, rest = (args[0], args[1:]) if args else ("", ())
-            tier = next((_TIER.get(rest[idx + 1], rest[idx + 1]) for idx, tok in enumerate(rest) if tok == "--model" and idx + 1 < len(rest)), None)
-            return [binary, "-p", head, *(("--model", tier) if tier else ())]
-        case "task":
-            return [binary, "task", "create", *args]
-        case "status" | "result" | "cancel":
-            return [binary, "task", op, *args]
-        case _:
-            assert_never(op)
-
-
-async def _invoke(op: AgyOp, cmd: Sequence[str]) -> Result[AgyReceipt, AgyFail]:
-    """Run the binary under the deadline scope and grade the outcome onto the `Result` rail.
-
-    The spawn composes the canonical `guard(RetryClass.PROC)` resilience owner — transient `OSError`
-    spawn flaps retry under the runtime `POLICY[PROC]` schedule — inside the outer
-    `anyio.move_on_after(agy_process_timeout_s)` deadline (deadline outermost, retry within, raw spawn
-    innermost), so no transient predicate or retry decorator is re-derived here. The rail is chosen
-    once: a missing binary (terminal `FileNotFoundError`, surfaced after the retry budget exhausts the
-    deterministic spawn failure), a tripped deadline, and a non-zero exit each lift to
-    `Error(AgyFail(...))`; a clean exit lifts to `Ok(_receipt(...))`. The caller folds the rail to the
-    egress pair, so no arm is re-projected mid-pipeline.
-
-    Returns:
-        `Ok(AgyReceipt)` on a clean exit, or `Error(AgyFail)` carrying the closed fault and its detail.
-    """
+async def _run(op: _Op, argv: list[str]) -> int:
     try:
-        with anyio.move_on_after(settings().integrations.agy_process_timeout_s) as scope:
-            completed = await guard(RetryClass.PROC)(anyio.run_process, cmd, check=False)
+        completed = await anyio.run_process(argv, check=False)
     except FileNotFoundError as exc:
-        return Error(AgyFail(op=op, fault="binary_not_found", detail=str(exc)))
-    if scope.cancelled_caught:
-        return Error(AgyFail(op=op, fault="process_error", detail="agy call exceeded agy_process_timeout_s budget"))
+        return _emit(_Fail(op=op, fault=_Fault.BINARY, detail=str(exc)))
+
     stdout = completed.stdout.decode(errors="replace").strip()
     stderr = completed.stderr.decode(errors="replace").strip()
-    if completed.returncode != 0:
-        return Error(AgyFail(op=op, fault=_classify(completed.returncode, stderr), detail=stderr or stdout))
-    return Ok(_receipt(op, stdout))
+    return (
+        _emit(_Fail(op=op, fault=_classify(stderr or stdout), detail=stderr or stdout))
+        if completed.returncode != 0
+        else _emit(_Receipt(op=op, output=stdout))
+    )
 
 
-async def agy(op: AgyOp, *, args: Sequence[str]) -> None:
-    """The one modal entrypoint: invoke the op, fold the `Result` rail, encode the arm to stdout."""
-    match await _invoke(op, _command(op, args)):
-        case Result(tag="ok", ok=receipt):
-            outcome: AgyReceipt | AgyFail = receipt
-        case Result(error=fail):
-            outcome = fail
-    sys.stdout.buffer.write(_egress(outcome))
-    sys.stdout.buffer.write(b"\n")
+async def _main(argv: list[str] | None = None) -> int:
+    settings = _Settings()
+    parser = argparse.ArgumentParser(prog="agy.py")
+    sub = parser.add_subparsers(dest="op", required=True)
 
+    prompt = sub.add_parser(_Op.PROMPT.value)
+    prompt.add_argument("text")
+    prompt.add_argument("--timeout", default=settings.agy_print_timeout)
+    prompt.add_argument("--add-dir", action="append", default=[])
 
-# --- [COMPOSITION] ---------------------------------------------------------------------
+    sub.add_parser(_Op.MODELS.value)
 
+    ns = parser.parse_args(argv)
+    op = _Op(ns.op)
+    if shutil.which(settings.agy_bin) is None:
+        return _emit(_Fail(op=op, fault=_Fault.BINARY, detail=f"{settings.agy_bin} not found on PATH"))
 
-def main() -> int:
-    """CLI boundary: parse `<op> <args...>` and drive the modal entrypoint via anyio.run."""
-    match sys.argv[1:]:
-        case ["prompt" | "task" | "status" | "cancel" | "result" as op, *rest]:
-            anyio.run(functools.partial(agy, op, args=rest))
-            return 0
-        case _:
-            sys.stderr.write(__doc__ or "")
-            sys.stderr.write("\nusage: agy.py <prompt|task|status|cancel|result> <args...>\n")
-            return 1
+    match op:
+        case _Op.PROMPT:
+            cmd = [settings.agy_bin, "--print", ns.text, "--print-timeout", ns.timeout]
+            cmd.extend(part for path in ns.add_dir for part in ("--add-dir", path))
+            if settings.agy_model:
+                cmd.extend(("--model", settings.agy_model))
+            return await _run(op, cmd)
+        case _Op.MODELS:
+            return await _run(op, [settings.agy_bin, "models"])
+        case never:
+            assert_never(never)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(anyio.run(_main))

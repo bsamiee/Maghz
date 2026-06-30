@@ -1,49 +1,71 @@
 ---
 name: agy
 user-invocable: true
-description: >-
-  Drives the Antigravity (`agy`) CLI for Gemini 3 reasoning: synchronous prompts (review, research, summarization, adversarial critique) and the asynchronous background-task lifecycle. Use when an agent needs Gemini Pro/Flash/Nano reasoning or wants to delegate a long autonomous job to `agy task`.
+description: Use Antigravity CLI (`agy`) for bounded Gemini/Google Ultra sub-calls: visual and multimodal reasoning, image prompt work, broad synthesis, ambiguity reduction, alternate approaches, and explicit Gemini or Antigravity requests.
 ---
 
-# [H1][AGY]
+# Antigravity (`agy`)
 
-Invoke the `agy` Antigravity CLI through one modal Python shim that maps the binary outcome to a typed `AgyReceipt`/`AgyFail` JSON egress on stdout.
+Use Antigravity as an external Gemini call when it adds capability to the main agent's local tools. The wrapper is print-only: it asks `agy` for one bounded answer using the default strongest Gemini profile and returns one JSON object.
 
-[IMPORTANT] Invoke the shim by path under `uv run` from the project root (`uv run $CLAUDE_HOME/skills/agy/scripts/agy.py <op> ...`) so the root is on `sys.path` and the shim's `from admin.settings import settings` import resolves; the shim then reads `settings().integrations.agy_binary` (the binary path) and `settings().integrations.agy_process_timeout_s` (the `move_on_after` budget) at call time. OAuth is authoritative: `agy auth login` (`--no-browser` on a headless VPS) must complete once before any op succeeds.
+## Good Fits
 
-## [01]-[OPS]
+- Multimodal reasoning over screenshots, generated images, UI states, diagrams, visual diffs, or image-prompt drafts.
+- Broad synthesis across competing ideas, ambiguous tradeoffs, product direction, research notes, or long-context design material.
+- Ambiguity reduction: turn vague requirements into crisp constraints, edge cases, and clarifying questions.
+- Alternative approaches, counterexamples, risk inventories, and blind spots when local source evidence is already gathered.
+- Redacted data or log distillation in a scratch directory when pattern finding benefits from a separate model pass.
+- Isolated proof-of-concept ideation before the main agent writes production code.
+- Explicit user requests for Gemini, Antigravity, Google Ultra, Nano Banana-style image judgment, or a second external model.
 
-| [OP]   | [agy_SURFACE]           | [SYNC] | [RECEIPT_FIELD]        |
-| ------ | ----------------------- | ------ | ---------------------- |
-| prompt | `agy -p "<text>"`       | yes    | `output: Some(text)`   |
-| task   | `agy task create "<…>"` | no     | `task_id: Some(id)`    |
-| status | `agy task status <id>`  | no     | `task_id: Some(state)` |
-| result | `agy task result <id>`  | no     | `output: Some(text)`   |
-| cancel | `agy task cancel <id>`  | no     | both `Nothing`         |
+## Avoid
 
-There is no `review` op. Review, research, summarization, and adversarial critique are all prompt content — one `agy -p` invocation. The calling agent builds the prompt; the shim does not distinguish prompt intent.
+- Secrets, OAuth codes, private tokens, raw credential files, or unredacted sensitive logs.
+- Authoritative facts that should come from local source, official docs, configured MCPs, or repository-owned commands.
+- Routine edits, formatting, git operations, package upgrades, or checks that local tooling already owns.
+- Background task management or shell-login subcommands; this wrapper supports only `prompt` and `models`.
 
-## [02]-[USAGE]
+## Commands
 
-```bash
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py prompt "summarize this design tradeoff: ..." --model pro
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py prompt "give a fast factual answer: ..." --model flash
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py task "refactor module X end-to-end and report"
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py status <task-id>
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py result <task-id>
-uv run $CLAUDE_HOME/skills/agy/scripts/agy.py cancel <task-id>
+Run from this skill directory:
+
+```sh
+uv run scripts/agy.py models
+uv run scripts/agy.py prompt "Compare these two approaches and return the top 3 tradeoffs." --timeout 5m
+uv run scripts/agy.py prompt "Assess this screenshot and suggest concrete UI changes." --add-dir "$PWD" --timeout 10m
 ```
 
-The op is the first positional; `prompt` takes the prompt text next, then an optional `--model <tier>`. Task ops take the task id as their single positional.
+Normal prompt calls use `Gemini 3.1 Pro (High)` through the wrapper. Agents do not choose models in ordinary use; `models` is for capability accounting, diagnostics, and maintaining this skill. Use `--add-dir` only for bounded directories that help answer the prompt. The wrapper never asks `agy` to edit files.
 
-## [03]-[MODEL_TIER]
+For native Antigravity sessions, use `agy` directly in a real TTY. Direct CLI surfaces include `--prompt-interactive`, `--continue`, `--conversation`, `--sandbox`, `plugin`, `update`, and `changelog`; the wrapper remains one-shot and print-only.
 
-`--model <tier>` resolves the tier alias to the Gemini model id through the shim's `_TIER` table: `pro` -> `gemini-3-pro`, `flash` -> `gemini-3-flash`, `nano` -> `gemini-3-nano`. An unrecognized token passes through verbatim so explicit model ids still work. The flag is opt-in: when no `--model` is given the shim emits no `--model` argv and `agy` applies its own default; pass `--model pro` for deepest reasoning, `--model flash` for latency-sensitive inline lookups, `--model nano` for trivial classification.
+## Raw CLI Escalation
 
-## [04]-[OUTPUT]
+Use the wrapper for one-shot answers. Use raw interactive `agy` in a real TTY when the task needs an ongoing conversation, workspace tool permissions, conversation resume, plugin management, or sandboxed project work. Do not bypass tool permissions unless the user explicitly asks for that exact mode.
 
-stdout is one JSON object. Success is `AgyReceipt` (`op`, `output`, `task_id`); failure is `AgyFail` (`op`, `fault`, `detail`). The arm is distinguished by presence of `fault`. `fault` is one of `binary_not_found`, `auth_required`, `quota_exceeded`, `process_error`. There is no `timeout` fault — a deadline trip maps to `process_error`.
+## Prompt Shape
 
-## [05]-[AUTH_AND_VPS]
+- State the task, the relevant context, and the exact output shape.
+- Include constraints that matter: target audience, files already inspected, limits, and what not to assume.
+- Ask for ranked options, deltas, concrete recommendations, or a direct answer instead of open-ended commentary.
+- Keep the prompt self-contained; do not assume Antigravity can see the current conversation unless you pass the context explicitly.
 
-First auth on the local machine: `agy auth login`. On a headless VPS: `agy auth login --no-browser` emits a URL + device code; complete consent in a desktop browser. The token caches under `$HOME/.config/antigravity/` (outside the repo; no gitignore rule needed) and persists across invocations. When `agy` returns an auth-expiry exit, the shim emits `AgyFail(fault="auth_required", ...)`; surface that as a human action item. Tune the per-call budget with `MAGHZ_INTEGRATIONS__AGY_PROCESS_TIMEOUT_S` for long autonomous tasks.
+## Result Handling
+
+Success:
+
+```json
+{"op":"prompt","output":"..."}
+```
+
+Failure:
+
+```json
+{"op":"prompt","fault":"auth_required","detail":"..."}
+```
+
+Faults are `binary_not_found`, `auth_required`, `quota_exceeded`, or `process_error`. Treat output as advisory until local source, official docs, MCP output, or user intent confirms it.
+
+`AGY_BIN` overrides the binary path and defaults to `agy`. `AGY_MODEL` overrides the hidden default model and defaults to `Gemini 3.1 Pro (High)`. `AGY_PRINT_TIMEOUT` overrides the default timeout and defaults to `5m`.
+
+Current Antigravity sign-in starts from interactive `agy` in a real TTY. Complete Google OAuth as `b.samiee93@gmail.com`.
