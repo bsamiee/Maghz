@@ -39,7 +39,6 @@ from contextlib import asynccontextmanager
 from enum import StrEnum
 import itertools
 import operator
-from os import getenv
 from pathlib import Path, PurePosixPath
 import shlex
 from typing import assert_never, Literal, Self
@@ -49,6 +48,7 @@ from expression import Error, Ok, Result
 from expression.collections import Block
 from frozendict import frozendict
 import msgspec
+from pydantic import SecretStr
 import structlog
 
 from admin.core import completed, Detail, Envelope, Status
@@ -321,13 +321,20 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
 
 # --- [TABLES] --------------------------------------------------------------------------
 
+
 # The minimal environment projection forwarded into the remote `maghz` process, declared once and shared
 # by every `_Session.run`. Each row pairs the canonical env key with the projection that mints its value
 # from the validated settings, so `MAGHZ_DATABASE_DSN` tracks `cfg.database.dsn` by construction and
 # `MAGHZ_LOG__FORMAT` is pinned to the machine-readable renderer; `run` folds each row into a
 # `KEY=<shlex.quote(value)>` export ahead of the remote argv.
-def _env_required(key: str) -> str:
-    value = getenv(key)
+def _secret_required(value: SecretStr | None, key: str) -> str:
+    raw = value.get_secret_value() if value is not None else ""
+    if not raw:
+        raise ValueError(f"missing required remote environment variable: {key}")
+    return raw
+
+
+def _text_required(value: str | None, key: str) -> str:
     if not value:
         raise ValueError(f"missing required remote environment variable: {key}")
     return value
@@ -336,20 +343,23 @@ def _env_required(key: str) -> str:
 _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
     "MAGHZ_DATABASE_DSN": lambda cfg: str(cfg.database.dsn),
     "MAGHZ_LOG__FORMAT": lambda _cfg: "json",
-    "CODERABBIT_API_KEY": lambda _cfg: _env_required("CODERABBIT_API_KEY"),
-    "OP_SERVICE_ACCOUNT_TOKEN": lambda _cfg: _env_required("OP_SERVICE_ACCOUNT_TOKEN"),
-    "GOOGLE_OAUTH_CLIENT_ID": lambda _cfg: _env_required("GOOGLE_OAUTH_CLIENT_ID"),
-    "GOOGLE_OAUTH_CLIENT_SECRET": lambda _cfg: _env_required("GOOGLE_OAUTH_CLIENT_SECRET"),
-    "JUPYTER_TOKEN": lambda _cfg: _env_required("JUPYTER_TOKEN"),
-    "GREPTILE_API_KEY": lambda _cfg: _env_required("GREPTILE_API_KEY"),
-    "GH_TOKEN": lambda _cfg: _env_required("GH_TOKEN"),
-    "GITHUB_TOKEN": lambda _cfg: _env_required("GITHUB_TOKEN"),
-    "GH_PROJECTS_TOKEN": lambda _cfg: _env_required("GH_PROJECTS_TOKEN"),
-    "HOSTINGER_API_TOKEN": lambda _cfg: _env_required("HOSTINGER_API_TOKEN"),
-    "CONTEXT7_API_KEY": lambda _cfg: _env_required("CONTEXT7_API_KEY"),
-    "EXA_API_KEY": lambda _cfg: _env_required("EXA_API_KEY"),
-    "PERPLEXITY_API_KEY": lambda _cfg: _env_required("PERPLEXITY_API_KEY"),
-    "TAVILY_API_KEY": lambda _cfg: _env_required("TAVILY_API_KEY"),
+    "CODERABBIT_API_KEY": lambda cfg: _secret_required(cfg.integrations.coderabbit_api_key, "CODERABBIT_API_KEY"),
+    "OP_SERVICE_ACCOUNT_TOKEN": lambda cfg: _secret_required(cfg.integrations.op_service_account_token, "OP_SERVICE_ACCOUNT_TOKEN"),
+    "GOOGLE_OAUTH_CLIENT_ID": lambda cfg: _secret_required(cfg.integrations.google_oauth_client_id, "GOOGLE_OAUTH_CLIENT_ID"),
+    "GOOGLE_OAUTH_CLIENT_SECRET": lambda cfg: _secret_required(cfg.integrations.google_oauth_client_secret, "GOOGLE_OAUTH_CLIENT_SECRET"),
+    "GOOGLE_WORKSPACE_CLI_CONFIG_DIR": lambda cfg: f"/home/{cfg.remote.user}/.config/gws",
+    "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": lambda cfg: f"/home/{cfg.remote.user}/.config/gws/credentials.json",
+    "GOOGLE_WORKSPACE_PROJECT_ID": lambda cfg: _text_required(cfg.integrations.google_workspace_project_id, "GOOGLE_WORKSPACE_PROJECT_ID"),
+    "JUPYTER_TOKEN": lambda cfg: _secret_required(cfg.integrations.jupyter_token, "JUPYTER_TOKEN"),
+    "GREPTILE_API_KEY": lambda cfg: _secret_required(cfg.integrations.greptile_api_key, "GREPTILE_API_KEY"),
+    "GH_TOKEN": lambda cfg: _secret_required(cfg.integrations.gh_token, "GH_TOKEN"),
+    "GITHUB_TOKEN": lambda cfg: _secret_required(cfg.integrations.github_token, "GITHUB_TOKEN"),
+    "GH_PROJECTS_TOKEN": lambda cfg: _secret_required(cfg.integrations.gh_projects_token, "GH_PROJECTS_TOKEN"),
+    "HOSTINGER_API_TOKEN": lambda cfg: _secret_required(cfg.integrations.hostinger_api_token, "HOSTINGER_API_TOKEN"),
+    "CONTEXT7_API_KEY": lambda cfg: _secret_required(cfg.integrations.context7_api_key, "CONTEXT7_API_KEY"),
+    "EXA_API_KEY": lambda cfg: _secret_required(cfg.integrations.exa_api_key, "EXA_API_KEY"),
+    "PERPLEXITY_API_KEY": lambda cfg: _secret_required(cfg.integrations.perplexity_api_key, "PERPLEXITY_API_KEY"),
+    "TAVILY_API_KEY": lambda cfg: _secret_required(cfg.integrations.tavily_api_key, "TAVILY_API_KEY"),
 })
 
 

@@ -42,16 +42,29 @@ class Remote(StrEnum):
 _GROUP = ConfigDict(frozen=True, extra="forbid")
 
 _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
+    "CODERABBIT_API_KEY": ("integrations", "coderabbit_api_key"),
+    "CONTEXT7_API_KEY": ("integrations", "context7_api_key"),
     "MAGHZ_DATABASE_DSN": ("database", "dsn"),
     "DOCKER_HOST": ("infra", "docker_host"),
+    "EXA_API_KEY": ("integrations", "exa_api_key"),
+    "GH_PROJECTS_TOKEN": ("integrations", "gh_projects_token"),
+    "GH_TOKEN": ("integrations", "gh_token"),
+    "GITHUB_TOKEN": ("integrations", "github_token"),
     "MAGHZ_REMOTE_HOST": ("remote", "host"),
     "MAGHZ_REMOTE_PORT": ("remote", "port"),
     "MAGHZ_REMOTE_USER": ("remote", "user"),
     "MAGHZ_REMOTE_KEY_FILE": ("remote", "key_file"),
     "MAGHZ_REMOTE_KNOWN_HOSTS": ("remote", "known_hosts"),
     "MAGHZ_REMOTE_WORKROOT": ("remote", "workroot"),
+    "GOOGLE_WORKSPACE_PROJECT_ID": ("integrations", "google_workspace_project_id"),
     "GOOGLE_OAUTH_CLIENT_ID": ("integrations", "google_oauth_client_id"),
     "GOOGLE_OAUTH_CLIENT_SECRET": ("integrations", "google_oauth_client_secret"),
+    "GREPTILE_API_KEY": ("integrations", "greptile_api_key"),
+    "HOSTINGER_API_TOKEN": ("integrations", "hostinger_api_token"),
+    "JUPYTER_TOKEN": ("integrations", "jupyter_token"),
+    "OP_SERVICE_ACCOUNT_TOKEN": ("integrations", "op_service_account_token"),
+    "PERPLEXITY_API_KEY": ("integrations", "perplexity_api_key"),
+    "TAVILY_API_KEY": ("integrations", "tavily_api_key"),
 })
 
 
@@ -176,17 +189,32 @@ class ObservabilityConfig(BaseModel):
 
 
 class IntegrationsConfig(BaseModel):
-    """External agent-tool surfaces: the `agy` Antigravity CLI and the Google Workspace MCP OAuth context.
+    """External agent-tool surfaces: the `agy` Antigravity CLI, Workspace OAuth, and remote agent token projection.
 
-    The two OAuth keys arrive bare (`GOOGLE_OAUTH_CLIENT_ID`/`SECRET`) and `_BareEnvSource` folds them into
-    this canonical group. The Workspace token cache path is machine-owned by Forge as `WORKSPACE_MCP_CREDENTIALS_DIR`.
-    `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()` is read only at the injection edge.
+    The OAuth keys and forwarded agent tokens arrive bare and `_BareEnvSource` folds them into this
+    canonical group. The Workspace MCP token cache path is machine-owned by Forge as
+    `WORKSPACE_MCP_CREDENTIALS_DIR`; the Google Workspace CLI credential-file path is remote-machine
+    material minted by `admin.remote`. `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()`
+    is read only at the injection edge.
     """
 
     model_config = _GROUP
 
+    coderabbit_api_key: SecretStr | None = Field(default=None, repr=False)
+    context7_api_key: SecretStr | None = Field(default=None, repr=False)
+    exa_api_key: SecretStr | None = Field(default=None, repr=False)
+    gh_projects_token: SecretStr | None = Field(default=None, repr=False)
+    gh_token: SecretStr | None = Field(default=None, repr=False)
+    github_token: SecretStr | None = Field(default=None, repr=False)
     google_oauth_client_id: SecretStr | None = Field(default=None, repr=False)
     google_oauth_client_secret: SecretStr | None = Field(default=None, repr=False)
+    google_workspace_project_id: str | None = None
+    greptile_api_key: SecretStr | None = Field(default=None, repr=False)
+    hostinger_api_token: SecretStr | None = Field(default=None, repr=False)
+    jupyter_token: SecretStr | None = Field(default=None, repr=False)
+    op_service_account_token: SecretStr | None = Field(default=None, repr=False)
+    perplexity_api_key: SecretStr | None = Field(default=None, repr=False)
+    tavily_api_key: SecretStr | None = Field(default=None, repr=False)
     workspace_oauth_redirect_uri: str | None = None
     agy_binary: Path = Path("agy")
     agy_process_timeout_s: float = Field(default=120.0, gt=0)
@@ -253,7 +281,7 @@ class RemoteConfig(BaseModel):
     user: str = ""
     key_file: Path | None = None
     known_hosts: str = Field(default_factory=lambda: str(Path("~/.ssh/known_hosts").expanduser()))
-    workroot: str = "~/maghz"
+    workroot: str = "/home/maghz-agent/maghz"
     sftp_push_concurrency: int = Field(default=8, ge=1)
     sftp_max_requests: int = Field(default=128, ge=1)
     connect_timeout: float = Field(default=15.0, gt=0)
@@ -339,16 +367,9 @@ class _BareEnvSource(EnvSettingsSource):
 
     @override
     def __call__(self) -> dict[str, dict[str, str]]:
-        present = frozendict({
-            (group, field): raw
-            for env_key, (group, field) in _BARE_ENV.items()
-            if (raw := self.env_vars.get(env_key.lower()))
-        })
+        present = frozendict({(group, field): raw for env_key, (group, field) in _BARE_ENV.items() if (raw := self.env_vars.get(env_key.lower()))})
         groups = frozendict.fromkeys(group for group, _ in present)
-        return {
-            group: {field: raw for (g, field), raw in present.items() if g == group}
-            for group in groups
-        }
+        return {group: {field: raw for (g, field), raw in present.items() if g == group} for group in groups}
 
 
 class MaghzSettings(BaseSettings):
