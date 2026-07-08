@@ -4,18 +4,25 @@
 
 export const meta = {
   name: 'TODO-pipeline',                              // required — the workflow's name
+  whenToUse: 'TODO: when a reader should pick this',  // optional
   description: 'TODO: one line — what this produces', // required — shown in the permission dialog
   phases: [{ title: 'Stage1' }, { title: 'Stage2' }], // optional — progress groups (see the phase option below)
 }
 
+// --- [INPUTS] ----------------------------------------------------------------------------
+
 // `args` arrives as structured data — an array stays an array, read it directly.
 const items = Array.isArray(args) && args.length ? args : ['TODO item one', 'TODO item two']
 
+// --- [MODELS] ----------------------------------------------------------------------------
 const STAGE1_SCHEMA = {
   type: 'object',
+  additionalProperties: false, // STRICT: required must list every property — codex --output-schema rejects anything less
   required: ['result'],
   properties: { result: { type: 'string' } },
 }
+
+// --- [COMPOSITION] -----------------------------------------------------------------------
 
 // pipeline(items, stage1, stage2, ...) — each stage callback gets
 // (prevResult, originalItem, index). There is NO barrier between stages:

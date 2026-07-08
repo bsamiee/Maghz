@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterat
 from contextlib import AbstractContextManager, contextmanager
 from datetime import timedelta
 from enum import StrEnum
-from functools import cache, wraps
+from functools import cache, partial, wraps
 from graphlib import TopologicalSorter
 from hashlib import blake2b
 import inspect
@@ -11,19 +11,7 @@ import math
 from os import fspath, PathLike
 from subprocess import CompletedProcess  # noqa: S404
 import sys
-from typing import (
-    Any,  # noqa: TID251 - expression ResultBuilder erases heterogeneous yields by design.
-    assert_never,
-    Final,
-    Literal,
-    NewType,
-    NotRequired,
-    overload,
-    Protocol,
-    runtime_checkable,
-    Self,
-    TypedDict,
-)
+from typing import assert_never, Final, final, Literal, NewType, NotRequired, overload, Protocol, runtime_checkable, Self, TypedDict
 
 import anyio
 from anyio import CapacityLimiter, move_on_after, WouldBlock
@@ -33,7 +21,7 @@ from apscheduler import AsyncScheduler, JobReleased
 from apscheduler.abc import Trigger as ScheduleTrigger
 import asyncssh
 from beartype.roar import BeartypeCallHintViolation
-from expression import case, effect, Error, Nothing, Ok, Option, Result, Some, tag, tagged_union
+from expression import case, Error, Nothing, Ok, Option, Result, Some, tag, tagged_union
 from expression.collections import Block, Map
 import httpx
 from httpx import HTTPStatusError
@@ -108,22 +96,21 @@ class BoundaryFault:
 
     def facts(self) -> dict[str, object]:
 
-        match self:
-            case BoundaryFault(tag="aggregate", aggregate=members):
-                return {"tag": "aggregate", "subject": "aggregate", "members": ",".join(member.tag for member in members)}
-            case BoundaryFault(tag="deadline", deadline=(subject, budget)):
+        match self.tag:
+            case "aggregate":
+                return {"tag": "aggregate", "subject": "aggregate", "members": ",".join(member.tag for member in self.aggregate)}
+            case "deadline":
+                subject, budget = self.deadline
                 return {"tag": "deadline", "subject": subject, "budget": budget}
-            case BoundaryFault(tag="wire", wire=(subject, code)):
+            case "wire":
+                subject, code = self.wire
                 return {"tag": "wire", "subject": subject, "code": code}
-            case (
-                BoundaryFault(tag=tag_value, config=(subject, detail))
-                | BoundaryFault(tag=tag_value, resource=(subject, detail))
-                | BoundaryFault(tag=tag_value, api=(subject, detail))
-                | BoundaryFault(tag=tag_value, import_=(subject, detail))
-                | BoundaryFault(tag=tag_value, boundary=(subject, detail))
-            ):
+            case "config" | "resource" | "api" | "import_" | "boundary" as tag_value:
+                # the tagged-union law pins each case attribute to its tag name, so the narrowed tag IS the payload key
+                subject, detail = getattr(self, tag_value)
                 return {"tag": tag_value, "subject": subject, "detail": detail}
-        raise AssertionError(self.tag)  # pragma: no cover - exhaustive over the closed FaultTag union
+            case _ as unreachable:  # pragma: no cover - exhaustive over the closed FaultTag literal
+                assert_never(unreachable)
 
     def headline(self) -> str:
 
@@ -152,6 +139,9 @@ SSH_TERMINAL: Final[tuple[type[asyncssh.Error], ...]] = (*_SSH_DENIED, *_SSH_PRO
 
 
 type RuntimeRail[T] = Result[T, BoundaryFault]
+type AsyncWork[T] = Callable[[], Awaitable[T]]
+type SyncWork[T] = Callable[[], T]
+type Work = Callable[[], Awaitable[RuntimeRail[object]]]
 
 
 def _convert(subject: str, cause: BaseException) -> BoundaryFault:
@@ -208,24 +198,6 @@ def trapped[**P, T](subject: str, *, catch: Catch = Exception) -> Callable[[Call
     return decorate
 
 
-async def spawn(
-    argv: tuple[str, ...],
-    *,
-    subject: str,
-    retry_class: RetryClass | None = None,
-    env: Mapping[str, str] | None = None,
-    cwd: StrPath | None = None,
-    stdin: bytes | None = None,
-) -> RuntimeRail[CompletedProcess[bytes]]:
-
-    async def run() -> CompletedProcess[bytes]:
-        return await anyio.run_process(argv, input=stdin, env=env, cwd=cwd, check=False)
-
-    if retry_class is None:
-        return await async_boundary(subject, run)
-    return await async_boundary(subject, lambda: guard(retry_class)(run))
-
-
 @overload
 def traversed[T](rails: Block[RuntimeRail[T]], *, by: Literal[Disposition.ABORT, Disposition.ACCUMULATE] = ...) -> RuntimeRail[Block[T]]: ...
 
@@ -271,9 +243,6 @@ CLASSIFY: Final[Block[ClassifyRow]] = Block.of_seq([
 ])
 
 
-railed = effect.result[Any, BoundaryFault]()
-
-
 def lower(rail: RuntimeRail[Envelope]) -> Envelope:
 
     match rail:
@@ -293,6 +262,7 @@ class RetryAfter(Protocol):
     retry_after: float | None
 
 
+@runtime_checkable
 class OnRetry(Protocol):
     def __call__(self, details: RetryDetails) -> AbstractContextManager[None] | None: ...
 
@@ -417,6 +387,25 @@ def retrying(cls: RetryClass) -> AsyncIterator[stamina.Attempt]:
     return stamina.retry_context(on=row.target, **row.schedule)
 
 
+# Declared below `RetryClass` so the claw resolves the `RetryClass | None` hint at decoration time.
+async def spawn(
+    argv: tuple[str, ...],
+    *,
+    subject: str,
+    retry_class: RetryClass | None = None,
+    env: Mapping[str, str] | None = None,
+    cwd: StrPath | None = None,
+    stdin: bytes | None = None,
+) -> RuntimeRail[CompletedProcess[bytes]]:
+
+    async def run() -> CompletedProcess[bytes]:
+        return await anyio.run_process(argv, input=stdin, env=env, cwd=cwd, check=False)
+
+    if retry_class is None:
+        return await async_boundary(subject, run)
+    return await async_boundary(subject, lambda: guard(retry_class)(run))
+
+
 def _targeted(cls: RetryClass) -> _Target:
 
     base = cls.policy.target
@@ -434,11 +423,12 @@ def _targeted(cls: RetryClass) -> _Target:
 
 async def _retry_rail(cls: RetryClass, work: Work) -> RuntimeRail[object]:
 
+    # `_graded` raises `_RailRetryError` for a recoverable fault; stamina suppresses it inside
+    # `with attempt` to schedule the next try, and exhaustion re-raises it into the except arms.
     try:
         async for attempt in stamina.retry_context(on=_targeted(cls), **cls.policy.schedule):
-            rail = await _rail_attempt(attempt, cls, work)
-            if rail is not None:
-                return rail
+            with attempt:
+                return _graded(cls, await work())
     except _RailRetryError as cause:
         return Error(cause.fault)
     except Exception as cause:  # noqa: BLE001 - lane retry boundary converts terminal escapes to the rail
@@ -446,17 +436,15 @@ async def _retry_rail(cls: RetryClass, work: Work) -> RuntimeRail[object]:
     return Error(BoundaryFault(boundary=(f"lane.{cls.value}", "retry exhausted without result")))
 
 
-async def _rail_attempt(attempt: stamina.Attempt, cls: RetryClass, work: Work) -> RuntimeRail[object] | None:
+def _graded(cls: RetryClass, rail: RuntimeRail[object]) -> RuntimeRail[object]:
 
-    with attempt:
-        match await work():
-            case Result(tag="ok") as ok:
-                return ok
-            case Result(error=fault_value) if fault_value.recoverable(RAIL_RETRY_TAGS[cls]):
-                raise _RailRetryError(fault_value)
-            case Result(error=fault_value):
-                return Error(fault_value)
-    return None
+    match rail:
+        case Result(tag="ok") as ok:
+            return ok
+        case Result(error=fault_value) if fault_value.recoverable(RAIL_RETRY_TAGS[cls]):
+            raise _RailRetryError(fault_value)
+        case Result(error=fault_value):
+            return Error(fault_value)
 
 
 async def guarded[T](cls: RetryClass, work: AsyncWork[T], *, subject: str) -> RuntimeRail[T]:
@@ -501,11 +489,6 @@ RETRY_HOOKS: Final[tuple[stamina.instrumentation.RetryHookFactory, ...]] = (Retr
 ContentKey = NewType("ContentKey", str)
 LaneKey = NewType("LaneKey", str)
 
-type AsyncWork[T] = Callable[[], Awaitable[T]]
-type SyncWork[T] = Callable[[], T]
-type Work = Callable[[], Awaitable[RuntimeRail[object]]]
-type Kernel[T] = Callable[..., T]
-type TracedKernel[T] = Callable[..., T]
 type Carrier = dict[str, str]
 type AdmitTag = Literal["bare", "keyed", "retried"]
 type DrainOutcome = Literal["accepted", "completed", "cancelled", "rejected", "hit"]
@@ -578,29 +561,31 @@ class DrainReceipt[T](msgspec.Struct, frozen=True):
     def counts(self) -> dict[str, int]:
         return {"accepted": self.accepted, "completed": self.completed, "cancelled": self.cancelled, "rejected": self.rejected, "hit": self.hit}
 
-    @staticmethod
-    def of(
-        accepted: int, hit: int, resolved: Block[_Resolved], replayed: Block[tuple[ContentKey, object]], cache: Map[ContentKey, object]
-    ) -> DrainReceipt[object]:
 
-        merged = replayed.map(lambda pair: (Some(pair[0]), Ok(pair[1]))).append(resolved)
-        completed = resolved.choose(lambda pair: pair[1].to_option())
-        faults = resolved.choose(lambda pair: pair[1].swap().to_option())
+# Module-level (not a `DrainReceipt` staticmethod): the claw cannot resolve a subscripted
+# self-reference (`DrainReceipt[object]`) while the generic class is still being created.
+def _drain_receipt(
+    accepted: int, hit: int, resolved: Block[_Resolved], replayed: Block[tuple[ContentKey, object]], cache: Map[ContentKey, object]
+) -> DrainReceipt[object]:
 
-        def thread(acc: Map[ContentKey, object], pair: _Resolved) -> Map[ContentKey, object]:
-            return pair[0].bind(lambda key: pair[1].to_option().map(lambda value: acc.add(key, value))).default_value(acc)
+    merged = replayed.map(lambda pair: (Some(pair[0]), Ok(pair[1]))).append(resolved)
+    completed = resolved.choose(lambda pair: pair[1].to_option())
+    faults = resolved.choose(lambda pair: pair[1].swap().to_option())
 
-        threaded = merged.fold(thread, cache)
-        return DrainReceipt(
-            accepted=accepted,
-            completed=len(completed),
-            cancelled=accepted - hit - len(resolved),
-            rejected=len(faults),
-            values=merged.choose(lambda pair: pair[1].to_option()),
-            cache=threaded,
-            faults=faults,
-            hit=hit,
-        )
+    def thread(acc: Map[ContentKey, object], pair: _Resolved) -> Map[ContentKey, object]:
+        return pair[0].bind(lambda key: pair[1].to_option().map(lambda value: acc.add(key, value))).default_value(acc)
+
+    threaded = merged.fold(thread, cache)
+    return DrainReceipt(
+        accepted=accepted,
+        completed=len(completed),
+        cancelled=accepted - hit - len(resolved),
+        rejected=len(faults),
+        values=merged.choose(lambda pair: pair[1].to_option()),
+        cache=threaded,
+        faults=faults,
+        hit=hit,
+    )
 
 
 class AdmitRow(msgspec.Struct, frozen=True):
@@ -650,17 +635,17 @@ class LanePolicy(msgspec.Struct, frozen=True):
         with move_on_after(budget):
             async with anyio.create_task_group() as group, send:
                 for key, _, fn in live:
-                    group.start_soon(lane, key, fn, send.clone())
+                    _ = group.start_soon(lane, key, fn, send.clone())  # fire-and-forget: the group owns the lifetime, the handle is unused
         resolved = Block.of_seq([item async for item in receive])
-        return DrainReceipt.of(len(units), len(replayed), resolved, replayed, cache)
+        return _drain_receipt(len(units), len(replayed), resolved, replayed, cache)
 
-    async def offload[T](self, kernel: TracedKernel[T], *args: object, retry: RetryClass | None = None) -> RuntimeRail[T]:
+    async def offload[T, *Ts](self, kernel: Callable[[*Ts], T], *args: *Ts, retry: RetryClass | None = None) -> RuntimeRail[T]:
 
         carrier: Carrier = {}
         propagate.inject(carrier)
 
         async def run() -> T:
-            return await interpreter_run_sync(traced_kernel, carrier, kernel, *args, limiter=self.limiter)
+            return await interpreter_run_sync(partial(traced_kernel, carrier, kernel, *args), limiter=self.limiter)
 
         async def hop() -> T:
             with move_on_after(self.deadline.default_value(_INF)):
@@ -701,7 +686,7 @@ def probe(row: AdmitRow, unit: Admit, cache: Map[ContentKey, object]) -> _Probed
     return key, key.bind(cache.try_find), row.make(unit)
 
 
-def traced_kernel[T](carrier: Carrier, kernel: Kernel[T], *args: object) -> T:
+def traced_kernel[T, *Ts](carrier: Carrier, kernel: Callable[[*Ts], T], *args: *Ts) -> T:
 
     token = context.attach(propagate.extract(carrier))
     try:
@@ -754,13 +739,6 @@ async def _events(source: LaneSource) -> AsyncIterator[Block[Admit]]:
             raise AssertionError(source.tag)
 
 
-async def feed(policy: LanePolicy, source: LaneSource, owner: str, redaction: Redaction) -> AsyncIterator[DrainReceipt[object]]:
-
-    observed = drained(owner, redaction=redaction)(policy.drain)
-    async for batch in _events(source):
-        yield await observed(batch)
-
-
 def _noop() -> None:
     pass
 
@@ -780,6 +758,7 @@ type Classification = Literal["drop", "mask", "hash"]
 type EventDict = dict[str, object]
 
 
+@final
 class Fact(msgspec.Struct, frozen=True, gc=False):
     phase: Phase
     subject: str
@@ -795,9 +774,20 @@ type ProcessorEvent = structlog.typing.EventDict
 type Processor = structlog.typing.Processor
 type WrappedLogger = structlog.typing.WrappedLogger
 type BoundLogger = SinkLogger
-type LevelSelector[R] = Callable[[BoundLogger], Callable[..., R]]
+
+
+@runtime_checkable
+class LevelEmit[R](Protocol):
+    def __call__(self, event: str, **kwargs: object) -> R: ...
+
+
+@runtime_checkable
+class LoggerFactory(Protocol):
+    def __call__(self, *args: object) -> WrappedLogger: ...
+
+
+type LevelSelector[R] = Callable[[BoundLogger], LevelEmit[R]]
 type LevelBinding = tuple[LevelSelector[object], LevelSelector[Awaitable[object]]]
-type LoggerFactory = Callable[..., WrappedLogger]
 type FormatBinding = tuple[tuple[Processor, ...], Callable[[], LoggerFactory]]
 
 
@@ -820,12 +810,12 @@ class Receipt:
     def of(owner: str, evidence: Evidence) -> Receipt:
 
         match evidence:
+            case Fact(phase=phase, subject=subject, values=facts):
+                return Receipt(fact=(phase, owner, subject, facts))
             case BoundaryFault() as fault:
                 return Receipt(rejected=(owner, fault))
             case DrainReceipt() as drain:
                 return Receipt(drained=(owner, drain))
-            case Fact(phase=phase, subject=subject, values=facts):
-                return Receipt(fact=(phase, owner, subject, facts))
             case _ as unreachable:  # pragma: no cover - exhaustive over the closed Evidence alias
                 assert_never(unreachable)
 
@@ -845,6 +835,7 @@ class Receipt:
                 assert_never(unreachable)
 
 
+@runtime_checkable
 class SinkLogger(Protocol):
     def bind(self, **kwargs: object) -> Self: ...
     def debug(self, event: str, **kwargs: object) -> object: ...
@@ -986,7 +977,8 @@ def receipted[**P, R: ReceiptContributor](redaction: RedactionSpec = _OPEN) -> C
             @wraps(operation)
             async def _async(*args: P.args, **kwargs: P.kwargs) -> R:
                 produced = operation(*args, **kwargs)
-                contributor = await produced if isawaitable(produced) else produced
+                # the awaited branch erases to the union's R by the Contributing contract; the local pins it
+                contributor: R = await produced if isawaitable(produced) else produced
                 await Signals.emit_async(contributor, redaction)
                 return contributor
 
@@ -1018,6 +1010,14 @@ def drained[**P](owner: str, *, redaction: RedactionSpec = _OPEN) -> Callable[[D
         return _async
 
     return _decorate
+
+
+# Declared below `Redaction`/`drained` so the claw resolves both hints at decoration time.
+async def feed(policy: LanePolicy, source: LaneSource, owner: str, redaction: Redaction) -> AsyncIterator[DrainReceipt[object]]:
+
+    observed = drained(owner, redaction=redaction)(policy.drain)
+    async for batch in _events(source):
+        yield await observed(batch)
 
 
 PHASE_LEVEL: Final[Map[Phase, LogLevel]] = Map.of_seq([("admitted", "debug"), ("retry", "warning"), ("emitted", "info")])

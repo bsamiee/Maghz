@@ -20,7 +20,7 @@ import structlog
 from watchfiles import BaseFilter, Change, DefaultFilter, PythonFilter
 
 from admin import db
-from admin.core import completed, Detail, Envelope, fault, Report, Status, tag_of
+from admin.core import completed, Detail, Envelope, fault, Report, Status, tag_of, TagForm
 from admin.db import QueryResult
 from admin.rails import sync as sync_run, SyncDetail, SyncOp
 from admin.runtime import Admit, BoundaryFault, drain, DrainReceipt, feed, LaneKey, LanePolicy, LaneSource, Redaction, RetryClass, RuntimeRail
@@ -54,6 +54,11 @@ type TriggerTag = Literal["watch", "schedule", "manual"]
 
 
 type ActionTag = Literal["agent", "notify", "embed", "sync"]
+
+
+# TypeForm-annotated targets: the alias reference coerces to the checkable form `tag_of` narrows into.
+_TRIGGER_FORM: Final[TagForm[TriggerTag]] = TriggerTag
+_ACTION_FORM: Final[TagForm[ActionTag]] = ActionTag
 
 
 class Watch(msgspec.Struct, frozen=True, gc=False, tag="watch"):
@@ -232,7 +237,7 @@ def _govern(spec: AutomationSpec, cfg: MaghzSettings, policy: LanePolicy, facts:
         case Result(tag="ok", ok=snapshot):
             return Block.singleton(_work_of(spec, cfg, snapshot, facts))
         case Result(error=gate):
-            tg.start_soon(_ledger_skip, spec, cfg, gate.detail)
+            _ = tg.start_soon(_ledger_skip, spec, cfg, gate.detail)  # fire-and-forget: the group owns the lifetime, the handle is unused
             return Block.empty()
 
 
@@ -334,8 +339,8 @@ def _receipt(spec: AutomationSpec, snapshot: Option[_Snapshot], *, evidence: _Ac
 
     return AutomationReceipt(
         spec_id=spec.id,
-        trigger_tag=tag_of(spec.trigger, TriggerTag),
-        action_tag=tag_of(spec.action, ActionTag),
+        trigger_tag=tag_of(spec.trigger, _TRIGGER_FORM),
+        action_tag=tag_of(spec.action, _ACTION_FORM),
         lane=spec.lane,
         fired_at=datetime.now(UTC).isoformat(),
         attempt=1 if snapshot.is_some() else 0,
@@ -386,7 +391,7 @@ _AGENT_DISPATCH: Final[frozendict[AgentSkill, Work]] = frozendict(dict.fromkeys(
 async def _manual_lane(spec: AutomationSpec, cfg: MaghzSettings, policy: LanePolicy, _tg: TaskGroup) -> _DispatchOutcome:
 
     match _admit(spec, cfg, policy):
-        case Result(error=gate):
+        case Result(tag="error", error=gate):
             await _ledger_skip(spec, cfg, gate.detail)
             return gate
         case Result(ok=snapshot):
@@ -426,7 +431,7 @@ async def _schedule_lane(spec: AutomationSpec, cfg: MaghzSettings, policy: LaneP
 
     def _schedule_build(event: JobReleased) -> Block[Admit]:
         if event.outcome is JobOutcome.missed_start_deadline:
-            tg.start_soon(_ledger_skip, spec, cfg, f"missed schedule tick at {event.scheduled_start}")
+            _ = tg.start_soon(_ledger_skip, spec, cfg, f"missed schedule tick at {event.scheduled_start}")  # fire-and-forget skip ledgering
             return Block.empty()
         return _govern(spec, cfg, policy, {"scheduled_start": str(event.scheduled_start)}, tg)
 
@@ -457,12 +462,12 @@ async def drive(spec: AutomationSpec, cfg: MaghzSettings) -> Envelope:
     policy = LanePolicy(
         capacity=cfg.automation.max_concurrent, deadline=Some(cfg.automation.action_timeout_s), key=LaneKey(f"automation.{spec.lane}")
     )
-    tag = tag_of(spec.trigger, TriggerTag)
+    tag = tag_of(spec.trigger, _TRIGGER_FORM)
     outcome: _DispatchOutcome
     try:
         async with anyio.create_task_group() as tg:
             if tag != "manual":
-                tg.start_soon(_signal_lane, tg)
+                _ = tg.start_soon(_signal_lane, tg)  # fire-and-forget: the group owns the lifetime, the handle is unused
             outcome = await _LANE[tag](spec, cfg, policy, tg)
             tg.cancel_scope.cancel()
     except* Exception as group:  # noqa: BLE001 - the lane ExceptionGroup folds to one BoundaryFault rail

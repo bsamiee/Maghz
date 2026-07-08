@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Generator, Mappi
 import contextlib
 from datetime import datetime, UTC
 from enum import StrEnum
+from functools import partial
 from operator import itemgetter
 from pathlib import Path
 from subprocess import CompletedProcess  # noqa: S404
@@ -179,10 +180,14 @@ def _work(remote: Remote, cfg: MaghzSettings, dump: str, *, resync: bool, upload
 
     async def _run() -> RuntimeRail[_RemoteResult]:
         with structlog.contextvars.bound_contextvars(remote=remote.value):
-            if upload is not None:
-                match await _spawn("rclone", "copy", dump, upload, env=env, remote=remote):
-                    case Result(tag="error", error=copy_fault):
-                        return Error(copy_fault)
+            copied: RuntimeRail[_RcloneStats] = (
+                Ok(_RcloneStats()) if upload is None else await _spawn("rclone", "copy", dump, upload, env=env, remote=remote)
+            )
+            match copied:
+                case Result(tag="error", error=copy_fault):
+                    return Error(copy_fault)
+                case Result():
+                    pass
             return (await _spawn(*bisync, env=env, remote=remote)).map(lambda stats: _RemoteResult(remote=remote, stats=stats, dump_path=dump_path))
 
     return _run
@@ -211,7 +216,8 @@ def _detail(receipt: DrainReceipt[object], op: CloudOp, *, restored_from: str | 
         first = dump if dump is not msgspec.UNSET else result.dump_path
         return stats.merge(result.stats), (*remotes, result.remote), first
 
-    stats, remotes, dump_path = _results(receipt).fold(step, (_RcloneStats(), (), msgspec.UNSET))
+    seed: _Tally = (_RcloneStats(), (), msgspec.UNSET)
+    stats, remotes, dump_path = _results(receipt).fold(step, seed)
     return CloudSyncDetail(
         op=op,
         remotes=remotes,
@@ -248,6 +254,8 @@ async def _sync_detail(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
         match await _spawn("pg_dump", str(cfg.database.dsn), "-F", "c", "-Z", "zstd:3", "-f", dump, "-O", "--no-privileges"):
             case Result(tag="error", error=dump_fault):
                 return Error(dump_fault)
+            case Result():
+                pass
         receipt = await _fan_out(cfg, dump, resync=cfg.cloud.force_resync, upload=True)
         return _ok(receipt, CloudOp.SYNC, restored_from=msgspec.UNSET)
 
@@ -261,10 +269,14 @@ async def _restore_detail(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
         match await _spawn("rclone", "copy", source, str(staging), env=_env_for(primary, cfg.cloud), remote=primary):
             case Result(tag="error", error=download_fault):
                 return Error(download_fault)
+            case Result():
+                pass
         dump = await _first_dump(staging)
         match await _spawn("pg_restore", "-d", str(cfg.database.dsn), "-c", "-O", "--no-privileges", str(dump)):
             case Result(tag="error", error=restore_fault):
                 return Error(restore_fault)
+            case Result():
+                pass
         receipt = await _fan_out(cfg, str(dump), resync=True, upload=False)
         return _ok(receipt, CloudOp.RESTORE, restored_from=f"{source}/{dump.name}")
 
@@ -338,7 +350,7 @@ class Projection(msgspec.Struct, frozen=True):
     @staticmethod
     def of(text: str) -> Projection:
 
-        tree = parse_one(text, dialect=_LEDGER_DIALECT, error_level=ErrorLevel.RAISE)
+        tree = parse_one(text, dialect=_LEDGER_DIALECT, into=exp.Select, error_level=ErrorLevel.RAISE)
         roots = lineage(None, tree, dialect=_LEDGER_DIALECT)
         return Projection(
             tree=tree,
@@ -515,7 +527,7 @@ _CLI: Final[frozendict[N8nOp, _Cli]] = frozendict({
     N8nOp.IMPORT: _Cli(op=N8nOp.IMPORT, subcommand=("import:workflow", "--separate", f"--input={_CONTAINER_WORKFLOWS}")),
 })
 _N8N_BUILD: Final[frozendict[N8nOp, Callable[[MaghzSettings], Awaitable[RuntimeRail[Envelope]]]]] = frozendict({
-    **{op: (lambda cfg, cli=cli: _workflow(cli, cfg)) for op, cli in _CLI.items()},
+    **{op: partial(_workflow, cli) for op, cli in _CLI.items()},
     N8nOp.STATUS: _status,
 })
 
@@ -604,7 +616,7 @@ async def _grade(step: _Step) -> RuntimeRail[_Step]:
 
 async def _drain_front(steps: tuple[_Step, ...]) -> Block[RuntimeRail[_Step]]:
 
-    units = Block.of_seq(Admit.of(lambda step=step: _grade(step)) for step in steps)
+    units = Block.of_seq(Admit.of(partial(_grade, step)) for step in steps)
     receipt: DrainReceipt[object] = await drain(_SCHEMA_LANE, units)
     graded = receipt.values.choose(lambda value: Some(value) if isinstance(value, _Step) else Nothing)
     return graded.map(Ok).append(receipt.faults.map(Error))

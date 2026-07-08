@@ -20,16 +20,16 @@ from admin.settings import MaghzSettings
 # --- [TYPES] ---------------------------------------------------------------------------
 
 if TYPE_CHECKING:
-    from pulumi.automation import Stack, UpResult
+    from pulumi.automation import DestroyResult, PreviewResult, Stack, UpResult
     from pulumi.automation.events import EngineEvent, OpType
     import pulumi_docker as docker
 else:
     # Dual-band: the host-side pulumi types are gated out of the core load, so bind their names to `object`
-    # at runtime. The runtime closures (`_stack`/`_up.method`/`_Engine.collect`) carry these in their
+    # at runtime. The runtime closures (`_stack`/the `_Method` bodies/`_Engine.collect`) carry these in their
     # signatures, and the beartype claw resolves a hint at first CALL — an unbound `TYPE_CHECKING` name
     # would raise an unresolvable-forward-reference fault there. `object` is the honest runtime check (the
     # real type cannot be inspected without importing pulumi); static checkers read the gated imports above.
-    Stack = UpResult = EngineEvent = OpType = docker = object
+    Stack = UpResult = DestroyResult = PreviewResult = EngineEvent = OpType = docker = object
 
 
 class StackOp(StrEnum):
@@ -38,10 +38,10 @@ class StackOp(StrEnum):
     STATUS = "status"
 
 
-type _Changes = Mapping[OpType | str, int]
-
-
 type _Outputs = frozendict[str, str]
+
+
+type _Projected = tuple[str, frozendict[str, int], _Outputs]
 
 
 type _Method[R] = Callable[[Stack], R]
@@ -50,7 +50,10 @@ type _Method[R] = Callable[[Stack], R]
 type _Factory[R] = Callable[[_Engine], _Method[R]]
 
 
-type _Summary[R] = Callable[[R], tuple[str, _Changes | None]]
+type _Summary[R] = Callable[[R], tuple[str, frozendict[str, int]]]
+
+
+type _Drive = Callable[[_Engine, Stack], _Projected]
 
 
 type _After = Callable[[MaghzSettings], Awaitable[RuntimeRail[Envelope]]]
@@ -146,8 +149,7 @@ class _Engine(msgspec.Struct):
 
 class _Verb(msgspec.Struct, frozen=True, gc=False):
     op: StackOp
-    factory: _Factory[object]
-    summary: _Summary[object]
+    drive: _Drive
     after: _After | None = None
 
 
@@ -357,9 +359,10 @@ def _stack(cfg: MaghzSettings) -> Stack:
     return auto.create_or_select_stack(stack_name=cfg.infra.stack, project_name=cfg.infra.project, program=partial(_define, cfg), opts=opts)
 
 
-def _changes(raw: _Changes | None) -> frozendict[str, int]:
+def _changes(raw: Mapping[OpType, int] | None) -> frozendict[str, int]:
 
-    return frozendict({getattr(op, "value", str(op)): count for op, count in (raw or {}).items()})
+    # `getattr` floor: the wire may surface bare `str` op keys where the static type promises `OpType`.
+    return frozendict({str(getattr(op, "value", op)): count for op, count in (raw or {}).items()})
 
 
 def _outputs(result: object) -> _Outputs:
@@ -370,30 +373,37 @@ def _outputs(result: object) -> _Outputs:
     return frozendict({key: str(value.value) for key in _EXPORTS if (value := raw.get(key)) is not None})
 
 
-async def _offload(verb: _Verb, cfg: MaghzSettings) -> RuntimeRail[tuple[object, _Engine]]:
+def _driven[R](factory: _Factory[R], summary: _Summary[R]) -> _Drive:
 
-    def _blocking() -> tuple[object, _Engine]:
-        # fresh sink + method per attempt so a `PROC`-retried `OSError` flap never folds the failed
-        # attempt's streamed diagnostics into the graded receipt; select-or-create and the method both
-        # run in the worker thread.
+    # the typed factory/summary pairing is sealed inside this closure, so the `_Verb` table row and the
+    # offload rail carry only the already-projected `_Projected` and no erased result crosses a signature.
+    def drive(engine: _Engine, stack: Stack) -> _Projected:
+        result = factory(engine)(stack)
+        text, changes = summary(result)
+        return text, changes, _outputs(result)
+
+    return drive
+
+
+async def _offload(verb: _Verb, cfg: MaghzSettings) -> RuntimeRail[tuple[_Projected, _Engine]]:
+
+    def _blocking() -> tuple[_Projected, _Engine]:
+        # fresh sink + drive per attempt so a `PROC`-retried `OSError` flap never folds the failed
+        # attempt's streamed diagnostics into the graded receipt; select-or-create and the verb method
+        # both run in the worker thread.
         engine = _Engine()
-        return verb.factory(engine)(_stack(cfg)), engine
+        return verb.drive(engine, _stack(cfg)), engine
 
     return await guarded(RetryClass.PROC, lambda: run_sync(_blocking), subject=verb.op.value)
 
 
-async def _project(verb: _Verb, result: object, engine: _Engine, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
+async def _project(verb: _Verb, projected: _Projected, engine: _Engine, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
 
-    result_text, raw_changes = verb.summary(result)
+    result_text, changes, outputs = projected
     status, rows, count = engine.graded()
     Signals.emit(engine.receipt(verb.op))
     detail = StackDetail(
-        op=verb.op,
-        result=result_text,
-        resource_changes=_changes(raw_changes),
-        outputs=_outputs(result),
-        diagnostics=count,
-        model_pulled=verb.after is not None,
+        op=verb.op, result=result_text, resource_changes=changes, outputs=outputs, diagnostics=count, model_pulled=verb.after is not None
     )
     if verb.after is None:
         return Ok(completed(status, detail, rows=rows))
@@ -428,20 +438,36 @@ def _up(engine: _Engine) -> _Method[UpResult]:
     return method
 
 
+def _down(engine: _Engine) -> _Method[DestroyResult]:
+
+    def method(stack: Stack) -> DestroyResult:
+        return stack.destroy(on_event=engine.collect, continue_on_error=True)
+
+    return method
+
+
+def _preview(engine: _Engine) -> _Method[PreviewResult]:
+
+    def method(stack: Stack) -> PreviewResult:
+        return stack.preview(on_event=engine.collect)
+
+    return method
+
+
+def _converged(result: UpResult | DestroyResult) -> tuple[str, frozendict[str, int]]:
+
+    return result.summary.result, _changes(result.summary.resource_changes)
+
+
+def _previewed(result: PreviewResult) -> tuple[str, frozendict[str, int]]:
+
+    return "preview", _changes(result.change_summary)
+
+
 _VERBS: frozendict[StackOp, _Verb] = frozendict({
-    StackOp.UP: _Verb(
-        op=StackOp.UP, factory=_up, summary=lambda result: (result.summary.result, result.summary.resource_changes), after=_pull_embed_model
-    ),
-    StackOp.DOWN: _Verb(
-        op=StackOp.DOWN,
-        factory=lambda engine: lambda stack: stack.destroy(on_event=engine.collect, continue_on_error=True),
-        summary=lambda result: (result.summary.result, result.summary.resource_changes),
-    ),
-    StackOp.STATUS: _Verb(
-        op=StackOp.STATUS,
-        factory=lambda engine: lambda stack: stack.preview(on_event=engine.collect),
-        summary=lambda result: ("preview", result.change_summary),
-    ),
+    StackOp.UP: _Verb(op=StackOp.UP, drive=_driven(_up, _converged), after=_pull_embed_model),
+    StackOp.DOWN: _Verb(op=StackOp.DOWN, drive=_driven(_down, _converged)),
+    StackOp.STATUS: _Verb(op=StackOp.STATUS, drive=_driven(_preview, _previewed)),
 })
 
 
@@ -451,8 +477,8 @@ async def run(op: StackOp, cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
     # `_project` is awaitable (it binds the `after` leg), so the offload `Ok` pair meets it through a
     # `match` rather than `Result.bind`, whose mapper is synchronous — the one async-bind seam in the rail.
     match await _offload(verb, cfg):
-        case Result(tag="ok", ok=(result, engine)):
-            return await _project(verb, result, engine, cfg)
+        case Result(tag="ok", ok=(projected, engine)):
+            return await _project(verb, projected, engine, cfg)
         case Result(error=boundary_fault):
             return Error(boundary_fault)
 

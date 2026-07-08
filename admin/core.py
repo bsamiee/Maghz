@@ -22,7 +22,7 @@ import msgspec
 
 
 if TYPE_CHECKING:
-    from typing import TypeForm
+    from typing_extensions import TypeForm
 
     type TagForm[T] = TypeForm[T]
 else:
@@ -201,9 +201,10 @@ def tag_of[T](carrier: msgspec.Struct, tag_type: TagForm[T]) -> T:
     Raises:
         msgspec.ValidationError: When `carrier` is untagged or its tag is not a member of `tag_type`.
     """
-    return msgspec.convert(carrier.__struct_config__.tag, type=tag_type)
+    narrowed: T = msgspec.convert(carrier.__struct_config__.tag, type=tag_type)
+    return narrowed
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------
 
-__all__ = ["Detail", "Envelope", "Report", "Row", "Status", "completed", "fault", "tag_of"]
+__all__ = ["Detail", "Envelope", "Report", "Row", "Status", "TagForm", "completed", "fault", "tag_of"]

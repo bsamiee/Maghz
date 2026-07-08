@@ -354,7 +354,10 @@ def regenerate() -> tuple[Path, ...]:
     for path, tag, project in _REGIONS:
         original = path.read_text(encoding="utf-8")
         pattern = re.compile(rf"(?P<open>\[CATALOG:{re.escape(tag)}\][^\n]*\n).*?(?P<close>[^\n]*\[/CATALOG:{re.escape(tag)}\])", re.DOTALL)
-        rewritten = pattern.sub(lambda m, render=project: f"{m.group('open')}{render()}\n{m.group('close')}", original)
+        # search-and-splice (each tag's sentinel region is unique per file): the projection drops in
+        # verbatim, so no `sub` replacement-template escape processing can corrupt a backslash-bearing block.
+        found = pattern.search(original)
+        rewritten = original if found is None else f"{original[: found.start()]}{found['open']}{project()}\n{found['close']}{original[found.end() :]}"
         if rewritten != original:
             path.write_text(rewritten, encoding="utf-8")
             changed.append(path)

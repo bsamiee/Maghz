@@ -13,8 +13,8 @@ with the prelude and the CLI lowering untouched.
 Two subprocess/SSH boundary families, each on the canonical rail and never re-deriving its own
 spawn/grade/lift chain. The LOCAL git probes (`ls-files`, `check-attr`, `rev-parse`) compose the one
 `runtime.spawn` boundary under `RetryClass.PROC` and grade the exit inline against the `remote.git`
-subject; the dependent manifest/commit prelude binds through the `railed` do-notation builder, so a probe
-fault short-circuits before any connection opens. The REMOTE `maghz` invocations, the working-tree push,
+subject; the dependent manifest/commit prelude short-circuits on the rail, so a probe
+fault returns before any connection opens. The REMOTE `maghz` invocations, the working-tree push,
 and the artifact pull all ride one `_Session` opened under `guard(RetryClass.HTTP)` and fenced by one
 `async_boundary(op.subject, ...)`: a non-zero `conn.run(check=True)` raises `ProcessError` (lifted to
 `BoundaryFault.boundary`), an SSH disconnect lands `resource`, an auth/host-key denial `api`, and a codec
@@ -586,7 +586,7 @@ async def _up(session: _Session, op: StackOp) -> RuntimeRail[DeployReceipt]:
     """`UP` arm: push the working tree, run `maghz up` then `maghz schema apply`, decode both inner receipts."""
     pushed, push_notes = await session.push()
     match await session.maghz(StackDetail, "up"):
-        case Result(error=stack_fault):
+        case Result(tag="error", error=stack_fault):
             return Error(stack_fault)
         case Result(ok=stack):
             return (await session.maghz(SchemaDetail, "schema", "apply")).map(
@@ -646,7 +646,7 @@ async def _drive(
         `Ok(completed(...))` carrying the verb receipt, or `Error(BoundaryFault)` the CLI seam lowers.
     """
     match RemoteEnv.of(cfg):
-        case Result(error=env_fault):
+        case Result(tag="error", error=env_fault):
             return Error(env_fault)
         case Result(ok=remote_env):
             env = remote_env
@@ -686,7 +686,7 @@ _STACK: frozendict[StackOp, Callable[[_Session, StackOp], Awaitable[RuntimeRail[
 
 async def run(request: RemoteRequest, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
     match RemoteTarget.from_config(cfg.remote):
-        case Result(error=target_fault):
+        case Result(tag="error", error=target_fault):
             return Error(target_fault)
         case Result(ok=target):
             match request:

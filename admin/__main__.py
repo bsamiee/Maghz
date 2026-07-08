@@ -267,7 +267,9 @@ async def _launch(
     Signals.configure(log_format or cfg.log.format, level=log_level or cfg.log.level)
     chain, _, _ = app.parse_commands(tokens)
     structlog.contextvars.bind_contextvars(command=" ".join(chain))
-    return await app.run_async(tokens, backend="asyncio", result_action="return_value", exit_on_error=False)
+    # every mounted rail returns `Envelope` (or `None` for --help/--version); the local pins the erased dispatch
+    outcome: Envelope | None = await app.run_async(tokens, backend="asyncio", result_action="return_value", exit_on_error=False)
+    return outcome
 
 
 def main() -> None:

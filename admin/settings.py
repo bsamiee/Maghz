@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Literal, override, Self
 
 from frozendict import frozendict
-from pydantic import AnyHttpUrl, BaseModel, computed_field, ConfigDict, Field, GetPydanticSchema, model_validator, PostgresDsn, SecretStr
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, GetPydanticSchema, model_validator, PostgresDsn, SecretStr
 from pydantic_core import core_schema
 from pydantic_settings import BaseSettings, EnvSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -151,7 +151,7 @@ class InfraConfig(BaseModel):
 class N8nConfig(BaseModel):
     """The sole owner of every n8n knob: container image/name, port, URL shape, VPS-proxy overrides, and `workflows_dir`.
 
-    `api_url` is a `@computed_field` over `protocol`/`host`/`port` (no `MAGHZ_N8N__API_URL` env, the VPS
+    `api_url` is a derived property over `protocol`/`host`/`port` (no `MAGHZ_N8N__API_URL` env, the VPS
     override sets `PROTOCOL`/`HOST`); it returns a bare `str`, not `AnyHttpUrl`, because the `httpx`
     `base_url` consumer needs the host:port form with no trailing slash that `AnyHttpUrl` would normalize in.
     `webhook_url` is the typed `AnyHttpUrl` and stays independent: the reverse-proxy public URL differs from
@@ -171,7 +171,6 @@ class N8nConfig(BaseModel):
     connect_timeout: float = Field(default=10.0, gt=0)
     workflows_dir: Path = Path("workflows/n8n")
 
-    @computed_field
     @property
     def api_url(self) -> str:
         """Canonical n8n API URL derived from protocol, host, and port; never stored redundantly."""
@@ -367,7 +366,7 @@ class _BareEnvSource(EnvSettingsSource):
     @override
     def __call__(self) -> dict[str, dict[str, str]]:
         present = frozendict({(group, field): raw for env_key, (group, field) in _BARE_ENV.items() if (raw := self.env_vars.get(env_key.lower()))})
-        groups = frozendict.fromkeys(group for group, _ in present)
+        groups: frozendict[str, None] = frozendict.fromkeys(group for group, _ in present)
         return {group: {field: raw for (g, field), raw in present.items() if g == group} for group in groups}
 
 
