@@ -38,31 +38,22 @@
       }
     },
     "perplexity": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@perplexity-ai/mcp-server"
-      ],
+      "command": "forge-perplexity-mcp",
+      "args": [],
       "env": {
         "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
       }
     },
     "tavily": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "tavily-mcp@latest"
-      ],
+      "command": "forge-tavily-mcp",
+      "args": [],
       "env": {
         "TAVILY_API_KEY": "${TAVILY_API_KEY}"
       }
     },
     "hostinger": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "hostinger-api-mcp"
-      ],
+      "command": "forge-hostinger-mcp",
+      "args": [],
       "env": {
         "HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"
       }
