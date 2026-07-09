@@ -164,7 +164,7 @@ class InfraConfig(BaseModel):
     ollama_port: int = Field(default=11434, ge=1024, le=65535)
     docker_host: str = Field(default_factory=_detect_docker_host)
     atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
-    doppler_mcp_image: str = "node:22-alpine"
+    doppler_mcp_image: str = "node:24-alpine"
     doppler_mcp_version: str = "1.0.5"
     state_dir: Path = Path(".cache/pulumi")
     image_context: Path = Path("image")
@@ -187,6 +187,24 @@ class HookConfig(BaseModel):
     port: int = Field(default=9000, ge=1024, le=65535)
     signing_secret: SecretStr | None = Field(default=None, repr=False)
     server_file: Path = Path("hook/server.py")
+
+
+class ProxyConfig(BaseModel):
+    """The prd public-ingress owner: a Caddy TLS terminator on the docker network.
+
+    Doppler webhook delivery mandates HTTPS, so the proxy fronts the hook consumer (and any future
+    public service, n8n included) with an ACME certificate for `host` — the sslip.io name that
+    resolves to the VPS address without an owned domain. Local carries no proxy: it has no public
+    ingress and no ACME reachability.
+    """
+
+    model_config = _GROUP
+
+    image: str = "caddy:2-alpine"
+    container_name: str = "maghz-proxy"
+    host: str = "31-97-131-41.sslip.io"
+    http_port: int = Field(default=80, ge=1, le=65535)
+    https_port: int = Field(default=443, ge=1, le=65535)
 
 
 class N8nConfig(BaseModel):
@@ -433,6 +451,7 @@ class MaghzSettings(BaseSettings):
     infra: InfraConfig = Field(default_factory=InfraConfig)
     n8n: N8nConfig = Field(default_factory=N8nConfig)
     hook: HookConfig = Field(default_factory=HookConfig)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     mcp: McpServerSettings = Field(default_factory=McpServerSettings)
@@ -512,6 +531,7 @@ __all__ = [
     "N8nConfig",
     "ObservabilityConfig",
     "OllamaConfig",
+    "ProxyConfig",
     "Remote",
     "RemoteConfig",
     "RemoteCredentials",

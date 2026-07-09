@@ -374,8 +374,8 @@ def _define(cfg: MaghzSettings) -> None:
             )
 
             # The Doppler-webhook redeploy consumer: HMAC-verified change events append durable NDJSON
-            # receipts onto a named volume. The host binding discriminates on stage — prd binds public
-            # (Doppler's delivery must reach it; the signature is the auth boundary), local stays loopback.
+            # receipts onto a named volume. The host binding stays loopback on both stages — public
+            # ingress belongs to the prd proxy, which reaches the consumer over the docker network.
             # An absent secret ships an empty HMAC key and the server fails closed (401 on every event).
             hook_receipts = docker.Volume("hook-receipts", name="hook-receipts", opts=on)
             hook_secret = cfg.hook.signing_secret
@@ -389,13 +389,7 @@ def _define(cfg: MaghzSettings) -> None:
                 labels=labels(cfg.hook.container_name, "hook"),
                 envs=pulumi.Output.secret([f"MAGHZ_HOOK_SECRET={hook_secret.get_secret_value() if hook_secret is not None else ''}"]),
                 command=["python", "/app/server.py"],
-                ports=[
-                    docker.ContainerPortArgs(
-                        internal=_HOOK_INTERNAL_PORT,
-                        external=cfg.hook.port,
-                        ip="0.0.0.0" if stage is Stage.PRD else "127.0.0.1",  # noqa: S104 - prd ingress is the point; the HMAC signature is the auth boundary
-                    )
-                ],
+                ports=[docker.ContainerPortArgs(internal=_HOOK_INTERNAL_PORT, external=cfg.hook.port, ip="127.0.0.1")],
                 # Uploaded at create like the initdb script — no host path on either daemon.
                 uploads=[
                     docker.ContainerUploadArgs(
@@ -414,10 +408,46 @@ def _define(cfg: MaghzSettings) -> None:
                 opts=on,
             )
 
-            # The VPS-custody Doppler MCP consumer, prd only: a warm node runtime whose volume-backed
-            # npm prefix installs the pinned server once, then sleeps; each MCP session enters through
-            # `docker exec -i` with the scope token injected VPS-side, so the token never leaves the host.
+            # The prd public-ingress owner: Caddy terminates TLS for the sslip.io host with an ACME
+            # certificate (Doppler webhook delivery mandates HTTPS) and hands /hooks/* plus /healthz
+            # to the consumer over the docker network. Cert material persists on its own volume so
+            # renewals survive container replacement. Local has no public ingress, hence no proxy.
             if stage is Stage.PRD:
+                caddy_data = docker.Volume("caddy-data", name="caddy-data", opts=on)
+                caddyfile = (
+                    f"{cfg.proxy.host} {{\n"
+                    f"\treverse_proxy /hooks/* hook:{_HOOK_INTERNAL_PORT}\n"
+                    f"\treverse_proxy /healthz hook:{_HOOK_INTERNAL_PORT}\n"
+                    f"}}\n"
+                )
+                docker.Container(
+                    "proxy",
+                    name=cfg.proxy.container_name,
+                    image=cfg.proxy.image,
+                    restart="unless-stopped",
+                    memory=128,
+                    ulimits=[nofile],
+                    labels=labels(cfg.proxy.container_name, "proxy"),
+                    ports=[
+                        docker.ContainerPortArgs(internal=80, external=cfg.proxy.http_port),
+                        docker.ContainerPortArgs(internal=443, external=cfg.proxy.https_port),
+                    ],
+                    uploads=[docker.ContainerUploadArgs(content=caddyfile, file="/etc/caddy/Caddyfile")],
+                    volumes=[docker.ContainerVolumeArgs(volume_name=caddy_data.name, container_path="/data")],
+                    networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["proxy"])],
+                    healthcheck=docker.ContainerHealthcheckArgs(
+                        tests=["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"],
+                        interval="15s",
+                        timeout="5s",
+                        retries=5,
+                        start_period="30s",
+                    ),
+                    opts=on,
+                )
+
+                # The VPS-custody Doppler MCP consumer: a warm node runtime whose volume-backed npm
+                # prefix installs the pinned server once, then sleeps; each MCP session enters through
+                # `docker exec -i` with the scope token injected VPS-side, so the token never leaves the host.
                 mcp_prefix = docker.Volume("mcp-prefix", name="mcp-prefix", opts=on)
                 docker.Container(
                     "doppler-mcp",
