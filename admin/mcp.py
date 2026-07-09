@@ -139,8 +139,6 @@ def _codex_server(kind: ServerKind, spec: ServerSpec, cfg: MaghzSettings) -> lis
     header = [f"[mcp_servers.{_toml_key(kind.value)}]"]
     if spec.is_http:
         return _codex_http(header, spec)
-    if kind is ServerKind.POSTGRES:
-        return _codex_postgres(header)
     return _codex_process(header, kind, spec, cfg)
 
 
@@ -151,11 +149,6 @@ def _codex_http(header: list[str], spec: ServerSpec) -> list[str]:
     if headers := _env_headers(spec.http_headers):
         return [*rows, f"env_http_headers = {_toml_inline(headers)}"]
     return rows
-
-
-def _codex_postgres(header: list[str]) -> list[str]:
-    command = 'DATABASE_URI="$MAGHZ_MCP__DATABASE_URI" UV_PYTHON_DOWNLOADS=automatic exec uvx --python 3.13 postgres-mcp --access-mode=restricted'
-    return [*header, 'command = "bash"', "args = " + _toml_array(("-lc", command)), 'env_vars = ["MAGHZ_MCP__DATABASE_URI"]']
 
 
 def _codex_process(header: list[str], kind: ServerKind, spec: ServerSpec, cfg: MaghzSettings) -> list[str]:
@@ -333,12 +326,11 @@ def _workspace_overlay(cfg: MaghzSettings) -> dict[str, str]:
 
 _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     ServerKind.POSTGRES: ServerSpec(
-        # Pin Python 3.13: postgres-mcp's psycopg2-binary has no wheel for the bleeding-edge system 3.15, so an
-        # unpinned uvx tries a source build and fails. UV_PYTHON_DOWNLOADS=automatic overrides the Forge
-        # `never` policy for this one tool so a fresh box fetches 3.13 rather than breaking — the turnkey path.
-        command="uvx",
-        args=("--python", "3.13", "postgres-mcp", "--access-mode=restricted"),
-        env=frozendict({"DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}", "UV_PYTHON_DOWNLOADS": "automatic"}),
+        # The Forge launcher owns the whole spawn contract — uvx Python pin, DSN mapping from
+        # MAGHZ_MCP__DATABASE_URI, launchd GUI replay fallback, and the loud exit 78 on an unset DSN — so both
+        # client artifacts converge on one command instead of re-encoding an inline uvx line.
+        command="forge-maghz-postgres-mcp",
+        env=frozendict({"MAGHZ_MCP__DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"}),
     ),
     ServerKind.GOOGLE_WORKSPACE: ServerSpec(
         command="forge-workspace-mcp",

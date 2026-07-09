@@ -1,16 +1,10 @@
 {
   "mcpServers": {
     "postgres": {
-      "command": "uvx",
-      "args": [
-        "--python",
-        "3.13",
-        "postgres-mcp",
-        "--access-mode=restricted"
-      ],
+      "command": "forge-maghz-postgres-mcp",
+      "args": [],
       "env": {
-        "DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}",
-        "UV_PYTHON_DOWNLOADS": "automatic"
+        "MAGHZ_MCP__DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"
       }
     },
     "google-workspace": {
