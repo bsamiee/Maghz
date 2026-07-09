@@ -18,7 +18,7 @@ An agent-operated second brain. Heptabase owns note content, the PostgreSQL `mag
 
 ## [02]-[HOW_IT_WORKS]
 
-The `admin/` package is functional Railway-Oriented Programming over one closed `BoundaryFault` family. Every domain operation returns a `RuntimeRail[Envelope]`; the CLI lowers it to one stdout `Envelope` at the edge. `admin/runtime.py` is the substrate — the rail, the fault classifier, the bounded `drain` lane, retry policies, and structured receipts — and every consumer (`rails.py`, `infra.py`, `mcp.py`, `automation.py`, `remote.py`) composes it rather than re-deriving spawn, retry, or fault handling.
+The `admin/` package is functional Railway-Oriented Programming over one closed `BoundaryFault` family. Every domain operation returns a `RuntimeRail[Envelope]`; the CLI lowers it to one stdout `Envelope` at the edge. `admin/runtime.py` is the substrate — the rail, the fault classifier, the bounded `drain` lane, retry policies, and structured receipts — and every consumer module composes it rather than re-deriving spawn, retry, or fault handling.
 
 Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infra lifecycle. The MCP fleet owns live exploration: an agent reaches the database, web research, and the VPS through MCP when it is investigating, not committing. `postgres` and `n8n` are deliberately dual-surface — the rail is the deterministic owner (schema and ledger through the CLI; n8n workflow files on disk), and the MCP is the live agent lens over the same system. Deterministic work goes through the `maghz` CLI; exploratory work goes through MCP; never the reverse.
 

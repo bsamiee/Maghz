@@ -20,7 +20,7 @@ How to apply:
 - Heavy exploration, investigation, and research legs: dispatch to gpt-5.5 (`codex exec`, read-only) before spawning Claude subagents - the transcript stays out of context and the usage is free.
 - Anything user-facing (UI, copy, API design) needs taste ≥ 7.
 - Reviews of plans/implementations: fable-5 or opus-4.8, optionally gpt-5.5 as an extra independent perspective.
-- Mechanics: gpt-5.5 is only reachable through the Codex CLI - `codex exec` / `codex review` (my ~/.codex/config.toml defaults to gpt-5.5 at medium reasoning).
+- Mechanics: gpt-5.5 is only reachable through the Codex CLI - `codex exec` / `codex review` (`~/.codex/config.toml` defaults to gpt-5.5 at medium reasoning).
 - Load the codex skill `.claude/skills/codex/SKILL.md` whenever dispatching work to codex - delegation triggers, invocation mechanics, sandboxing, effort tiers, sessions, and review modes live there.
 - Reasoning effort defaults to medium; escalate a single run with `codex exec -c model_reasoning_effort="high"` (or `--profile xhigh`) for the hardest research, review, and design legs - multi-minute latency, reserve for depth over throughput.
 - Claude models (sonnet-5, opus-4.8, fable-5) run via the Agent/Workflow model parameter.
@@ -29,7 +29,7 @@ How to apply:
 Using gpt-5.5 inside workflows and subagents (the model parameter only takes Claude models, so use a wrapper):
 - Spawn a thin Claude wrapper agent with `model: 'sonnet', effort: 'low'` whose prompt instructs it to write a self-contained codex prompt, run `codex exec` via Bash, and return the report (use `schema` on the wrapper to get structured output back).
 - Always label these agents with a `gpt-5.5:` prefix, e.g. `{label: 'gpt-5.5:review-auth'}` - the workflow UI shows the wrapper's Claude model, so the label is the only indication the real worker is gpt-5.5.
-- Codex runs can exceed Bash's 10-minute timeout: pass an explicit timeout, or run in the background and poll for the report file.
+- A long run exceeds Bash's 10-minute cap: pass an explicit timeout, or launch detached against a `-o` report and poll by liveness — never relaunch a live run. Inside workflows wrappers are LAUNCH-ONLY — a subagent has no legal wait (foreground sleep is blocked, background tasks never notify it, idle no-ops trip no-progress enforcement): the wrapper returns a launch receipt in seconds, the orchestrator owns time between harvest rounds, and a short-lived harvester agent promotes finished reports from disk.
 - `codex exec -o <file>` writes the final message to a file (the report artifact to poll in background runs); `--output-schema <schema.json>` constrains the final message to a JSON Schema when the wrapper must return typed results.
 - Workflow token budgets only count Claude tokens; codex work is free and invisible to `budget.spent()`.
 
@@ -118,6 +118,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 - [ALWAYS]: `maghz schema apply` owns idempotent declarative schema apply over `db/schema.sql`, `db/routines.sql`, and `db/cron.sql` in dependency order; a replay is a clean no-op, and `maghz schema doctor` asserts the live extension census owned by `admin/profile.py`. `AGENTS.md [05]` carries the full apply mechanism.
 - [NEVER]: Create migration files, numbered `NNN_*.sql` scripts, schema-version tables, or up/down migration pairs; the schema is declarative and idempotent — change `db/schema.sql`, `db/routines.sql`, or `db/cron.sql` in place and replay through `maghz schema apply`.
 - [ALWAYS]: `psql` and `pgcli` own ad-hoc SQL and interactive inspection; reach for them for one-off queries, not durable schema change.
+- [ALWAYS]: The embed pipeline is in-database — `maghz_embed_enqueue`/`maghz_embed_drain` ride the minute `pg_cron` tick and `pg_net` posts to local Ollama; debug it through `maghz schema doctor` plus SQL over `cron.job_run_details`, never an application-side embedding script.
 - [ALWAYS]: Pulumi owns infra: the custom ParadeDB image build and the `db`/`ollama`/`n8n` services behind `StackOp`, driven by `MaghzSettings`. [SEAM] `compose.yaml` is the transitional parallel declaration of the same services (`local`/`prd` profiles); it retires when `StackOp` owns the full topology on both hosts, and until then a service change lands in both surfaces in the same pass.
 - [ALWAYS]: `maghz exec` and `maghz deploy` own VPS operation; raw `ssh`/`docker`/`psql` against the VPS is debugging only, and every deploy receipt carries the pushed commit.
 - [ALWAYS]: Route failures by seam: the stack, schema, ledger, and deploy rails are `admin/`-owned; the VPS operating system — users, network, firewall, system Docker, tunnels — is owned by the Forge flake's `nixosConfigurations.maghz` and changes through `forge-redeploy`, never through a patch in this repo.

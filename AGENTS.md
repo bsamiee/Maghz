@@ -33,7 +33,7 @@ Maghz is a focused second brain. Heptabase owns content, the PostgreSQL `maghz` 
 
 Three surfaces meet at the wire and never collapse into each other. Heptabase content flows into the ledger and back through sync; the `maghz` database holds the canonical schema (`db/schema.sql`) plus idempotent routines (`db/routines.sql`); the `admin/` Python tooling owns the CLI, the Pulumi infra, and `MaghzSettings`.
 
-Infra is Pulumi-managed and Forge-provided, and one stack definition serves two hosts. The custom ParadeDB image (`image/Dockerfile`) and the `db`/`ollama`/`n8n` services are declared as Pulumi Python IaC in `admin/infra.py`; locally they run on the Colima/Docker runtime that `Parametric_Forge` provisions, and on the `maghz` NixOS VPS they run on the system Docker daemon that the Forge flake's `nixosConfigurations.maghz` declares. Services bind loopback on both hosts with an invariant port set; the Forge `vpsTunnels` launchd agent projects the VPS services onto the local loopback, and that tunnel and the local stack are mutually exclusive owners of the ports. `compose.yaml` is the transitional parallel declaration of the same services (`local`/`prd` profiles) and retires when `StackOp` owns the full topology on both hosts.
+Infra is Pulumi-managed and Forge-provided, and one stack definition serves two hosts. The custom ParadeDB image (`image/Dockerfile`) and the `db`/`ollama`/`n8n` services are declared as Pulumi Python IaC in `admin/infra.py`; locally they run on the Colima/Docker runtime that `Parametric_Forge` provisions, and on the `maghz` NixOS VPS they run on the system Docker daemon that the Forge flake's `nixosConfigurations.maghz` declares. Services bind loopback on both hosts with an invariant port set; the Forge `vpsTunnels` launchd agent projects the VPS services onto the local loopback, and that tunnel and the local stack are mutually exclusive owners of the ports. Port invariance cuts both ways: with the tunnel live, the same loopback DSN reaches the production VPS database — prove which owner holds the ports before any mutating rail. `compose.yaml` is the transitional parallel declaration of the same services (`local`/`prd` profiles) and retires when `StackOp` owns the full topology on both hosts.
 
 Three identities partition the VPS, and each carries exactly one concern: `root` carries only the key-based `forge-redeploy` activation rail; `bardiasamiee` is the operator user owning the Home Manager estate and the interactive `ssh maghz` session; `maghz-agent` is the workload identity (docker group, no wheel) owning the compose plane and the deploy workroot `/home/maghz-agent/maghz`. The `maghz deploy` rail operates entirely as `maghz-agent`: it pushes the working tree over SFTP, runs remote `maghz up` plus `schema apply` through `uv run --project` in the workroot, pulls artifacts back, and stamps every receipt with the deployed commit. Host identity, network, firewall, and tunnel changes route to the Forge owner; nothing in this repo mutates the host.
 
@@ -61,23 +61,23 @@ Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth rem
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.
 
-| [INDEX] | [GROUP]          | [TOOLS]                                                                                                      |
-| :-----: | :--------------- | :------------------------------------------------------------------------------------------------------------ |
-|  [01]   | Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                          |
-|  [02]   | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
-|  [03]   | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
-|  [04]   | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                    |
-|  [05]   | Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                             |
-|  [06]   | Inference        | `ollama`                                                                                                     |
-|  [07]   | Content          | `heptabase`                                                                                                  |
-|  [08]   | HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                       |
-|  [09]   | Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                  |
-|  [10]   | Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                               |
-|  [11]   | Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                        |
-|  [12]   | YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                |
-|  [13]   | TOML             | `taplo`                                                                                                      |
-|  [14]   | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
-|  [15]   | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
+| [INDEX] | [GROUP]          | [TOOLS]                                                                                                                                        |
+| :-----: | :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+|  [01]   | Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                                                            |
+|  [02]   | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                                                                 |
+|  [03]   | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb`                                   |
+|  [04]   | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                                                      |
+|  [05]   | Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                                                               |
+|  [06]   | Inference        | `ollama`                                                                                                                                       |
+|  [07]   | Content          | `heptabase`                                                                                                                                    |
+|  [08]   | HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                                                         |
+|  [09]   | Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                                                    |
+|  [10]   | Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                                                                 |
+|  [11]   | Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                                                          |
+|  [12]   | YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                                                  |
+|  [13]   | TOML             | `taplo`                                                                                                                                        |
+|  [14]   | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                                                             |
+|  [15]   | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                                                                 |
 |  [16]   | MCP              | `postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter` |
 
 ## [07]-[DOCUMENTATION]
