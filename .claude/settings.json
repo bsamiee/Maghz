@@ -47,5 +47,14 @@
             "Bash(docker volume rm:*)"
         ]
     },
-    "enabledPlugins": {}
+    "enabledPlugins": {
+        "ty-lsp@forge-lsp": true,
+        "roslyn-lsp@forge-lsp": true,
+        "tsgo-lsp@forge-lsp": true,
+        "bash-lsp@forge-lsp": true,
+        "nixd-lsp@forge-lsp": true,
+        "lua-lsp@forge-lsp": true,
+        "postgres-lsp@forge-lsp": true,
+        "yaml-lsp@forge-lsp": true
+    }
 }

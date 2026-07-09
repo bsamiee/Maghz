@@ -1,6 +1,0 @@
-{
-  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "tsgo-lsp",
-  "displayName": "tsgo (TypeScript)",
-  "description": "TypeScript native-preview language server (.ts/.tsx/.js)"
-}
