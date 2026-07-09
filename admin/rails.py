@@ -29,7 +29,6 @@ from admin.runtime import (
     boundary,
     BoundaryFault,
     Disposition,
-    drain,
     DrainReceipt,
     guarded,
     LaneKey,
@@ -201,7 +200,7 @@ async def _fan_out(cfg: MaghzSettings, dump: str, *, resync: bool, upload: bool)
         Admit.guarded(RetryClass.PROC, _work(remote, cfg, dump, resync=resync, upload=f"{remote.value}:{remote_dump}" if upload else None))
         for remote in Remote
     )
-    return await drain(policy, units)
+    return await policy.drain(units)
 
 
 def _results(receipt: DrainReceipt[object]) -> Block[_RemoteResult]:
@@ -271,7 +270,11 @@ async def _restore_detail(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
                 return Error(download_fault)
             case Result():
                 pass
-        dump = await _first_dump(staging)
+        match await _first_dump(staging):
+            case Result(tag="error", error=missing_fault):
+                return Error(missing_fault)
+            case Result(ok=dump):
+                pass
         match await _spawn("pg_restore", "-d", str(cfg.database.dsn), "-c", "-O", "--no-privileges", str(dump)):
             case Result(tag="error", error=restore_fault):
                 return Error(restore_fault)
@@ -281,12 +284,12 @@ async def _restore_detail(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
         return _ok(receipt, CloudOp.RESTORE, restored_from=f"{source}/{dump.name}")
 
 
-async def _first_dump(staging: anyio.Path) -> anyio.Path:
+async def _first_dump(staging: anyio.Path) -> RuntimeRail[anyio.Path]:
 
     async for entry in staging.iterdir():
         if entry.suffix == ".dump":
-            return entry
-    return staging
+            return Ok(entry)
+    return Error(BoundaryFault(resource=("cloud.restore", "no .dump artifact in the remote dump path")))
 
 
 def _ok(receipt: DrainReceipt[object], op: CloudOp, *, restored_from: str | msgspec.UnsetType) -> RuntimeRail[Envelope]:
@@ -484,9 +487,7 @@ async def _status(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
     probed = await guarded(RetryClass.HTTP, lambda: _probe(cfg.n8n), subject="n8n.status")
     count = await _census(cfg)
     return probed.map(
-        lambda healthy: completed(
-            Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=count, container=cfg.n8n.container_name, healthy=healthy)
-        )
+        lambda healthy: completed(Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=count, container=cfg.n8n.container_name, healthy=healthy))
     )
 
 
@@ -586,7 +587,7 @@ async def _grade(step: _Step) -> RuntimeRail[_Step]:
 async def _drain_front(steps: tuple[_Step, ...]) -> Block[RuntimeRail[_Step]]:
 
     units = Block.of_seq(Admit.of(partial(_grade, step)) for step in steps)
-    receipt: DrainReceipt[object] = await drain(_SCHEMA_LANE, units)
+    receipt: DrainReceipt[object] = await _SCHEMA_LANE.drain(units)
     graded = receipt.values.choose(lambda value: Some(value) if isinstance(value, _Step) else Nothing)
     return graded.map(Ok).append(receipt.faults.map(Error))
 
@@ -873,7 +874,7 @@ async def health(cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
             lambda: _http_probe("hook", f"http://127.0.0.1:{cfg.hook.port}/healthz"),
         )
     )
-    receipt: DrainReceipt[object] = await drain(LanePolicy(capacity=len(_HEALTH_SERVICES), key=LaneKey("health.probe")), units)
+    receipt: DrainReceipt[object] = await LanePolicy(capacity=len(_HEALTH_SERVICES), key=LaneKey("health.probe")).drain(units)
     probed = {probe.service: probe for probe in receipt.values.choose(lambda value: Some(value) if isinstance(value, _Probe) else Nothing)}
     services = frozendict({name: ("ok" if (probe := probed.get(name)) is not None and probe.ok else "down") for name in _HEALTH_SERVICES})
     db_probe, ollama_probe = probed.get("postgres"), probed.get("ollama")

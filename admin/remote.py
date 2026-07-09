@@ -50,8 +50,8 @@ from pydantic import SecretStr
 import structlog
 
 from admin.core import completed, Detail, Envelope, Status
-from admin.runtime import Admit, async_boundary, BoundaryFault, drain, DrainReceipt, guard, LaneKey, LanePolicy, RetryClass, RuntimeRail, spawn
-from admin.settings import MaghzSettings, RemoteConfig
+from admin.runtime import Admit, async_boundary, BoundaryFault, DrainReceipt, guard, LaneKey, LanePolicy, RetryClass, RuntimeRail, spawn
+from admin.settings import MaghzSettings, RemoteConfig, REPO_ROOT
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
         await self.sftp.makedirs(self.target.workroot, exist_ok=True)
         policy = LanePolicy(capacity=self.cfg.remote.sftp_push_concurrency, key=LaneKey("remote.sftp.push"))
         units = Block.of_seq(Admit.of(self._dir(workroot, group.relative, group.paths)) for group in self.manifest.groups())
-        receipt: DrainReceipt[object] = await drain(policy, units)
+        receipt: DrainReceipt[object] = await policy.drain(units)
         pushed = sum(int(value) for value in receipt.values if isinstance(value, int))
         return pushed, (*notes, *(fault.headline() for fault in receipt.faults))
 
@@ -307,39 +307,33 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
 # from the validated settings, so `MAGHZ_DATABASE_DSN` tracks `cfg.database.dsn` by construction and
 # `MAGHZ_LOG__FORMAT` is pinned to the machine-readable renderer; `run` folds each row into a
 # `KEY=<shlex.quote(value)>` export ahead of the remote argv.
-def _secret_required(value: SecretStr | None, key: str) -> str:
-    raw = value.get_secret_value() if value is not None else ""
+def _required(value: SecretStr | str | None, key: str) -> str:
+    raw = value.get_secret_value() if isinstance(value, SecretStr) else (value or "")
     if not raw:
         raise ValueError(f"missing required remote environment variable: {key}")
     return raw
 
 
-def _text_required(value: str | None, key: str) -> str:
-    if not value:
-        raise ValueError(f"missing required remote environment variable: {key}")
-    return value
-
-
 _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
     "MAGHZ_DATABASE_DSN": lambda cfg: str(cfg.database.dsn),
     "MAGHZ_LOG__FORMAT": lambda _cfg: "json",
-    "CODERABBIT_API_KEY": lambda cfg: _secret_required(cfg.integrations.coderabbit_api_key, "CODERABBIT_API_KEY"),
-    "OP_SERVICE_ACCOUNT_TOKEN": lambda cfg: _secret_required(cfg.integrations.op_service_account_token, "OP_SERVICE_ACCOUNT_TOKEN"),
-    "GOOGLE_OAUTH_CLIENT_ID": lambda cfg: _secret_required(cfg.integrations.google_oauth_client_id, "GOOGLE_OAUTH_CLIENT_ID"),
-    "GOOGLE_OAUTH_CLIENT_SECRET": lambda cfg: _secret_required(cfg.integrations.google_oauth_client_secret, "GOOGLE_OAUTH_CLIENT_SECRET"),
+    "CODERABBIT_API_KEY": lambda cfg: _required(cfg.integrations.coderabbit_api_key, "CODERABBIT_API_KEY"),
+    "OP_SERVICE_ACCOUNT_TOKEN": lambda cfg: _required(cfg.integrations.op_service_account_token, "OP_SERVICE_ACCOUNT_TOKEN"),
+    "GOOGLE_OAUTH_CLIENT_ID": lambda cfg: _required(cfg.integrations.google_oauth_client_id, "GOOGLE_OAUTH_CLIENT_ID"),
+    "GOOGLE_OAUTH_CLIENT_SECRET": lambda cfg: _required(cfg.integrations.google_oauth_client_secret, "GOOGLE_OAUTH_CLIENT_SECRET"),
     "GOOGLE_WORKSPACE_CLI_CONFIG_DIR": lambda cfg: f"/home/{cfg.remote.user}/.config/gws",
     "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": lambda cfg: f"/home/{cfg.remote.user}/.config/gws/credentials.json",
-    "GOOGLE_WORKSPACE_PROJECT_ID": lambda cfg: _text_required(cfg.integrations.google_workspace_project_id, "GOOGLE_WORKSPACE_PROJECT_ID"),
-    "JUPYTER_TOKEN": lambda cfg: _secret_required(cfg.integrations.jupyter_token, "JUPYTER_TOKEN"),
-    "GREPTILE_API_KEY": lambda cfg: _secret_required(cfg.integrations.greptile_api_key, "GREPTILE_API_KEY"),
-    "GH_TOKEN": lambda cfg: _secret_required(cfg.integrations.gh_token, "GH_TOKEN"),
-    "GITHUB_TOKEN": lambda cfg: _secret_required(cfg.integrations.github_token, "GITHUB_TOKEN"),
-    "GH_PROJECTS_TOKEN": lambda cfg: _secret_required(cfg.integrations.gh_projects_token, "GH_PROJECTS_TOKEN"),
-    "HOSTINGER_API_TOKEN": lambda cfg: _secret_required(cfg.integrations.hostinger_api_token, "HOSTINGER_API_TOKEN"),
-    "CONTEXT7_API_KEY": lambda cfg: _secret_required(cfg.integrations.context7_api_key, "CONTEXT7_API_KEY"),
-    "EXA_API_KEY": lambda cfg: _secret_required(cfg.integrations.exa_api_key, "EXA_API_KEY"),
-    "PERPLEXITY_API_KEY": lambda cfg: _secret_required(cfg.integrations.perplexity_api_key, "PERPLEXITY_API_KEY"),
-    "TAVILY_API_KEY": lambda cfg: _secret_required(cfg.integrations.tavily_api_key, "TAVILY_API_KEY"),
+    "GOOGLE_WORKSPACE_PROJECT_ID": lambda cfg: _required(cfg.integrations.google_workspace_project_id, "GOOGLE_WORKSPACE_PROJECT_ID"),
+    "JUPYTER_TOKEN": lambda cfg: _required(cfg.integrations.jupyter_token, "JUPYTER_TOKEN"),
+    "GREPTILE_API_KEY": lambda cfg: _required(cfg.integrations.greptile_api_key, "GREPTILE_API_KEY"),
+    "GH_TOKEN": lambda cfg: _required(cfg.integrations.gh_token, "GH_TOKEN"),
+    "GITHUB_TOKEN": lambda cfg: _required(cfg.integrations.github_token, "GITHUB_TOKEN"),
+    "GH_PROJECTS_TOKEN": lambda cfg: _required(cfg.integrations.gh_projects_token, "GH_PROJECTS_TOKEN"),
+    "HOSTINGER_API_TOKEN": lambda cfg: _required(cfg.integrations.hostinger_api_token, "HOSTINGER_API_TOKEN"),
+    "CONTEXT7_API_KEY": lambda cfg: _required(cfg.integrations.context7_api_key, "CONTEXT7_API_KEY"),
+    "EXA_API_KEY": lambda cfg: _required(cfg.integrations.exa_api_key, "EXA_API_KEY"),
+    "PERPLEXITY_API_KEY": lambda cfg: _required(cfg.integrations.perplexity_api_key, "PERPLEXITY_API_KEY"),
+    "TAVILY_API_KEY": lambda cfg: _required(cfg.integrations.tavily_api_key, "TAVILY_API_KEY"),
 })
 
 
@@ -348,7 +342,7 @@ _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
 # --- [GIT_PROBE]
 
 
-async def _git(cfg: MaghzSettings, *argv: str, stdin: bytes | None = None) -> RuntimeRail[bytes]:
+async def _git(*argv: str, stdin: bytes | None = None) -> RuntimeRail[bytes]:
     """Run one local `git` probe through the canonical `runtime.spawn` boundary, grading the exit to stdout.
 
     The one local-git boundary the prelude composes: `runtime.spawn` owns the `anyio.run_process(check=
@@ -360,7 +354,6 @@ async def _git(cfg: MaghzSettings, *argv: str, stdin: bytes | None = None) -> Ru
     per-rail wrapper. The exit-to-rail mapping the `spawn` contract leaves to the caller lives here, once.
 
     Args:
-        cfg: The validated settings; the repo tree is enumerated from the root anchoring `artifacts_dir`.
         argv: The `git` subcommand and its arguments, run with `cwd` at the repo root.
         stdin: The bytes piped to git stdin (the NUL-joined manifest for `check-attr`), or `None`.
 
@@ -368,8 +361,7 @@ async def _git(cfg: MaghzSettings, *argv: str, stdin: bytes | None = None) -> Ru
         `Ok(stdout_bytes)` on a zero exit, or `Error(BoundaryFault)` for a non-zero git exit or an
         exhausted spawn flap lifted at the `runtime.spawn` boundary.
     """
-    root = cfg.artifacts_dir.parent  # the repo root anchoring `maghz` (artifacts_dir is `<root>/.artifacts`)
-    return (await spawn(("git", *argv), subject="remote.git", retry_class=RetryClass.PROC, cwd=root, stdin=stdin)).bind(
+    return (await spawn(("git", *argv), subject="remote.git", retry_class=RetryClass.PROC, cwd=REPO_ROOT, stdin=stdin)).bind(
         lambda run: (
             Ok(run.stdout)
             if run.returncode == 0
@@ -378,7 +370,7 @@ async def _git(cfg: MaghzSettings, *argv: str, stdin: bytes | None = None) -> Ru
     )
 
 
-async def _manifest(cfg: MaghzSettings) -> RuntimeRail[Manifest]:
+async def _manifest() -> RuntimeRail[Manifest]:
     """Enumerate the tracked working tree on the rail, partitioning git-lfs pointer paths out of the push set.
 
     `git ls-files --cached --exclude-standard -z` yields the NUL-delimited tracked manifest; a second
@@ -388,10 +380,6 @@ async def _manifest(cfg: MaghzSettings) -> RuntimeRail[Manifest]:
     the `_git` boundary, so a git failure short-circuits the push to the rail rather than transferring a
     partial tree; the dependent second probe binds the first only when the manifest is non-empty.
 
-    Args:
-        cfg: The validated settings; the manifest enumerates the repo tree from the root anchoring
-            `artifacts_dir`.
-
     Returns:
         `Ok((pushable, skipped))` — `pushable` the non-lfs tracked POSIX-relative paths to transfer,
         `skipped` the lfs-tracked pointer paths held out — or `Error(BoundaryFault)` from either probe.
@@ -400,20 +388,20 @@ async def _manifest(cfg: MaghzSettings) -> RuntimeRail[Manifest]:
     def _split(tracked: tuple[str, ...], attrs: bytes) -> Manifest:
         fields = attrs.decode().split("\0")
         lfs = {fields[index] for index in range(0, len(fields) - 2, 3) if fields[index + 2] == "lfs"}
-        return Worktree(root=cfg.artifacts_dir.parent, pushable=tuple(path for path in tracked if path not in lfs), skipped_lfs=tuple(sorted(lfs)))
+        return Worktree(root=REPO_ROOT, pushable=tuple(path for path in tracked if path not in lfs), skipped_lfs=tuple(sorted(lfs)))
 
-    match await _git(cfg, "ls-files", "--cached", "--exclude-standard", "-z"):
+    match await _git("ls-files", "--cached", "--exclude-standard", "-z"):
         case Result(tag="ok", ok=listed):
             tracked = tuple(path for path in listed.decode().split("\0") if path)
             if not tracked:
-                return Ok(Worktree(root=cfg.artifacts_dir.parent, pushable=(), skipped_lfs=()))
-            attrs = await _git(cfg, "check-attr", "filter", "-z", "--stdin", stdin="\0".join(tracked).encode())
+                return Ok(Worktree(root=REPO_ROOT, pushable=(), skipped_lfs=()))
+            attrs = await _git("check-attr", "filter", "-z", "--stdin", stdin="\0".join(tracked).encode())
             return attrs.map(lambda raw: _split(tracked, raw))
         case Result(error=manifest_fault):
             return Error(manifest_fault)
 
 
-async def _commit(cfg: MaghzSettings) -> RuntimeRail[str]:
+async def _commit() -> RuntimeRail[str]:
     """Resolve the working-tree HEAD sha through the `_git` boundary, the deployed-commit receipt source.
 
     The one mint of the commit identity threaded into every `ExecReceipt`, so a consumer
@@ -423,7 +411,7 @@ async def _commit(cfg: MaghzSettings) -> RuntimeRail[str]:
     Returns:
         `Ok(short_sha)` on a clean repo, or `Error(BoundaryFault)` when `git rev-parse` fails.
     """
-    return (await _git(cfg, "rev-parse", "--short", "HEAD")).map(lambda raw: raw.decode().strip())
+    return (await _git("rev-parse", "--short", "HEAD")).map(lambda raw: raw.decode().strip())
 
 
 # --- [SSH_OPS]
@@ -484,7 +472,7 @@ async def _exec(session: _Session, argv: tuple[str, ...]) -> RuntimeRail[Detail]
     )
 
 
-async def _prelude(cfg: MaghzSettings) -> RuntimeRail[tuple[Manifest, str]]:
+async def _prelude() -> RuntimeRail[tuple[Manifest, str]]:
     """Resolve the git manifest and HEAD sha on the rail as one dependent pair, short-circuiting the first fault.
 
     The two git facts are dependent on a clean repo, so the manifest binds the sha through `bind`
@@ -495,9 +483,9 @@ async def _prelude(cfg: MaghzSettings) -> RuntimeRail[tuple[Manifest, str]]:
     Returns:
         `Ok((manifest, commit))` when both probes succeed, or the first `Error(BoundaryFault)` either minted.
     """
-    match await _manifest(cfg):
+    match await _manifest():
         case Result(tag="ok", ok=manifest):
-            return (await _commit(cfg)).map(lambda commit: (manifest, commit))
+            return (await _commit()).map(lambda commit: (manifest, commit))
         case Result(error=manifest_fault):
             return Error(manifest_fault)
 
@@ -541,7 +529,7 @@ async def _drive(
         return (await async_boundary(op.subject, _session)).bind(lambda rail: rail)
 
     with structlog.contextvars.bound_contextvars(rail="remote", op=op.value):
-        match await _prelude(cfg):
+        match await _prelude():
             case Result(tag="ok", ok=staged):
                 return await _connected(staged)
             case Result(error=prelude_fault):

@@ -110,7 +110,7 @@ async def _status() -> Envelope:
 
 @app.command(name="health", group=_STACK)
 async def _health() -> Envelope:
-    """Probe the service plane (postgres, ollama, n8n, atuin) through its loopback ports."""
+    """Probe the service plane (postgres, ollama, n8n, atuin, hook) through its loopback ports."""
     return lower(await rails.health(settings()))
 
 
