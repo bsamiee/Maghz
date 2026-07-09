@@ -9,6 +9,7 @@ VPS second-brain repo: Python admin tooling, container topology, database schema
 - Ops rails per docs/standards/ops-doctrine.md: thin CLI lowerers, one settings owner, typed operation receipts, one scoped SSH rail for remote work.
 - Doppler owns secrets end to end; the repo carries references, never values.
 - Generated projections (.mcp.json, .codex/) re-render from their generator; hand edits are defects.
+- Fix-to-root completeness: a change that patches a symptom while its root cause stands, leaves a known defect unfixed because it sits outside the diff's scope, or defers a residual for a later pass is a defect — the root fix belongs in the same change, and a genuinely blocked item is an explicit unreachable naming its owner, never a silent residual.
 
 ## Universal bar
 
