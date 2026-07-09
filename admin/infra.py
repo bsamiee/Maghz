@@ -83,6 +83,12 @@ _N8N_KEY_CONTAINER_PATH: Final[str] = "/home/node/.n8n/encryptionKey"
 _N8N_INITDB: Final[Path] = _REPO_ROOT / "db/init/n8n.sql"
 
 
+_HOOK_INTERNAL_PORT: Final[int] = 9000
+
+
+_MCP_PREFIX: Final[str] = "/opt/mcp"
+
+
 class _StageRow(msgspec.Struct, frozen=True, gc=False):
     """One stage's daemon-facing facts: image platform, per-container memory ceilings, build cache posture.
 
@@ -210,7 +216,7 @@ def _define(cfg: MaghzSettings) -> None:
     )
 
     class MaghzStack(pulumi.ComponentResource):
-        def __init__(self) -> None:  # noqa: PLR0914 - the one component body declares the whole service graph; splitting it would fragment the topology
+        def __init__(self) -> None:  # noqa: PLR0914, PLR0915 - the one component body declares the whole service graph; splitting it would fragment the topology
             super().__init__("maghz:stack:MaghzStack", "maghz", None, pulumi.ResourceOptions())
             parented = pulumi.ResourceOptions(parent=self)  # every provider/resource parents to the component for grouped converge
             # Provider resource names stay "colima"/"colima-build" on every stage: they are baked into the
@@ -366,6 +372,77 @@ def _define(cfg: MaghzSettings) -> None:
                 ),
                 opts=pulumi.ResourceOptions.merge(on, pulumi.ResourceOptions(depends_on=[db_container])),  # gate on db, over the shared opts
             )
+
+            # The Doppler-webhook redeploy consumer: HMAC-verified change events append durable NDJSON
+            # receipts onto a named volume. The host binding discriminates on stage — prd binds public
+            # (Doppler's delivery must reach it; the signature is the auth boundary), local stays loopback.
+            # An absent secret ships an empty HMAC key and the server fails closed (401 on every event).
+            hook_receipts = docker.Volume("hook-receipts", name="hook-receipts", opts=on)
+            hook_secret = cfg.hook.signing_secret
+            docker.Container(
+                "hook",
+                name=cfg.hook.container_name,
+                image=cfg.hook.image,
+                restart="unless-stopped",
+                memory=128,
+                ulimits=[nofile],
+                labels=labels(cfg.hook.container_name, "hook"),
+                envs=pulumi.Output.secret([f"MAGHZ_HOOK_SECRET={hook_secret.get_secret_value() if hook_secret is not None else ''}"]),
+                command=["python", "/app/server.py"],
+                ports=[
+                    docker.ContainerPortArgs(
+                        internal=_HOOK_INTERNAL_PORT,
+                        external=cfg.hook.port,
+                        ip="0.0.0.0" if stage is Stage.PRD else "127.0.0.1",  # noqa: S104 - prd ingress is the point; the HMAC signature is the auth boundary
+                    )
+                ],
+                # Uploaded at create like the initdb script — no host path on either daemon.
+                uploads=[
+                    docker.ContainerUploadArgs(
+                        content=(_REPO_ROOT / cfg.hook.server_file).resolve().read_text(encoding="utf-8"), file="/app/server.py"
+                    )
+                ],
+                volumes=[docker.ContainerVolumeArgs(volume_name=hook_receipts.name, container_path="/data")],
+                networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["hook"])],
+                healthcheck=docker.ContainerHealthcheckArgs(
+                    tests=["CMD", "python", "-c", f"import urllib.request as u; u.urlopen('http://127.0.0.1:{_HOOK_INTERNAL_PORT}/healthz')"],
+                    interval="15s",
+                    timeout="5s",
+                    retries=5,
+                    start_period="10s",
+                ),
+                opts=on,
+            )
+
+            # The VPS-custody Doppler MCP consumer, prd only: a warm node runtime whose volume-backed
+            # npm prefix installs the pinned server once, then sleeps; each MCP session enters through
+            # `docker exec -i` with the scope token injected VPS-side, so the token never leaves the host.
+            if stage is Stage.PRD:
+                mcp_prefix = docker.Volume("mcp-prefix", name="mcp-prefix", opts=on)
+                docker.Container(
+                    "doppler-mcp",
+                    name="maghz-mcp",
+                    image=infra.doppler_mcp_image,
+                    restart="unless-stopped",
+                    memory=256,
+                    ulimits=[nofile],
+                    labels=labels("maghz-mcp", "mcp"),
+                    entrypoints=["/bin/sh"],
+                    command=[
+                        "-c",
+                        (
+                            f"test -x {_MCP_PREFIX}/bin/doppler-mcp"
+                            f" || npm install -g --prefix {_MCP_PREFIX} @dopplerhq/mcp-server@{infra.doppler_mcp_version};"
+                            " exec sleep infinity"
+                        ),
+                    ],
+                    volumes=[docker.ContainerVolumeArgs(volume_name=mcp_prefix.name, container_path=_MCP_PREFIX)],
+                    networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["mcp"])],
+                    healthcheck=docker.ContainerHealthcheckArgs(
+                        tests=["CMD-SHELL", f"test -x {_MCP_PREFIX}/bin/doppler-mcp"], interval="30s", timeout="5s", retries=5, start_period="90s"
+                    ),
+                    opts=on,
+                )
 
             # The live endpoint census, assigned onto the component then registered as its outputs: `db_dsn`
             # is the single `DatabaseConfig.dsn` owner (never an f-string that drifts from it), so the

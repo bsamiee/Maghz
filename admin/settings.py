@@ -164,8 +164,29 @@ class InfraConfig(BaseModel):
     ollama_port: int = Field(default=11434, ge=1024, le=65535)
     docker_host: str = Field(default_factory=_detect_docker_host)
     atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
+    doppler_mcp_image: str = "node:22-alpine"
+    doppler_mcp_version: str = "1.0.5"
     state_dir: Path = Path(".cache/pulumi")
     image_context: Path = Path("image")
+
+
+class HookConfig(BaseModel):
+    """The Doppler-webhook redeploy consumer: image, port, and signing-secret custody.
+
+    `signing_secret` (`MAGHZ_HOOK__SIGNING_SECRET`, Doppler `maghz/prd_host`) is the HMAC key the
+    consumer verifies `X-Doppler-Signature` with; the Forge services estate passes the same value to
+    the Doppler Webhook resource, so custody is the one Doppler row. An unset secret leaves the
+    consumer failing closed. `port` is the host binding — public on prd (Doppler must reach it),
+    loopback on local — while the in-container listener stays fixed on 9000.
+    """
+
+    model_config = _GROUP
+
+    image: str = "python:3.14-alpine"
+    container_name: str = "maghz-hook"
+    port: int = Field(default=9000, ge=1024, le=65535)
+    signing_secret: SecretStr | None = Field(default=None, repr=False)
+    server_file: Path = Path("hook/server.py")
 
 
 class N8nConfig(BaseModel):
@@ -411,6 +432,7 @@ class MaghzSettings(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     infra: InfraConfig = Field(default_factory=InfraConfig)
     n8n: N8nConfig = Field(default_factory=N8nConfig)
+    hook: HookConfig = Field(default_factory=HookConfig)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     mcp: McpServerSettings = Field(default_factory=McpServerSettings)
@@ -444,6 +466,7 @@ class MaghzSettings(BaseSettings):
                     ("MAGHZ_REMOTE_HOST", bool(self.remote.host)),
                     ("MAGHZ_REMOTE_USER", bool(self.remote.user)),
                     ("MAGHZ_N8N__ENCRYPTION_KEY", self.n8n.encryption_key is not None),
+                    ("MAGHZ_HOOK__SIGNING_SECRET", self.hook.signing_secret is not None),
                 )
                 if not present
             ]
@@ -479,6 +502,7 @@ __all__ = [
     "AutomationConfig",
     "CloudConfig",
     "DatabaseConfig",
+    "HookConfig",
     "InfraConfig",
     "IntegrationsConfig",
     "LogFormat",

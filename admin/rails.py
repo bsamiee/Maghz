@@ -837,7 +837,7 @@ class _Probe(msgspec.Struct, frozen=True, gc=False):
 
 _TAGS_DECODER: Final[msgspec.json.Decoder[_Tags]] = msgspec.json.Decoder(type=_Tags)
 _PROBE_TIMEOUT: Final[float] = 5.0
-_HEALTH_SERVICES: Final[tuple[str, ...]] = ("postgres", "ollama", "n8n", "atuin")
+_HEALTH_SERVICES: Final[tuple[str, ...]] = ("postgres", "ollama", "n8n", "atuin", "hook")
 
 
 async def _db_probe(cfg: MaghzSettings) -> _Probe:
@@ -902,6 +902,7 @@ async def health(cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
             partial(_ollama_probe, cfg),
             lambda: _http_probe("n8n", f"{cfg.n8n.api_url}/healthz"),
             lambda: _http_probe("atuin", str(cfg.infra.atuin_url)),
+            lambda: _http_probe("hook", f"http://127.0.0.1:{cfg.hook.port}/healthz"),
         )
     )
     receipt: DrainReceipt[object] = await drain(LanePolicy(capacity=len(_HEALTH_SERVICES), key=LaneKey("health.probe")), units)

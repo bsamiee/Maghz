@@ -33,6 +33,7 @@ class ServerKind(StrEnum):
     GREPTILE = "greptile"
     NUGET = "nuget"
     JUPYTER = "jupyter"
+    DOPPLER_REMOTE = "doppler-remote"
 
 
 class McpOp(StrEnum):
@@ -363,6 +364,20 @@ _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     # where the `nuget-mcp` launcher is absent (e.g. the Postgres-only VPS), which an MCP client tolerates.
     ServerKind.NUGET: ServerSpec(command="nuget-mcp"),
     ServerKind.JUPYTER: ServerSpec(command="forge-jupyter-mcp"),
+    # VPS-custody Doppler MCP: stdio rides ssh into the prd host's warm `maghz-mcp` container. The
+    # /srv/maghz scope token resolves remotely inside the ssh leg and enters the container as env —
+    # the token never exists client-side. Read-only, project/config pinned; the token is the boundary.
+    ServerKind.DOPPLER_REMOTE: ServerSpec(
+        command="ssh",
+        args=(
+            "maghz",
+            (
+                'DOPPLER_TOKEN="$(doppler configure get token --plain --scope /srv/maghz)"'
+                " docker exec -i -e DOPPLER_TOKEN maghz-mcp"
+                " /opt/mcp/bin/doppler-mcp --read-only --project maghz --config prd_host"
+            ),
+        ),
+    ),
 })
 
 

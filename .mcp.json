@@ -82,6 +82,14 @@
       "command": "forge-jupyter-mcp",
       "args": [],
       "env": {}
+    },
+    "doppler-remote": {
+      "command": "ssh",
+      "args": [
+        "maghz",
+        "DOPPLER_TOKEN=\"$(doppler configure get token --plain --scope /srv/maghz)\" docker exec -i -e DOPPLER_TOKEN maghz-mcp /opt/mcp/bin/doppler-mcp --read-only --project maghz --config prd_host"
+      ],
+      "env": {}
     }
   }
 }
