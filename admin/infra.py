@@ -14,7 +14,7 @@ import msgspec
 from admin.core import completed, Detail, Envelope, Row, Status
 from admin.profile import shared_preload_libraries
 from admin.runtime import Fact, guarded, Receipt, RetryClass, RuntimeRail, Signals
-from admin.settings import MaghzSettings
+from admin.settings import MaghzSettings, Stage
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -71,7 +71,6 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _OCI_BASE: frozendict[str, str] = frozendict({
     "org.opencontainers.image.vendor": "maghz",
     "org.opencontainers.image.source": "https://github.com/bsamiee/Maghz",
-    "maghz.stack": "local",
 })
 
 
@@ -84,17 +83,30 @@ _N8N_KEY_CONTAINER_PATH: Final[str] = "/home/node/.n8n/encryptionKey"
 _N8N_INITDB: Final[Path] = _REPO_ROOT / "db/init/n8n.sql"
 
 
-_DB_MEMORY_MB: Final[int] = 4096
+class _StageRow(msgspec.Struct, frozen=True, gc=False):
+    """One stage's daemon-facing facts: image platform, per-container memory ceilings, build cache posture.
+
+    `cache` gates the BuildKit local cache export rows: the Colima BuildKit daemon accepts `cache_to`,
+    while the VPS docker-driver daemon rejects cache export — prd builds lean on the daemon's own layer
+    cache instead. Memory ceilings sum under each host's real budget (Mac ≫ the 8G/zram VPS).
+    """
+
+    platform: str
+    db_memory_mb: int
+    ollama_memory_mb: int
+    n8n_memory_mb: int
+    cache: bool
 
 
-_OLLAMA_MEMORY_MB: Final[int] = 6144
-
-
-_N8N_MEMORY_MB: Final[int] = 1024
+_STAGES: Final[frozendict[Stage, _StageRow]] = frozendict({
+    Stage.LOCAL: _StageRow(platform="linux/arm64", db_memory_mb=4096, ollama_memory_mb=6144, n8n_memory_mb=1024, cache=True),
+    Stage.PRD: _StageRow(platform="linux/amd64", db_memory_mb=3072, ollama_memory_mb=3072, n8n_memory_mb=768, cache=False),
+})
 
 
 class StackDetail(Detail, frozen=True, tag="stack"):
     op: StackOp
+    stage: Stage
     result: str
     resource_changes: frozendict[str, int]
     outputs: _Outputs = frozendict()
@@ -178,19 +190,35 @@ def _define(cfg: MaghzSettings) -> None:
     import pulumi_docker_build as docker_build  # noqa: PLC0415
 
     infra = cfg.infra
-    key_file = _n8n_key_file(cfg)  # mint-or-read the host n8n key + ensure the workflows dir before declaring the mount
-    build_cache = (infra.state_dir / "buildkit-cache").resolve()
-    build_cache.mkdir(parents=True, exist_ok=True)  # the local BuildKit cache backend needs its dir present before the build writes to it
-    initdb = _N8N_INITDB.resolve()  # the n8n-database init script bind-mounted into the db container's initdb.d
+    stage = infra.stage
+    row = _STAGES[stage]
+    daemon = cfg.docker_host  # the one stage-resolved endpoint: Colima socket (local) or ssh://user@vps (prd)
+    # Local mints-or-reads the host n8n key file; prd carries the Doppler-held key as env, so no file exists.
+    key_file = _n8n_key_file(cfg) if stage is Stage.LOCAL else None
+    initdb_sql = _N8N_INITDB.resolve().read_text(encoding="utf-8")  # uploaded into initdb.d at create — no host path on either daemon
+    # BuildKit local layer cache rows, local stage only: read prior layers on converge, write the rebuilt
+    # set with `mode=max` so the heavy apt extension layers survive a re-converge. The prd docker-driver
+    # daemon rejects cache export and keeps its own layer cache instead; `None` omits the rows entirely.
+    build_cache = (infra.state_dir / "buildkit-cache").resolve() if row.cache else None
+    if build_cache is not None:
+        build_cache.mkdir(parents=True, exist_ok=True)  # the local cache backend needs its dir present before the build writes to it
+    cache_from = None if build_cache is None else [docker_build.CacheFromArgs(local=docker_build.CacheFromLocalArgs(src=str(build_cache)))]
+    cache_to = (
+        None
+        if build_cache is None
+        else [docker_build.CacheToArgs(local=docker_build.CacheToLocalArgs(dest=str(build_cache), mode=docker_build.CacheMode.MAX))]
+    )
 
     class MaghzStack(pulumi.ComponentResource):
-        def __init__(self) -> None:
+        def __init__(self) -> None:  # noqa: PLR0914 - the one component body declares the whole service graph; splitting it would fragment the topology
             super().__init__("maghz:stack:MaghzStack", "maghz", None, pulumi.ResourceOptions())
             parented = pulumi.ResourceOptions(parent=self)  # every provider/resource parents to the component for grouped converge
-            on = pulumi.ResourceOptions(provider=docker.Provider("colima", host=infra.docker_host, opts=parented), parent=self)
+            # Provider resource names stay "colima"/"colima-build" on every stage: they are baked into the
+            # local stack's URNs, and a rename would force-replace the volumes under them (local ledger loss).
+            on = pulumi.ResourceOptions(provider=docker.Provider("colima", host=daemon, opts=parented), parent=self)
             # The BuildKit build resource is a distinct provider plugin from `docker.Provider`; pin its build
-            # daemon to the same Colima socket explicitly rather than letting it fall back to ambient DOCKER_HOST.
-            on_build = pulumi.ResourceOptions(provider=docker_build.Provider("colima-build", host=infra.docker_host, opts=parented), parent=self)
+            # daemon to the same stage endpoint explicitly rather than letting it fall back to ambient DOCKER_HOST.
+            on_build = pulumi.ResourceOptions(provider=docker_build.Provider("colima-build", host=daemon, opts=parented), parent=self)
 
             image = docker_build.Image(
                 "maghz-pg",
@@ -198,12 +226,9 @@ def _define(cfg: MaghzSettings) -> None:
                 context=docker_build.BuildContextArgs(location=str(infra.image_context)),
                 dockerfile=docker_build.DockerfileArgs(location=str(infra.image_context / "Dockerfile")),
                 build_args={"PARADEDB_TAG": infra.paradedb_tag},
-                platforms=[docker_build.Platform.LINUX_ARM64],
-                # BuildKit local layer cache: read prior layers on converge, write the rebuilt set with
-                # `mode=max` (every intermediate stage, so the apt extension layers survive), so a re-converge
-                # over an unchanged Dockerfile reuses the heavy apt install rather than running it cold.
-                cache_from=[docker_build.CacheFromArgs(local=docker_build.CacheFromLocalArgs(src=str(build_cache)))],
-                cache_to=[docker_build.CacheToArgs(local=docker_build.CacheToLocalArgs(dest=str(build_cache), mode=docker_build.CacheMode.MAX))],
+                platforms=[docker_build.Platform(row.platform)],
+                cache_from=cache_from,
+                cache_to=cache_to,
                 load=True,
                 push=False,
                 opts=on_build,
@@ -218,11 +243,12 @@ def _define(cfg: MaghzSettings) -> None:
             nofile = docker.ContainerUlimitArgs(name="nofile", soft=65536, hard=65536)
 
             def labels(title: str, alias: str) -> list[docker.ContainerLabelArgs]:
-                # The OCI label set for one container: the shared `_OCI_BASE` plus the per-container title
-                # (`org.opencontainers.image.title`) and a `maghz.alias.<alias>` selector, so a `docker ps
-                # --filter label=maghz.alias.db` finds the container. Closed over the function-local `docker`,
-                # so the gated provider type never reaches a module-level beartype-resolved annotation.
-                rows = {**_OCI_BASE, "org.opencontainers.image.title": title, f"maghz.alias.{alias}": "true"}
+                # The OCI label set for one container: the shared `_OCI_BASE` plus the stage row, the
+                # per-container title (`org.opencontainers.image.title`), and a `maghz.alias.<alias>`
+                # selector, so a `docker ps --filter label=maghz.alias.db` finds the container. Closed over
+                # the function-local `docker`, so the gated provider type never reaches a module-level
+                # beartype-resolved annotation.
+                rows = {**_OCI_BASE, "maghz.stack": stage.value, "org.opencontainers.image.title": title, f"maghz.alias.{alias}": "true"}
                 return [docker.ContainerLabelArgs(label=key, value=value) for key, value in rows.items()]
 
             docker.Container(
@@ -230,7 +256,7 @@ def _define(cfg: MaghzSettings) -> None:
                 name="maghz-ollama",
                 image=infra.ollama_image,
                 restart="unless-stopped",
-                memory=_OLLAMA_MEMORY_MB,
+                memory=row.ollama_memory_mb,
                 ulimits=[nofile],
                 labels=labels("maghz-ollama", "ollama"),
                 ports=[docker.ContainerPortArgs(internal=11434, external=infra.ollama_port, ip="127.0.0.1")],
@@ -247,7 +273,7 @@ def _define(cfg: MaghzSettings) -> None:
                 name="maghz-db",
                 image=image.ref,
                 restart="unless-stopped",
-                memory=_DB_MEMORY_MB,
+                memory=row.db_memory_mb,
                 ulimits=[nofile],
                 labels=labels("maghz-db", "db"),
                 # Trust auth on the 127.0.0.1-only port: maghz is the superuser, agents and MCP servers
@@ -273,12 +299,11 @@ def _define(cfg: MaghzSettings) -> None:
                     "max_worker_processes=24",
                 ],
                 ports=[docker.ContainerPortArgs(internal=5432, external=infra.db_port, ip="127.0.0.1")],
-                volumes=[
-                    docker.ContainerVolumeArgs(volume_name=pg_data.name, container_path="/var/lib/postgresql"),
-                    # The n8n-database init script, read-only into initdb.d: the entrypoint creates the n8n
-                    # database on first cluster init (run-once-on-empty-PGDATA), so the n8n container boots.
-                    docker.ContainerVolumeArgs(host_path=str(initdb), container_path="/docker-entrypoint-initdb.d/10-n8n.sql", read_only=True),
-                ],
+                volumes=[docker.ContainerVolumeArgs(volume_name=pg_data.name, container_path="/var/lib/postgresql")],
+                # The n8n-database init script, uploaded into initdb.d at container create: the entrypoint
+                # creates the n8n database on first cluster init (run-once-on-empty-PGDATA), so the n8n
+                # container boots. An upload rides the daemon connection — no host path on either stage.
+                uploads=[docker.ContainerUploadArgs(content=initdb_sql, file="/docker-entrypoint-initdb.d/10-n8n.sql")],
                 networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["db"])],
                 healthcheck=docker.ContainerHealthcheckArgs(
                     tests=["CMD", "pg_isready", "-U", "maghz", "-d", "maghz", "-q"], interval="10s", timeout="5s", retries=5, start_period="30s"
@@ -286,20 +311,36 @@ def _define(cfg: MaghzSettings) -> None:
                 opts=pulumi.ResourceOptions.merge(on, pulumi.ResourceOptions(depends_on=[image])),  # gate on the image build, over the shared opts
             )
 
+            # The encryption-key contract discriminates on stage. LOCAL: n8n decrypts stored credentials
+            # with the key at `N8N_ENCRYPTION_KEY_FILE` — the host-minted `_n8n_key_file` bind-mounted
+            # read-only, never the `/run/secrets` Swarm path (absent here, aborts n8n). PRD: the Doppler-held
+            # key rides `N8N_ENCRYPTION_KEY` directly, so the credential store survives any volume loss and
+            # no host file exists on the VPS. The workflows tree is a repo host mount locally (round-trip
+            # export/import) and a named volume on prd (no host tree on the VPS).
+            if stage is Stage.LOCAL:
+                key_rows = [f"N8N_ENCRYPTION_KEY_FILE={_N8N_KEY_CONTAINER_PATH}"]
+                workflow_mounts = [
+                    docker.ContainerVolumeArgs(host_path=str(cfg.n8n.workflows_dir.resolve()), container_path="/home/node/workflows"),
+                    docker.ContainerVolumeArgs(host_path=str(key_file), container_path=_N8N_KEY_CONTAINER_PATH, read_only=True),
+                ]
+            else:
+                key = cfg.n8n.encryption_key
+                key_rows = [f"N8N_ENCRYPTION_KEY={key.get_secret_value() if key is not None else ''}"]
+                workflows = docker.Volume("n8n-workflows", name="n8n-workflows", opts=on)
+                workflow_mounts = [docker.ContainerVolumeArgs(volume_name=workflows.name, container_path="/home/node/workflows")]
+
             docker.Container(
                 "n8n",
                 name=cfg.n8n.container_name,
                 image=cfg.n8n.image,
                 restart="unless-stopped",
-                memory=_N8N_MEMORY_MB,
+                memory=row.n8n_memory_mb,
                 ulimits=[nofile],
                 labels=labels(cfg.n8n.container_name, "n8n"),
-                envs=[
-                    # BL-1 fix: n8n decrypts stored credentials with the key at `N8N_ENCRYPTION_KEY_FILE`. The
-                    # file is the host-minted `_n8n_key_file` bind-mounted read-only below — a real file on a
-                    # plain Colima container, never the `/run/secrets` Swarm path (absent here, aborts n8n) and
-                    # never a keychain read. Stable across restarts because the host file is the source of truth.
-                    f"N8N_ENCRYPTION_KEY_FILE={_N8N_KEY_CONTAINER_PATH}",
+                # `Output.secret` marks the env list secret so the prd encryption key lands encrypted in the
+                # file-backend state and elided from plan diffs, on every stage uniformly.
+                envs=pulumi.Output.secret([
+                    *key_rows,
                     "DB_TYPE=postgresdb",
                     "DB_POSTGRESDB_HOST=db",  # the Docker network alias owned by the `db` container's aliases=["db"]
                     "DB_POSTGRESDB_PORT=5432",
@@ -311,15 +352,10 @@ def _define(cfg: MaghzSettings) -> None:
                     f"WEBHOOK_URL={cfg.n8n.webhook_url}",
                     f"N8N_PROXY_HOPS={cfg.n8n.proxy_hops}",
                     "GENERIC_TIMEZONE=UTC",
-                ],
+                ]),
                 # HTTPS hands the public port to the reverse proxy on the `maghz` network; the `n8n` alias is the only ingress.
                 ports=[docker.ContainerPortArgs(internal=5678, external=cfg.n8n.port, ip="127.0.0.1")] if cfg.n8n.protocol == "http" else [],
-                volumes=[
-                    docker.ContainerVolumeArgs(volume_name=n8n_data.name, container_path="/home/node/.n8n"),
-                    docker.ContainerVolumeArgs(host_path=str(cfg.n8n.workflows_dir.resolve()), container_path="/home/node/workflows"),
-                    # The host-minted encryption key, read-only: the BL-1 mounted-key contract.
-                    docker.ContainerVolumeArgs(host_path=str(key_file), container_path=_N8N_KEY_CONTAINER_PATH, read_only=True),
-                ],
+                volumes=[docker.ContainerVolumeArgs(volume_name=n8n_data.name, container_path="/home/node/.n8n"), *workflow_mounts],
                 networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["n8n"])],
                 healthcheck=docker.ContainerHealthcheckArgs(
                     tests=["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"],
@@ -353,10 +389,12 @@ def _stack(cfg: MaghzSettings) -> Stack:
     opts = auto.LocalWorkspaceOptions(
         project_settings=auto.ProjectSettings(name=cfg.infra.project, runtime="python", backend=auto.ProjectBackend(url=f"file://{state}")),
         # DOCKER_CERT_PATH/DOCKER_TLS_VERIFY leak in from the machine env and point the docker provider at
-        # a nonexistent TLS cert dir; the Colima socket is plain, so neutralize them alongside the host.
-        env_vars={"PULUMI_CONFIG_PASSPHRASE": "", "DOCKER_HOST": cfg.infra.docker_host, "DOCKER_CERT_PATH": "", "DOCKER_TLS_VERIFY": ""},
+        # a nonexistent TLS cert dir; the endpoints here are a plain socket or ssh, so neutralize them
+        # alongside the stage-resolved host.
+        env_vars={"PULUMI_CONFIG_PASSPHRASE": "", "DOCKER_HOST": cfg.docker_host, "DOCKER_CERT_PATH": "", "DOCKER_TLS_VERIFY": ""},
     )
-    return auto.create_or_select_stack(stack_name=cfg.infra.stack, project_name=cfg.infra.project, program=partial(_define, cfg), opts=opts)
+    # One stack per stage in the shared file backend: `local` and `prd` desired state never collide.
+    return auto.create_or_select_stack(stack_name=cfg.infra.stage.value, project_name=cfg.infra.project, program=partial(_define, cfg), opts=opts)
 
 
 def _changes(raw: Mapping[OpType, int] | None) -> frozendict[str, int]:
@@ -403,7 +441,13 @@ async def _project(verb: _Verb, projected: _Projected, engine: _Engine, cfg: Mag
     status, rows, count = engine.graded()
     Signals.emit(engine.receipt(verb.op))
     detail = StackDetail(
-        op=verb.op, result=result_text, resource_changes=changes, outputs=outputs, diagnostics=count, model_pulled=verb.after is not None
+        op=verb.op,
+        stage=cfg.infra.stage,
+        result=result_text,
+        resource_changes=changes,
+        outputs=outputs,
+        diagnostics=count,
+        model_pulled=verb.after is not None,
     )
     if verb.after is None:
         return Ok(completed(status, detail, rows=rows))

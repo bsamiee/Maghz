@@ -10,17 +10,18 @@ the matched rail through `App.run_async(backend="asyncio")` — the sole event-l
 resolve at dispatch, not import, so a config fault surfaces as a fault envelope rather than a bare
 traceback. The runtime `Signals` service owns the structlog pipeline and `install(RetryMode.EMIT)`
 routes boundary-retry receipts onto stderr once at startup. The `stack`, `ledger`, `schema`, `sync`,
-`cloud`, `n8n`, and `remote` (`exec`, `deploy`) rails return the domain `RuntimeRail[Envelope]`, so
+`cloud`, `n8n`, `health`, and `remote` (`exec`) rails return the domain `RuntimeRail[Envelope]`, so
 their handlers lower it to the stdout `Envelope` through the one `runtime.lower` seam — which spreads
 a surviving `BoundaryFault` into a `fault` envelope at the single CLI edge. Only `mcp` self-lowers:
 `mcp(op, cfg)` grades its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
 `completed`/`fault` boundary, so its handler returns it without that lowering; `mcp` mounts
 `generate`/`validate`/`diff`/`watch`/`converge`.
-The `remote` commands each derive one `RemoteTarget.from_config(settings().remote)` and await the
-`admin.remote.ops` `exec`/`deploy` entrypoint at the SSH/SFTP `async_boundary` edge, with `deploy`
-discriminating the run on the `StackOp` verb; `exec` carries `allow_leading_hyphen=True` so a
-flag-bearing remote command (`git log --oneline`) forwards verbatim instead of being parsed as CLI
-options.
+The stack verbs (`up`/`down`/`status`) are stage-polymorphic through `MAGHZ_INFRA__STAGE` — the prd
+stage converges the VPS system daemon over the derived `ssh://` endpoint, so there is no separate
+deploy verb. `exec` derives one `RemoteTarget.from_config(settings().remote)` and awaits the
+`admin.remote` entrypoint at the SSH/SFTP `async_boundary` edge; it carries
+`allow_leading_hyphen=True` so a flag-bearing remote command (`git log --oneline`) forwards verbatim
+instead of being parsed as CLI options.
 """
 
 import functools
@@ -83,20 +84,34 @@ for _subapp in (_schema, _sync, _n8n, _automation, _cloud, _mcp):
 
 @app.command(name="up", group=_STACK)
 async def _up() -> Envelope:
-    """Converge the local docker stack and pull the embedding model."""
+    """Converge the stage-selected docker stack and pull the embedding model.
+
+    `MAGHZ_INFRA__STAGE` discriminates the daemon: `local` (default) converges the Colima parity
+    stack; `prd` converges the VPS system daemon over `ssh://` (run under
+    `doppler run --project maghz --config prd_host`, which carries the prd secret rows).
+
+    Returns:
+        The lowered stack-converge `Envelope`.
+    """
     return lower(await infra.run(infra.StackOp.UP, settings()))
 
 
 @app.command(name="down", group=_STACK)
 async def _down() -> Envelope:
-    """Tear the local docker stack down, preserving named volumes."""
+    """Tear the stage-selected docker stack down, preserving named volumes."""
     return lower(await infra.run(infra.StackOp.DOWN, settings()))
 
 
 @app.command(name="status", group=_STACK)
 async def _status() -> Envelope:
-    """Preview the desired-vs-live stack diff without converging."""
+    """Preview the desired-vs-live stack diff for the selected stage without converging."""
     return lower(await infra.run(infra.StackOp.STATUS, settings()))
+
+
+@app.command(name="health", group=_STACK)
+async def _health() -> Envelope:
+    """Probe the service plane (postgres, ollama, n8n, atuin) through its loopback ports."""
+    return lower(await rails.health(settings()))
 
 
 @app.command(name="ledger", group=_LEDGER)
@@ -229,16 +244,6 @@ async def _remote_exec(
     # edge, so the shared `runtime.lower` seam lowers it to the stdout `Envelope` once, at this CLI edge.
     cfg = settings()
     return lower(await remote.run(remote.RemoteExec(argv), cfg))
-
-
-@app.command(name="deploy", group=_REMOTE)
-async def _remote_deploy(*, op: Annotated[infra.StackOp, Parameter(help="The stack verb to run remotely (up | down | status).")]) -> Envelope:
-    """Push the working tree to the VPS, then run the selected remote `maghz` stack verb."""
-    # `--op` selects the `StackOp` carried by `RemoteDeploy`; `remote.run` returns the
-    # domain `RuntimeRail[Envelope]` lifted at the SSH boundary, so the shared `runtime.lower` seam
-    # lowers it to the stdout `Envelope` once, at this CLI edge.
-    cfg = settings()
-    return lower(await remote.run(remote.RemoteDeploy(op), cfg))
 
 
 # --- [ENTRY] ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from hashlib import blake2b
 import inspect
 from inspect import isawaitable, iscoroutinefunction
 import math
+import os
 from os import fspath, PathLike
 from subprocess import CompletedProcess  # noqa: S404
 import sys
@@ -399,7 +400,10 @@ async def spawn(
 ) -> RuntimeRail[CompletedProcess[bytes]]:
 
     async def run() -> CompletedProcess[bytes]:
-        return await anyio.run_process(argv, input=stdin, env=env, cwd=cwd, check=False)
+        # anyio `env` REPLACES the child environment; the spawn contract is overlay — supplied rows
+        # extend the inherited environment so PATH/HOME survive under injected DOCKER_HOST/RCLONE_* rows.
+        overlay = {**os.environ, **env} if env is not None else None  # noqa: TID251 - subprocess overlay at the one spawn boundary, not config ingress
+        return await anyio.run_process(argv, input=stdin, env=overlay, cwd=cwd, check=False)
 
     if retry_class is None:
         return await async_boundary(subject, run)

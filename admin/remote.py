@@ -1,40 +1,38 @@
-"""The `remote` domain: VPS `exec`/`deploy` over one scoped asyncssh connection, git via `runtime.spawn`.
+"""The `remote` domain: VPS `exec` over one scoped asyncssh connection, git via `runtime.spawn`.
 
-One file owning the connection lifecycle and the two VPS-facing entrypoints. `RemoteTarget.from_config`
-is the sole boundary narrowing the raw `RemoteConfig.known_hosts: str` to the typed `KnownHostsPolicy`
+One file owning the connection lifecycle and the VPS-facing entrypoint. `RemoteTarget.from_config` is the
+sole boundary narrowing the raw `RemoteConfig.known_hosts: str` to the typed `KnownHostsPolicy`
 (`Literal["insecure"] | Path`), so no `None` reaches `asyncssh` and every downstream `match` is total.
-`RemoteOp` is the closed verb vocabulary the CLI mounts; each member carries only its `.subject` and
-each entrypoint supplies one connection `body` over the shared `(session) -> Awaitable[Detail]` signature
-to the one `_drive` spine, so `exec` and `deploy` ride one stage/connect/sftp/fence flow rather than two
-hand-threaded `async_boundary` flows. `deploy` further folds the per-`StackOp` arm through the total
-`_STACK` table — a new stack verb is one row; a new remote verb is one `RemoteOp` member plus one body,
-with the prelude and the CLI lowering untouched.
+`RemoteOp` is the closed verb vocabulary the CLI mounts; each member carries only its `.subject`, and each
+entrypoint supplies one connection `body` over the shared `(session) -> Awaitable[Detail]` signature to the
+one `_drive` spine. Service-plane lifecycle is NOT a remote verb: `maghz up`/`down`/`status` at
+`stage=prd` converge the VPS daemon directly over the stage-resolved `ssh://` docker endpoint, so this
+domain carries agent shell work only — a new remote verb is one `RemoteOp` member plus one body, with the
+prelude and the CLI lowering untouched.
 
 Two subprocess/SSH boundary families, each on the canonical rail and never re-deriving its own
 spawn/grade/lift chain. The LOCAL git probes (`ls-files`, `check-attr`, `rev-parse`) compose the one
 `runtime.spawn` boundary under `RetryClass.PROC` and grade the exit inline against the `remote.git`
-subject; the dependent manifest/commit prelude short-circuits on the rail, so a probe
-fault returns before any connection opens. The REMOTE `maghz` invocations, the working-tree push,
-and the artifact pull all ride one `_Session` opened under `guard(RetryClass.HTTP)` and fenced by one
-`async_boundary(op.subject, ...)`: a non-zero `conn.run(check=True)` raises `ProcessError` (lifted to
-`BoundaryFault.boundary`), an SSH disconnect lands `resource`, an auth/host-key denial `api`, and a codec
-break `boundary` — `BoundaryFault` already spans that space, so the domain mints no parallel `RemoteFault`.
-Both verbs return the domain-internal `RuntimeRail[Envelope]`, so the one CLI `runtime.lower` seam lowers a
-surviving `Error(BoundaryFault)` once, at the edge.
+subject; the dependent manifest/commit prelude short-circuits on the rail, so a probe fault returns before
+any connection opens. The remote command, the working-tree push, and the artifact pull all ride one
+`_Session` opened under `guard(RetryClass.HTTP)` and fenced by one `async_boundary(op.subject, ...)`: a
+non-zero `conn.run(check=True)` raises `ProcessError` (lifted to `BoundaryFault.boundary`), an SSH
+disconnect lands `resource`, an auth/host-key denial `api`, and a codec break `boundary` — `BoundaryFault`
+already spans that space, so the domain mints no parallel `RemoteFault`. The verb returns the
+domain-internal `RuntimeRail[Envelope]`, so the one CLI `runtime.lower` seam lowers a surviving
+`Error(BoundaryFault)` once, at the edge.
 
 The push is never a fresh `anyio.CapacityLimiter` per call (which bounds nothing): each parent directory is
 one `drain` unit over `LanePolicy(capacity=cfg.remote.sftp_push_concurrency)`, whose substrate-memoised
 limiter bounds every concurrent SFTP session across the process, and the lossless `DrainReceipt` folds the
 pushed count and per-directory faults into the receipt notes — no mutable accumulator, no raw task group.
 git-lfs pointer paths are held out of the transfer by the `check-attr` pass and noted rather than pushed as
-stubs. The remote argv runs `uv run --project <workroot> python -m admin <sub>` with every token
-`shlex.quote`-d behind the `_REMOTE_ENV` projection, so no shell metacharacter escapes, and each remote
-stdout re-narrows `report.detail` to the read-only `StackDetail`/`SchemaDetail` receipt — never the outer
-wire `Envelope`. Every receipt carries the deployed commit sha minted once by `rev-parse` and threaded
-outward, never re-derived per leg.
+stubs. Every remote token is `shlex.quote`-d behind the `_REMOTE_ENV` projection, so no shell metacharacter
+escapes. Every receipt carries the pushed commit sha minted once by `rev-parse` and threaded outward,
+never re-derived per leg.
 """
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from enum import StrEnum
 import itertools
@@ -52,8 +50,6 @@ from pydantic import SecretStr
 import structlog
 
 from admin.core import completed, Detail, Envelope, Status
-from admin.infra import StackDetail, StackOp
-from admin.rails import SchemaDetail
 from admin.runtime import Admit, async_boundary, BoundaryFault, drain, DrainReceipt, guard, LaneKey, LanePolicy, RetryClass, RuntimeRail, spawn
 from admin.settings import MaghzSettings, RemoteConfig
 
@@ -67,12 +63,12 @@ type Manifest = Worktree
 class RemoteOp(StrEnum):
     """The closed remote verb vocabulary the CLI mounts; each member carries its `.subject` fence identity.
 
-    Two cases: `EXEC` runs a free command and pulls artifacts back; `DEPLOY` runs the stack lifecycle.
-    The working-tree push and the artifact pull are implicit in both, never standalone user-facing verbs.
+    One case: `EXEC` runs a free command under the pushed working tree and pulls artifacts back. The
+    working-tree push and the artifact pull are implicit, never standalone user-facing verbs; stack
+    lifecycle belongs to the stage-discriminated `infra` rail, not to a remote verb.
     """
 
     EXEC = "exec"
-    DEPLOY = "deploy"
 
     @property
     def subject(self) -> str:
@@ -167,11 +163,7 @@ class RemoteExec(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="e
     argv: tuple[str, ...]
 
 
-class RemoteDeploy(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="deploy"):
-    op: StackOp
-
-
-type RemoteRequest = RemoteExec | RemoteDeploy
+type RemoteRequest = RemoteExec
 
 
 class PushGroup(msgspec.Struct, frozen=True, gc=False):
@@ -224,42 +216,6 @@ class ExecReceipt(Detail, frozen=True, gc=False, tag="remote_exec"):
     notes: tuple[str, ...]
 
 
-class DeployReceipt(Detail, frozen=True, gc=False, tag="remote_deploy"):
-    """One remote `deploy` receipt: the stack verb, the deployed commit, push counts, decoded remote receipts.
-
-    `stack_detail` carries the read-only `StackDetail` decoded from whichever remote `maghz` stack verb ran
-    (`up`/`down`/`status`) — the typed inner receipt, never the outer wire `Envelope` — so a `DOWN`/`STATUS`
-    converge surfaces its diagnostics rather than discarding them. `schema_detail` carries the `SchemaDetail`
-    from `maghz schema apply`, populated only for `UP` (the schema apply rides the push). `commit` is the
-    pushed sha; `pushed`/`push_notes` are zero/empty for the no-push `DOWN`/`STATUS` verbs.
-    """
-
-    op: StackOp
-    commit: str
-    pushed: int
-    push_notes: tuple[str, ...]
-    stack_detail: StackDetail | None
-    schema_detail: SchemaDetail | None
-
-
-class _ReportWire(msgspec.Struct, gc=False):
-    """The deferred-decode shim for the remote `report.detail` sub-tree: a bare `msgspec.Raw` carrier.
-
-    `Detail` is an OPEN tagged base, so a remote `maghz` stdout cannot decode `report.detail` straight to a
-    concrete subclass through one pass. `detail` defers the sub-object as `Raw` so `_narrow` re-decodes it
-    against the caller's closed `Detail` subclass in the C core — the tag validated by `msgspec`, never a
-    hand-read `detail["type"]` string compare. An absent `detail` leaves the empty `Raw` sentinel.
-    """
-
-    detail: msgspec.Raw = msgspec.Raw()
-
-
-class _StdoutWire(msgspec.Struct, gc=False):
-    """The remote `maghz` envelope shim `_narrow` decodes: only `report` is read, every other key ignored."""
-
-    report: _ReportWire | None = None
-
-
 class _Session(msgspec.Struct, frozen=True, gc=False):
     """The live connection-scoped handle threaded into each `_drive` body: connection, SFTP, target, settings, commit.
 
@@ -290,19 +246,6 @@ class _Session(msgspec.Struct, frozen=True, gc=False):
         """
         body = " ".join(shlex.quote(token) for token in argv)
         return await self.conn.run(f"cd {shlex.quote(self.target.workroot)} && {self.env.shell()} {body}", check=True, encoding=None)
-
-    async def maghz[T: Detail](self, kind: type[T], *subcommand: str) -> RuntimeRail[T]:
-        """Run one remote `maghz` subcommand (`uv run --project <workroot> python -m admin <sub>`) and decode its detail.
-
-        `uv` is pre-installed on the VPS by bootstrap; the pushed `pyproject.toml` drives the project run.
-        The stdout re-narrows `report.detail` to the caller's closed `Detail` subclass through `_narrow`; a
-        tag mismatch or absent detail yields `None`, so the boundary decode stays at this edge.
-
-        Returns:
-            The narrowed `StackDetail`/`SchemaDetail`, or `None` when the wire carries no matching detail.
-        """
-        process = await self.run("uv", "run", "--project", self.target.workroot, "python", "-m", "admin", *subcommand)
-        return _narrow(process.stdout or b"", kind, "remote.decode")
 
     async def push(self) -> tuple[int, tuple[str, ...]]:
         """Push the tracked working tree to the remote workroot, drained per directory under the memoised lane limiter.
@@ -473,7 +416,7 @@ async def _manifest(cfg: MaghzSettings) -> RuntimeRail[Manifest]:
 async def _commit(cfg: MaghzSettings) -> RuntimeRail[str]:
     """Resolve the working-tree HEAD sha through the `_git` boundary, the deployed-commit receipt source.
 
-    The one mint of the commit identity threaded into every `ExecReceipt`/`DeployReceipt`, so a consumer
+    The one mint of the commit identity threaded into every `ExecReceipt`, so a consumer
     correlating a remote run with the local tree reads the sha off the canonical receipt rather than the
     push re-deriving it per leg. `--short` keeps the abbreviated form the receipt carries.
 
@@ -484,47 +427,6 @@ async def _commit(cfg: MaghzSettings) -> RuntimeRail[str]:
 
 
 # --- [SSH_OPS]
-
-
-def _frozen_map(_kind: object, value: Mapping[object, object]) -> object:
-    """Coerce a decoded mapping into the `frozendict` a `Detail` field annotates (e.g. `SchemaDetail.objects`).
-
-    `msgspec` has no native `frozendict` decode rule, so the second-stage `Raw` decode of a `Detail`
-    subclass carrying a `frozendict[K, V]` field routes the already-decoded mapping through this hook —
-    the one boundary edge admitting the immutable map, never a substrate `dec_hook` and never a `convert`
-    pass the strict decode rejects on `frozendict`. `value` is the mapping `msgspec` already decoded against
-    the field's key/value types, so the construction only re-wraps it immutable.
-
-    Returns:
-        The `frozendict` re-wrapping the decoded mapping `msgspec` hands the hook for a `frozendict` field.
-    """
-    return frozendict(value)  # the field annotation narrowed `value` to the decoded mapping msgspec hands the hook
-
-
-def _narrow[T: Detail](stdout: bytes | str, kind: type[T], subject: str) -> RuntimeRail[T]:
-    """Decode one remote `maghz` stdout and re-narrow its `report.detail` to the expected `Detail` subclass.
-
-    The shared `Detail` base is an OPEN tagged struct, so `msgspec` cannot decode `report.detail` straight
-    through `Envelope` — a subclass tag (`stack`/`schema`) fails against the bare base. The two-stage `Raw`
-    decode is the C-core narrowing: the envelope decodes through `_StdoutWire` (every key but `report`
-    ignored), the deferred `report.detail` `Raw` re-decodes against the caller's closed `kind`. The whole
-    decode is fenced on the `MsgspecError` base, so both a malformed-JSON stdout (`DecodeError` — a `uv`
-    warning or partial write leaking onto the stdout line) and a tag/type mismatch (`ValidationError`)
-    converge on `None` rather than escaping the narrow to fault the deploy — no hand-read `detail["type"]`
-    compare, no builtin-dict `.get`/`isinstance(Mapping)` ladder. An empty stdout, an absent report, an
-    absent detail, a non-object wire, and a non-JSON line all converge on `None`, the boundary mapping here.
-
-    Returns:
-        The narrowed subclass instance, or `None` when the wire carries no matching detail.
-    """
-    try:
-        wire = msgspec.json.decode(stdout, type=_StdoutWire) if stdout else None
-        detail = wire.report.detail if wire is not None and wire.report is not None else msgspec.Raw()
-        if not bytes(detail):
-            return Error(BoundaryFault(boundary=(subject, f"missing {kind.__name__} detail")))
-        return Ok(msgspec.json.decode(detail, type=kind, dec_hook=_frozen_map))
-    except msgspec.MsgspecError as exc:
-        return Error(BoundaryFault(boundary=(subject, type(exc).__name__)))
 
 
 @asynccontextmanager
@@ -579,28 +481,6 @@ async def _exec(session: _Session, argv: tuple[str, ...]) -> RuntimeRail[Detail]
             pulled=len(pulled),
             notes=(*push_notes, *pull_notes),
         )
-    )
-
-
-async def _up(session: _Session, op: StackOp) -> RuntimeRail[DeployReceipt]:
-    """`UP` arm: push the working tree, run `maghz up` then `maghz schema apply`, decode both inner receipts."""
-    pushed, push_notes = await session.push()
-    match await session.maghz(StackDetail, "up"):
-        case Result(tag="error", error=stack_fault):
-            return Error(stack_fault)
-        case Result(ok=stack):
-            return (await session.maghz(SchemaDetail, "schema", "apply")).map(
-                lambda schema: DeployReceipt(
-                    op=op, commit=session.commit, pushed=pushed, push_notes=push_notes, stack_detail=stack, schema_detail=schema
-                )
-            )
-
-
-async def _single(session: _Session, op: StackOp) -> RuntimeRail[DeployReceipt]:
-    """`DOWN`/`STATUS` arm: run the matching remote `maghz` verb with no push, surfacing its `StackDetail`."""
-    stack_detail = await session.maghz(StackDetail, op.value)
-    return stack_detail.map(
-        lambda stack: DeployReceipt(op=op, commit=session.commit, pushed=0, push_notes=(), stack_detail=stack, schema_detail=None)
     )
 
 
@@ -668,19 +548,6 @@ async def _drive(
                 return Error(prelude_fault)
 
 
-# --- [TABLES]
-
-# StackOp -> its deploy arm over the shared `(session, op) -> DeployReceipt` signature. The key set equals
-# `StackOp` exactly, so `deploy`'s `_STACK[op]` subscription is total — `UP` pushes the tree and decodes
-# both inner receipts, `DOWN`/`STATUS` run their bare verb. A new verb is one row; the dropped
-# match/assert_never ceremony is the redundant form when the table is already exhaustive.
-_STACK: frozendict[StackOp, Callable[[_Session, StackOp], Awaitable[RuntimeRail[DeployReceipt]]]] = frozendict({
-    StackOp.UP: _up,
-    StackOp.DOWN: _single,
-    StackOp.STATUS: _single,
-})
-
-
 # --- [ENTRY] ---------------------------------------------------------------------------
 
 
@@ -692,23 +559,10 @@ async def run(request: RemoteRequest, cfg: MaghzSettings) -> RuntimeRail[Envelop
             match request:
                 case RemoteExec(argv=argv):
                     return await _drive(RemoteOp.EXEC, target, cfg, lambda session: _exec(session, argv))
-                case RemoteDeploy(op=op):
-                    return await _drive(RemoteOp.DEPLOY, target, cfg, lambda session: _STACK[op](session, op))
                 case _ as unreachable:
                     assert_never(unreachable)
 
 
 # --- [EXPORTS] -------------------------------------------------------------------------
 
-__all__ = [
-    "DeployReceipt",
-    "ExecReceipt",
-    "KnownHostsPolicy",
-    "Manifest",
-    "RemoteDeploy",
-    "RemoteExec",
-    "RemoteOp",
-    "RemoteRequest",
-    "RemoteTarget",
-    "run",
-]
+__all__ = ["ExecReceipt", "KnownHostsPolicy", "Manifest", "RemoteExec", "RemoteOp", "RemoteRequest", "RemoteTarget", "run"]

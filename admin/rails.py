@@ -39,7 +39,7 @@ from admin.runtime import (
     spawn,
     traversed,
 )
-from admin.settings import CloudConfig, MaghzSettings, N8nConfig, Remote
+from admin.settings import CloudConfig, MaghzSettings, N8nConfig, Remote, Stage
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -491,7 +491,7 @@ def _n8n_graded(run: CompletedProcess[bytes], cli: _Cli, count: int, container: 
 async def _workflow(cli: _Cli, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
 
     argv = ("docker", "exec", "-u", "node", cfg.n8n.container_name, "n8n", *cli.subcommand)
-    match await spawn(argv, subject=f"n8n.{cli.op.value}", retry_class=RetryClass.PROC):
+    match await spawn(argv, subject=f"n8n.{cli.op.value}", retry_class=RetryClass.PROC, env=dict(cfg.docker_env)):
         case Result(tag="error", error=spawn_fault):
             return Error(spawn_fault)
         case Result(ok=run):
@@ -563,6 +563,7 @@ class _Step(msgspec.Struct, frozen=True, gc=False):
     name: str
     argv: tuple[str, ...]
     deadline: float
+    env: frozendict[str, str] = frozendict()  # overlay rows for daemon-facing steps (DOCKER_HOST on the cp legs)
     code: int = 0
     stderr: str = ""
 
@@ -606,7 +607,7 @@ def _cp(basename: str) -> StepArgv:
 async def _grade(step: _Step) -> RuntimeRail[_Step]:
 
     with anyio.move_on_after(step.deadline):
-        return (await spawn(step.argv, subject=f"schema.{step.name}", retry_class=RetryClass.PROC)).map(
+        return (await spawn(step.argv, subject=f"schema.{step.name}", retry_class=RetryClass.PROC, env=dict(step.env) or None)).map(
             lambda run: step.with_exit(run.returncode, run.stderr.decode(errors="replace").strip())
         )
     # `move_on_after` swallowed the cancellation; grade the contained deadline as the timeout sentinel so
@@ -675,12 +676,20 @@ def _lint(cfg: MaghzSettings) -> Block[RuntimeRail[_Sql]]:
     return Block.of_seq(_Sql.of(path) for path in files)
 
 
-_STEPS: frozendict[str, tuple[StepArgv, float, bool]] = frozendict({
-    "synonyms_cp": (_cp("synonyms.syn"), 30.0, True),
-    "thesaurus_cp": (_cp("thesaurus.ths"), 30.0, True),
-    "schema": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.schema_file)), 120.0, False),
-    "routines": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.routines_file)), 120.0, False),
-    "cron": (lambda cfg, _dsn: ("psql", cfg.database.maintenance_dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.cron_file)), 60.0, False),
+# Row columns: (argv builder, deadline, concurrent, daemon-facing). Daemon-facing rows spawn under the
+# stage-resolved `DOCKER_HOST` overlay so the cp legs reach the prd container over ssh; the psql legs ride
+# the DSN, which the tunnel keeps stage-agnostic.
+_STEPS: frozendict[str, tuple[StepArgv, float, bool, bool]] = frozendict({
+    "synonyms_cp": (_cp("synonyms.syn"), 30.0, True, True),
+    "thesaurus_cp": (_cp("thesaurus.ths"), 30.0, True, True),
+    "schema": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.schema_file)), 120.0, False, False),
+    "routines": (lambda cfg, dsn: ("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.routines_file)), 120.0, False, False),
+    "cron": (
+        lambda cfg, _dsn: ("psql", cfg.database.maintenance_dsn, "-v", "ON_ERROR_STOP=1", "-f", str(cfg.database.cron_file)),
+        60.0,
+        False,
+        False,
+    ),
 })
 
 
@@ -694,7 +703,8 @@ _SCHEMA_LANE: LanePolicy = LanePolicy(capacity=len(_STEPS), key=LaneKey("schema.
 def _resolve(cfg: MaghzSettings, dsn: str) -> tuple[tuple[_Step, ...], tuple[_Step, ...]]:
 
     flagged = Block.of_seq(
-        (_Step(name=name, argv=build(cfg, dsn), deadline=deadline), concurrent) for name, (build, deadline, concurrent) in _STEPS.items()
+        (_Step(name=name, argv=build(cfg, dsn), deadline=deadline, env=cfg.docker_env if daemon else frozendict()), concurrent)
+        for name, (build, deadline, concurrent, daemon) in _STEPS.items()
     )
     concurrent, sequential = flagged.partition(itemgetter(1))
     return tuple(step for step, _ in concurrent), tuple(step for step, _ in sequential)
@@ -802,9 +812,117 @@ async def sync(cfg: MaghzSettings, /, *, concept: str | None = None) -> RuntimeR
     return await _SYNC_BUILD[op](cfg, concept)
 
 
+class HealthDetail(Detail, frozen=True, tag="health"):
+    stage: Stage
+    services: frozendict[str, str]
+    extensions: int = 0
+    embed_model: bool | msgspec.UnsetType = msgspec.UNSET
+
+
+class _Model(msgspec.Struct, frozen=True, gc=False):
+    name: str = ""
+
+
+class _Tags(msgspec.Struct, frozen=True, gc=False):
+    models: tuple[_Model, ...] = ()
+
+
+class _Probe(msgspec.Struct, frozen=True, gc=False):
+    service: str
+    ok: bool
+    note: str = ""
+    extensions: int = 0
+    embed_model: bool | msgspec.UnsetType = msgspec.UNSET
+
+
+_TAGS_DECODER: Final[msgspec.json.Decoder[_Tags]] = msgspec.json.Decoder(type=_Tags)
+_PROBE_TIMEOUT: Final[float] = 5.0
+_HEALTH_SERVICES: Final[tuple[str, ...]] = ("postgres", "ollama", "n8n", "atuin")
+
+
+async def _db_probe(cfg: MaghzSettings) -> _Probe:
+
+    match await db.query("select count(*) from pg_extension", cfg):
+        case Result(tag="ok", ok=QueryResult(rows=((count, *_), *_))):
+            extensions = int(str(count))
+            return _Probe(service="postgres", ok=True, note=f"{extensions} extensions", extensions=extensions)
+        case Result(tag="ok"):
+            return _Probe(service="postgres", ok=False, note="empty extension census")
+        case Result(error=db_fault):
+            return _Probe(service="postgres", ok=False, note=db_fault.headline())
+
+
+async def _ollama_probe(cfg: MaghzSettings) -> _Probe:
+
+    base = str(cfg.ollama.base_url).rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+            version = await client.get(f"{base}/api/version")
+            tags = await client.get(f"{base}/api/tags")
+            present = any(model.name.partition(":")[0] == cfg.ollama.embed_model for model in _TAGS_DECODER.decode(tags.content).models)
+            note = f"embed_model={'present' if present else 'absent'}"
+            return _Probe(service="ollama", ok=version.status_code == httpx.codes.OK, note=note, embed_model=present)
+    except (httpx.HTTPError, msgspec.DecodeError) as exc:
+        return _Probe(service="ollama", ok=False, note=type(exc).__name__)
+
+
+async def _http_probe(service: str, url: str) -> _Probe:
+
+    try:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+            response = await client.get(url)
+            return _Probe(service=service, ok=response.status_code == httpx.codes.OK, note=f"http {response.status_code}")
+    except httpx.HTTPError as exc:
+        return _Probe(service=service, ok=False, note=type(exc).__name__)
+
+
+async def health(cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
+    """Probe the full service plane through its loopback ports and grade one receipt.
+
+    A down service is a REPORTED outcome (`FAILED` with a per-service row), never a boundary fault:
+    health exists to witness the plane, so the rail always completes. The probes ride the same
+    loopback ports on both stages — the tunnel owns the prd mapping — so this rail carries no
+    stage branch beyond the receipt's `stage` stamp.
+
+    Returns:
+        `Ok(completed(...))` carrying the `HealthDetail` service vector; `FAILED` when any probe is down.
+    """
+    structlog.contextvars.bind_contextvars(rail="health", stage=cfg.infra.stage.value)
+
+    def lifted(fn: Callable[[], Awaitable[_Probe]]) -> Callable[[], Awaitable[RuntimeRail[object]]]:
+        async def run() -> RuntimeRail[object]:
+            return Ok(await fn())
+
+        return run
+
+    units = Block.of_seq(
+        Admit.of(lifted(fn))
+        for fn in (
+            partial(_db_probe, cfg),
+            partial(_ollama_probe, cfg),
+            lambda: _http_probe("n8n", f"{cfg.n8n.api_url}/healthz"),
+            lambda: _http_probe("atuin", str(cfg.infra.atuin_url)),
+        )
+    )
+    receipt: DrainReceipt[object] = await drain(LanePolicy(capacity=len(_HEALTH_SERVICES), key=LaneKey("health.probe")), units)
+    probed = {probe.service: probe for probe in receipt.values.choose(lambda value: Some(value) if isinstance(value, _Probe) else Nothing)}
+    services = frozendict({name: ("ok" if (probe := probed.get(name)) is not None and probe.ok else "down") for name in _HEALTH_SERVICES})
+    db_probe, ollama_probe = probed.get("postgres"), probed.get("ollama")
+    detail = HealthDetail(
+        stage=cfg.infra.stage,
+        services=services,
+        extensions=db_probe.extensions if db_probe is not None else 0,
+        embed_model=ollama_probe.embed_model if ollama_probe is not None else msgspec.UNSET,
+    )
+    rows = tuple(Row(key=name, text=probed[name].note if name in probed else "probe did not complete") for name in _HEALTH_SERVICES)
+    status = Status.OK if all(state == "ok" for state in services.values()) else Status.FAILED
+    return Ok(completed(status, detail, rows=rows))
+
+
 __all__ = [
     "CloudOp",
     "CloudSyncDetail",
+    "HealthDetail",
     "Kind",
     "LedgerDetail",
     "LineageEdge",
@@ -816,6 +934,7 @@ __all__ = [
     "SyncDetail",
     "SyncOp",
     "cloud",
+    "health",
     "ledger",
     "n8n",
     "schema",

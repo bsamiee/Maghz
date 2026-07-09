@@ -25,6 +25,19 @@ type LogFormat = Literal["json", "console"]
 type LogLevel = Literal["debug", "info", "warning", "error"]
 
 
+class Stage(StrEnum):
+    """The closed deployment-stage vocabulary discriminating every stage-dependent row.
+
+    `LOCAL` converges the Mac parity stack against the Colima daemon; `PRD` converges the identical
+    service graph against the VPS system daemon over SSH. The tunnel maps the VPS loopback ports onto
+    the local loopback one-to-one, so every rail above the docker layer (DSN, ollama, n8n, atuin
+    probes) is stage-agnostic by construction — only docker-daemon-facing surfaces read this switch.
+    """
+
+    LOCAL = "local"
+    PRD = "prd"
+
+
 class Remote(StrEnum):
     """The closed cloud-backup remote vocabulary; `value` is the rclone remote name and the `RCLONE_CONFIG_<REMOTE>_*` env prefix key.
 
@@ -132,18 +145,25 @@ class OllamaConfig(BaseModel):
 
 
 class InfraConfig(BaseModel):
-    """Pulumi Automation API inputs for the local docker stack."""
+    """Pulumi Automation API inputs for the docker service graph; `stage` discriminates the daemon.
+
+    The Pulumi stack name equals `stage.value`, so local and prd desired state live as sibling stacks
+    in the one file backend and never fight over each other's resources. `docker_host` is the LOCAL
+    daemon endpoint only; the prd endpoint derives from the remote SSH facts at `MaghzSettings.docker_host`.
+    `atuin_url` is the Nix-owned sync server's loopback probe row — health alignment, never lifecycle.
+    """
 
     model_config = _GROUP
 
     project: str = "maghz"
-    stack: str = "local"
+    stage: Stage = Stage.LOCAL
     image_tag: str = "maghz-pg:0.1.0"
     paradedb_tag: str = "0.24.1-pg18"
     ollama_image: str = "ollama/ollama:0.30.10"
     db_port: int = Field(default=15435, ge=1024, le=65535)
     ollama_port: int = Field(default=11434, ge=1024, le=65535)
     docker_host: str = Field(default_factory=_detect_docker_host)
+    atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
     state_dir: Path = Path(".cache/pulumi")
     image_context: Path = Path("image")
 
@@ -155,13 +175,15 @@ class N8nConfig(BaseModel):
     override sets `PROTOCOL`/`HOST`); it returns a bare `str`, not `AnyHttpUrl`, because the `httpx`
     `base_url` consumer needs the host:port form with no trailing slash that `AnyHttpUrl` would normalize in.
     `webhook_url` is the typed `AnyHttpUrl` and stays independent: the reverse-proxy public URL differs from
-    the internal `api_url`. `N8N_ENCRYPTION_KEY` is deliberately absent — n8n self-generates and persists it
-    on the `n8n-data` volume; a `/run/secrets` `_FILE` key is a Swarm path absent on Colima and would abort startup.
+    the internal `api_url`. `encryption_key` is the PRD credential-store key (`MAGHZ_N8N__ENCRYPTION_KEY`,
+    Doppler `maghz/prd_host`): the prd container receives it as `N8N_ENCRYPTION_KEY` so the key survives any
+    volume loss; the local stage keeps the host-minted key FILE mount and never reads this field.
     """
 
     model_config = _GROUP
 
     image: str = "n8nio/n8n:2.27.3"
+    encryption_key: SecretStr | None = Field(default=None, repr=False)
     container_name: str = "maghz-n8n"
     port: int = Field(default=5678, ge=1024, le=65535)
     host: str = "127.0.0.1"
@@ -279,7 +301,7 @@ class RemoteConfig(BaseModel):
     user: str = ""
     key_file: Path | None = None
     known_hosts: str = Field(default_factory=lambda: str(Path("~/.ssh/known_hosts").expanduser()))
-    workroot: str = "/home/maghz-agent/maghz"
+    workroot: str = "/srv/maghz"
     sftp_push_concurrency: int = Field(default=8, ge=1)
     sftp_max_requests: int = Field(default=128, ge=1)
     connect_timeout: float = Field(default=15.0, gt=0)
@@ -398,6 +420,37 @@ class MaghzSettings(BaseSettings):
     cache_dir: Path = Path(".cache")
     artifacts_dir: Path = Path(".artifacts")
 
+    @property
+    def docker_host(self) -> str:
+        """The stage-resolved docker daemon endpoint every provider and docker-CLI spawn targets.
+
+        LOCAL reads the detected/overridden local socket; PRD derives `ssh://<user>@<host>` from the
+        one remote SSH owner, so the daemon endpoint and the SSH target can never drift apart.
+        """
+        return f"ssh://{self.remote.user}@{self.remote.host}" if self.infra.stage is Stage.PRD else self.infra.docker_host
+
+    @property
+    def docker_env(self) -> frozendict[str, str]:
+        """The `DOCKER_HOST` overlay row injected into every docker-CLI subprocess (`docker cp`/`exec`)."""
+        return frozendict({"DOCKER_HOST": self.docker_host})
+
+    @model_validator(mode="after")
+    def _require_prd_rows(self) -> Self:  # noqa: N804 - mode="after" instance validator; pydantic mandates `self`
+        """PRD admission: the SSH target and the n8n credential-store key must exist before any converge."""
+        if self.infra.stage is Stage.PRD:
+            missing = [
+                name
+                for name, present in (
+                    ("MAGHZ_REMOTE_HOST", bool(self.remote.host)),
+                    ("MAGHZ_REMOTE_USER", bool(self.remote.user)),
+                    ("MAGHZ_N8N__ENCRYPTION_KEY", self.n8n.encryption_key is not None),
+                )
+                if not present
+            ]
+            if missing:
+                raise ValueError(f"stage=prd requires {', '.join(missing)} (doppler maghz/prd_host)")
+        return self
+
     @classmethod
     @override
     def settings_customise_sources(
@@ -439,5 +492,6 @@ __all__ = [
     "RemoteConfig",
     "RemoteCredentials",
     "RemoteTable",
+    "Stage",
     "settings",
 ]
