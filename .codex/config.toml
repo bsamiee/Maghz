@@ -34,7 +34,7 @@ bearer_token_env_var = "GH_PROJECTS_TOKEN"
 
 [mcp_servers.context7]
 url = "https://mcp.context7.com/mcp"
-env_http_headers = { "CONTEXT7_API_KEY" = "CONTEXT7_API_KEY" }
+bearer_token_env_var = "CONTEXT7_API_KEY"
 
 [mcp_servers.greptile]
 url = "https://api.greptile.com/mcp"

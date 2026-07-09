@@ -83,12 +83,16 @@ class McpConfigDetail(Detail, frozen=True, tag="mcp"):
     result: str = ""
 
 
-_REPO_ROOT = str(Path.cwd())
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 _PKG_DIR = str(Path(__file__).resolve().parent)
 _WATCHED_INPUTS = {Path(".env"), Path("admin/mcp.py"), Path("admin/settings.py")}
 _PLACEHOLDER = re.compile(r"\$\{MAGHZ_MCP__([A-Z0-9_]+)\}")
-_MCP_JSON_PATH = ".mcp.json"
-_CODEX_CONFIG_PATH = ".codex/config.toml"
+# Module-anchored artifact paths: generate/validate/diff/watch are correct from
+# any CWD; receipts keep the repo-relative labels.
+_MCP_JSON_LABEL = ".mcp.json"
+_CODEX_CONFIG_LABEL = ".codex/config.toml"
+_MCP_JSON_PATH = str(_REPO_ROOT / _MCP_JSON_LABEL)
+_CODEX_CONFIG_PATH = str(_REPO_ROOT / _CODEX_CONFIG_LABEL)
 _MCP_FIELDS = frozenset(McpServerSettings.model_fields)
 _ENCODER = msgspec.json.Encoder()
 _DECODER = msgspec.json.Decoder(type=dict[str, object])
@@ -315,7 +319,7 @@ def _detail(op: McpOp, *, drift: tuple[str, ...] = (), result: str = "") -> McpC
 
     servers = tuple(ServerKind)
     return McpConfigDetail(
-        op=op, artifacts=(_MCP_JSON_PATH, _CODEX_CONFIG_PATH), server_count=len(servers), servers=servers, drift=drift, result=result
+        op=op, artifacts=(_MCP_JSON_LABEL, _CODEX_CONFIG_LABEL), server_count=len(servers), servers=servers, drift=drift, result=result
     )
 
 
@@ -351,7 +355,9 @@ _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     ServerKind.GITHUB: ServerSpec(
         http_url="https://api.githubcopilot.com/mcp/", http_headers=frozendict({"Authorization": "Bearer ${GH_PROJECTS_TOKEN}"})
     ),
-    ServerKind.CONTEXT7: ServerSpec(http_url="https://mcp.context7.com/mcp", http_headers=frozendict({"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"})),
+    # Bearer form matches the fleet-owner contract (mcp-fleet.nix headerNames
+    # ["Authorization"], codex bearerEnvVar) so the five-way drift stays clean.
+    ServerKind.CONTEXT7: ServerSpec(http_url="https://mcp.context7.com/mcp", http_headers=frozendict({"Authorization": "Bearer ${CONTEXT7_API_KEY}"})),
     # HTTP code-review remote: whole-repo semantic review over the indexed codebase. Bears the bare
     # `${GREPTILE_API_KEY}` the env bootstrap forwards (the github/context7 placeholder shape), so it backs no
     # `McpServerSettings` field and resolves at the `op run -- claude` boundary.
