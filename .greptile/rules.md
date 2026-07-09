@@ -4,7 +4,7 @@ VPS second-brain repo: Python admin tooling, container topology, database schema
 
 ## Design paradigms
 
-- Python rides the local docs/stacks/python law: typed rails, expression-shaped logic, dispatch surfaces over helper spam, uv-only custody.
+- Python rides the local docs/stacks/python law: typed rails, expression-shaped logic, dispatch surfaces over helper spam, uv-only custody. Version movement is forward-only; a downgrade or stale pin without a recorded reason is a defect.
 - Infrastructure state is declarative: the Pulumi stack in admin/infra.py is the end-state topology owner and compose.yaml is its transitional declaration — drift between them is a defect, and imperative one-off scripts that mutate the VPS outside these owners are defects. Numbered migrations and up/down pairs are defects; canonical schema files replay to no-op.
 - Ops rails per docs/standards/ops-doctrine.md: thin CLI lowerers, one settings owner, typed operation receipts, one scoped SSH rail for remote work.
 - Doppler owns secrets end to end; the repo carries references, never values.

@@ -32,13 +32,14 @@ reviews:
         External packages are first-class implementation material used at full power, newest
         stable versions. Everything is agent-first: composable, receipt-bearing,
         self-describing, no interactive-only paths. Collapse spam relentlessly.
-    - path: "**/*.py"
+    - path: "{**/*.py,pyproject.toml}"
       instructions: >-
         The Python doctrine lives in docs/stacks/python in this repo — review against it,
         not generic convention. Version floor per pyproject.toml; uv-managed, ruff and ty
         clean. Typed result rails, expression-shaped logic, polymorphic dispatch over
         function spam, no bare exceptions crossing domain boundaries. Secret material never
-        lands in code, logs, or committed files — Doppler owns custody.
+        lands in code, logs, or committed files — Doppler owns custody. Version movement is
+        forward-only — a downgrade or stale pin without a recorded reason is a defect.
     - path: "admin/**"
       instructions: >-
         Ops rails under docs/standards/ops-doctrine.md. CLI handlers are thin lowerers:
@@ -78,7 +79,8 @@ reviews:
         Standalone shell including .claude hooks: set -euo pipefail, shellcheck-clean
         without directives, no `|| true` failure masks, no embedded repo paths, usernames,
         or magic values. Hooks never pass secret values through shell parsing, logs, or
-        receipts.
+        receipts. Service or container lifecycle mutation in an ad hoc script is a defect —
+        the admin/ rails and their typed receipts own VPS mutation.
     - path: ".claude/workflows/**"
       instructions: >-
         Workflow scripts are deterministic orchestration: plain control flow, schema-typed
