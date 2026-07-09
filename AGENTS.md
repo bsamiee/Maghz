@@ -33,7 +33,9 @@ Maghz is a focused second brain. Heptabase owns content, the PostgreSQL `maghz` 
 
 Three surfaces meet at the wire and never collapse into each other. Heptabase content flows into the ledger and back through sync; the `maghz` database holds the canonical schema (`db/schema.sql`) plus idempotent routines (`db/routines.sql`); the `admin/` Python tooling owns the CLI, the Pulumi infra, and `MaghzSettings`.
 
-Local infra is Pulumi-managed and Forge-provided. The custom ParadeDB image (`image/Dockerfile`), the Postgres service, and the Ollama embedding service are declared as Pulumi Python IaC under `admin/infra/` and run on the Colima/Docker runtime that `Parametric_Forge` provisions.
+Infra is Pulumi-managed and Forge-provided, and one stack definition serves two hosts. The custom ParadeDB image (`image/Dockerfile`) and the `db`/`ollama`/`n8n` services are declared as Pulumi Python IaC in `admin/infra.py`; locally they run on the Colima/Docker runtime that `Parametric_Forge` provisions, and on the `maghz` NixOS VPS they run on the system Docker daemon that the Forge flake's `nixosConfigurations.maghz` declares. Services bind loopback on both hosts with an invariant port set; the Forge `vpsTunnels` launchd agent projects the VPS services onto the local loopback, and that tunnel and the local stack are mutually exclusive owners of the ports. `compose.yaml` is the transitional parallel declaration of the same services (`local`/`prd` profiles) and retires when `StackOp` owns the full topology on both hosts.
+
+Three identities partition the VPS, and each carries exactly one concern: `root` carries only the key-based `forge-redeploy` activation rail; `bardiasamiee` is the operator user owning the Home Manager estate and the interactive `ssh maghz` session; `maghz-agent` is the workload identity (docker group, no wheel) owning the compose plane and the deploy workroot `/home/maghz-agent/maghz`. The `maghz deploy` rail operates entirely as `maghz-agent`: it pushes the working tree over SFTP, runs remote `maghz up` plus `schema apply` through `uv run --project` in the workroot, pulls artifacts back, and stamps every receipt with the deployed commit. Host identity, network, firewall, and tunnel changes route to the Forge owner; nothing in this repo mutates the host.
 
 Retrieval is hybrid: pg_search BM25, pgvector, and pg_trgm/FTS fused through RRF, with embeddings produced by local Ollama `nomic-embed-text`. The schema and routines own that contract; agents compose it through the `maghz` CLI rather than re-deriving query shapes.
 
@@ -41,15 +43,15 @@ Retrieval is hybrid: pg_search BM25, pgvector, and pg_trgm/FTS fused through RRF
 
 The `maghz` CLI is the campaign surface. It is a cyclopts CLI under `admin/` that emits one JSON `Envelope` per invocation: stdout carries the result, stderr carries structlog diagnostics. Parse the stdout `Envelope` as the result channel; stderr is transport noise unless the envelope says otherwise.
 
-The CLI owns schema, ledger, sync, and stack lifecycle. `maghz schema apply` is idempotent and runs in dependency order — first two `docker cp` steps staging the `db/search/` text-search dictionaries into the container `tsearch_data` dir, then `psql -v ON_ERROR_STOP=1 -f` over `db/schema.sql` (the `CREATE EXTENSION` census, `CREATE SCHEMA maghz`, the `kb_english` text-search configuration, enum types, tables, and plain indexes, all IF NOT EXISTS), `db/routines.sql` (function, trigger, exotic-index, view, and IMMV bodies), then `db/cron.sql` (pg_cron registration); `maghz ledger` and `maghz sync` move records between Heptabase and the database; `maghz up` and `maghz down` drive Pulumi to build the custom image and start or stop the Postgres and Ollama services.
+The CLI owns schema, ledger, sync, and stack lifecycle. `maghz schema apply` is idempotent and runs in dependency order — first two `docker cp` steps staging the `db/search/` text-search dictionaries into the container `tsearch_data` dir, then `psql -v ON_ERROR_STOP=1 -f` over `db/schema.sql` (the `CREATE EXTENSION` census, `CREATE SCHEMA maghz`, the `kb_english` text-search configuration, enum types, tables, and plain indexes, all IF NOT EXISTS), `db/routines.sql` (function, trigger, exotic-index, view, and IMMV bodies), then `db/cron.sql` (pg_cron registration); `maghz ledger` and `maghz sync` move records between Heptabase and the database; `maghz up` and `maghz down` drive Pulumi to build the custom image and start or stop the Postgres, Ollama, and n8n services.
 
 `psql` and `pgcli` own ad-hoc SQL and interactive inspection over `MAGHZ_DATABASE_DSN`. Reach for `psql`/`pgcli` for one-off queries, never for durable schema change.
 
 The `heptabase` CLI owns content read and write; the database is the ledger, not the content store. Treat Heptabase as the source of truth for notes and the ledger as the durable index over them.
 
-Pulumi owns infra state. The custom ParadeDB image, the service topology, and `MaghzSettings` live in `admin/infra/`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
+Pulumi owns infra state. The custom ParadeDB image and the service topology live in `admin/infra.py`, fed by the one `MaghzSettings` owner in `admin/settings.py`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
 
-MCP servers extend reach without owning truth. The 12-server fleet is owned by `admin/mcp/ops.py`, which generates the committed Claude `.mcp.json` and Codex `.codex/config.toml`: `postgres` explores the live database, `google-workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, `hostinger` manages the VPS, the HTTP remotes `github` (repository API), `context7` (live library docs), and `greptile` (whole-repo semantic code review) extend reach, the host-process `nuget` server surfaces NuGet package intelligence (latest version, vulnerability/deprecation, safe-upgrade sets, supply-chain review) wherever the .NET 10 SDK and `nuget-mcp` launcher exist, and the host-process `jupyter` server routes through the Forge-owned `forge-jupyter-mcp` launcher. Resolve any external library's current API through `context7` before its findings bind; the full web/docs tool-selection and chaining law is the user-global doctrine. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind: deterministic work — schema apply, ledger mutations, stack lifecycle — always routes through the `maghz` CLI, never an MCP.
+MCP servers extend reach without owning truth. The 12-server fleet is owned by `admin/mcp.py`, which generates the committed Claude `.mcp.json` (`~/.codex/config.toml` is the sole Codex configuration home; the rail's residual Codex projection retires with the next fleet pass): `postgres` explores the live database, `google-workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, `hostinger` manages the VPS, the HTTP remotes `github` (repository API), `context7` (live library docs), and `greptile` (whole-repo semantic code review) extend reach, the host-process `nuget` server surfaces NuGet package intelligence (latest version, vulnerability/deprecation, safe-upgrade sets, supply-chain review) wherever the .NET 10 SDK and `nuget-mcp` launcher exist, and the host-process `jupyter` server routes through the Forge-owned `forge-jupyter-mcp` launcher. Resolve any external library's current API through `context7` before its findings bind; the full web/docs tool-selection and chaining law is the user-global doctrine. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind: deterministic work — schema apply, ledger mutations, stack lifecycle — always routes through the `maghz` CLI, never an MCP.
 
 Remote Workspace automation uses `gws` with `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/maghz-agent/.config/gws/credentials.json`; the `google-workspace` MCP remains the interactive MCP surface, while `gws` owns batch/headless Workspace scripts.
 
@@ -59,24 +61,24 @@ Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth rem
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.
 
-| [GROUP]          | [TOOLS]                                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                          |
-| Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
-| Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
-| Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                    |
-| Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                             |
-| Inference        | `ollama`                                                                                                     |
-| Content          | `heptabase`                                                                                                  |
-| HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                       |
-| Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                  |
-| Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                               |
-| Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                        |
-| YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                |
-| TOML             | `taplo`                                                                                                      |
-| Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
-| Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
-| MCP              | `postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter` |
+| [INDEX] | [GROUP]          | [TOOLS]                                                                                                      |
+| :-----: | :--------------- | :------------------------------------------------------------------------------------------------------------ |
+|  [01]   | Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                          |
+|  [02]   | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
+|  [03]   | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
+|  [04]   | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                    |
+|  [05]   | Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                             |
+|  [06]   | Inference        | `ollama`                                                                                                     |
+|  [07]   | Content          | `heptabase`                                                                                                  |
+|  [08]   | HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                       |
+|  [09]   | Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                  |
+|  [10]   | Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                               |
+|  [11]   | Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                        |
+|  [12]   | YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                |
+|  [13]   | TOML             | `taplo`                                                                                                      |
+|  [14]   | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
+|  [15]   | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
+|  [16]   | MCP              | `postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter` |
 
 ## [07]-[DOCUMENTATION]
 
