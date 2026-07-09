@@ -1,14 +1,25 @@
 language: en-US
 tone_instructions: "Senior-to-senior register. Dense, declarative, evidence-anchored findings. No praise, no emojis, no hedging. Doctrine violations (CLAUDE.md/AGENTS.md) are defects, not suggestions. Prefer polymorphic collapse over additive patches."
+early_access: false
 reviews:
   profile: assertive
+  request_changes_workflow: false
   high_level_summary: true
+  high_level_summary_instructions: >-
+    Lead with contract-surface and behavior deltas, one dense paragraph. No restated
+    diff statistics, no methodology narration.
   collapse_walkthrough: true
+  changed_files_summary: false
   sequence_diagrams: false
+  estimate_code_review_effort: false
+  assess_linked_issues: false
+  related_issues: false
+  related_prs: false
   suggested_labels: false
   suggested_reviewers: false
   in_progress_fortune: false
   poem: false
+  enable_prompt_for_ai_agents: true
   path_filters:
     - "!uv.lock"
   path_instructions:
@@ -20,27 +31,72 @@ reviews:
         logic, hand-rolled reimplementations of capability the ecosystem already provides.
         External packages are first-class implementation material used at full power, newest
         stable versions. Everything is agent-first: composable, receipt-bearing,
-        self-describing. Collapse spam relentlessly.
+        self-describing, no interactive-only paths. Collapse spam relentlessly.
     - path: "**/*.py"
       instructions: >-
-        Python 3.15+, uv-managed, ruff and ty clean. The Rasm python doctrine applies: typed
-        result rails, expression-shaped logic, polymorphic dispatch over function spam, no
-        bare exceptions crossing domain boundaries. This repo is the VPS second-brain owner —
-        admin/ modules manage infrastructure; secret material never lands in code, logs, or
-        committed files (Doppler owns custody).
+        The Python doctrine lives in docs/stacks/python in this repo — review against it,
+        not generic convention. Version floor per pyproject.toml; uv-managed, ruff and ty
+        clean. Typed result rails, expression-shaped logic, polymorphic dispatch over
+        function spam, no bare exceptions crossing domain boundaries. Secret material never
+        lands in code, logs, or committed files — Doppler owns custody.
+    - path: "admin/**"
+      instructions: >-
+        Ops rails under docs/standards/ops-doctrine.md. CLI handlers are thin lowerers:
+        bind request shapes, call owner rails, lower one envelope, map status to exit
+        code — domain logic in handlers is a defect. One settings owner feeds adapters;
+        direct os.environ reads, duplicate DSNs, and inline credentials are defects. Every
+        operation emits a typed receipt carrying route, resource changes, diagnostics,
+        counts, and timings; generic envelope abstractions replacing operation-specific
+        receipts are defects. Remote work rides one scoped SSH rail with quoted argv and
+        rail-lowered faults.
     - path: "compose.yaml"
       instructions: >-
-        Container topology for the VPS: services are declarative rows; host paths, ports, and
-        credentials are parameterized via environment, never inlined.
+        Transitional topology declaration: the Pulumi stack in admin/infra.py is the
+        end-state owner and this file retires when that rail lands — flag drift between
+        compose service rows and their admin/infra.py counterparts. Services are
+        declarative rows; profiles own local/prd exclusion; secrets arrive only through
+        doppler run with required interpolation — an inline credential, token, or resolved
+        DSN is a defect.
+    - path: "db/**"
+      instructions: >-
+        SQL is declarative and idempotent: canonical schema files replay to no-op; numbered
+        migrations and up/down pairs are defects. Search and ranking logic lives in
+        database-owned routines, never application loops. Dictionary staging precedes SQL
+        replay; each database object keeps its single owning file per admin/README.md.
+    - path: "image/**"
+      instructions: >-
+        Container image on the declared Postgres base with a generated extension block:
+        hand edits drifting from the generator, base changes without a recorded reason, and
+        secret material in build args are defects. hadolint-clean.
+    - path: "{.mcp.json,.codex/**}"
+      instructions: >-
+        Generated projections from admin/mcp.py: hand edits are defects — the generator
+        changes first, then the projection re-renders. Server entries carry env references
+        only, never inline secret values.
+    - path: "**/*.sh"
+      instructions: >-
+        Standalone shell including .claude hooks: set -euo pipefail, shellcheck-clean
+        without directives, no `|| true` failure masks, no embedded repo paths, usernames,
+        or magic values. Hooks never pass secret values through shell parsing, logs, or
+        receipts.
+    - path: ".claude/workflows/**"
+      instructions: >-
+        Workflow scripts are deterministic orchestration: plain control flow, schema-typed
+        agent outputs, bounded loops and harvest rounds, every stage writing its product to
+        disk and returning a path receipt. Defects: bare promises without await ownership,
+        unbounded polling, branching on wall clock, subagents asked to wait — codex wrappers
+        are launch-only and the orchestrator owns time.
     - path: "**/*.md"
       instructions: >-
-        Review prose and structure under the docgen discipline against docs/standards/ in
-        this repo: agent-facing declarative artifacts, rules stated as fact. Defects: no-op sentences, leading filler words, provenance tails,
-        checklist noise, heading proliferation, duplicated content an owning doc already
-        carries, drift from the [UPPER_CASE] label convention, quality ladders
-        (good/better/best tiers) where a contract gate belongs, restated obligations the
-        instruction chain already carries (follow CLAUDE.md, use available tools), and
-        defensive caveats softening settled rules.
+        Review prose and structure against docs/standards/style-guide.md,
+        docs/standards/formatting.md, and docs/standards/information-structure.md — the
+        docgen discipline. Defects: no-op sentences that change no reader decision, leading
+        filler words, meta-commentary, provenance/freshness tails, checklist tails, heading
+        proliferation for short content, tables carrying explanations instead of enumerable
+        facts, duplicated content an owning doc already carries, drift from the [UPPER_CASE]
+        label convention, quality ladders (good/better/best tiers) where a contract gate
+        belongs, restated obligations the instruction chain already carries (follow
+        CLAUDE.md, use available tools), and defensive caveats softening settled rules.
     - path: ".claude/skills/**"
       instructions: >-
         Skill bundles under the docgen skill-craft law. Defects: first- or second-person
@@ -60,6 +116,22 @@ reviews:
         and verification.
   auto_review:
     enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
   tools:
     ruff:
       enabled: true
@@ -67,17 +139,58 @@ reviews:
       enabled: true
     yamllint:
       enabled: true
-    gitleaks:
-      enabled: true
     hadolint:
       enabled: true
+    sqlfluff:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+chat:
+  art: false
+  integrations:
+    jira:
+      usage: disabled
+    linear:
+      usage: disabled
 knowledge_base:
   web_search:
     enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "docs/standards/*.md"
+      - "docs/stacks/*/README.md"
   learnings:
     scope: local
+  issues:
+    scope: local
+  jira:
+    usage: disabled
+  linear:
+    usage: disabled
   pull_requests:
     scope: local
+  linked_repositories:
+    - repository: bsamiee/Parametric_Forge
+      instructions: >-
+        Machine owner for local shell, PATH, provisioning, and launcher rails; toolchain or
+        secret-injection failures are fixed there, never patched around in admin/.
+    - repository: bsamiee/Rasm
+      instructions: >-
+        Doctrine master this repo's copied stack law derives from; skill bundles mirror
+        byte-identical across the estate — flag divergence in mirrored surfaces.
 issue_enrichment:
   auto_enrich:
+    enabled: false
+  planning:
     enabled: false

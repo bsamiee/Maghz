@@ -1,12 +1,14 @@
 # Review context — Maghz
 
-VPS second-brain repo: Python admin tooling, container topology (compose.yaml), database schema, and workflow automation for the durable Hostinger VPS. Machine-level shell/PATH/tooling concerns belong to Parametric_Forge, never here.
+VPS second-brain repo: Python admin tooling, container topology, database schema, and workflow automation for the durable Hostinger VPS. Machine-level shell/PATH/tooling concerns belong to Parametric_Forge, never here.
 
 ## Design paradigms
 
-- Python rides the Rasm doctrine: typed rails, expression-shaped logic, dispatch surfaces over helper spam, uv-only custody.
-- Infrastructure state is declarative: compose rows, the declarative schema ledger, and admin verbs — imperative one-off scripts that mutate the VPS outside these owners are defects. Numbered migrations and up/down pairs are defects; canonical schema files replay to no-op.
+- Python rides the local docs/stacks/python law: typed rails, expression-shaped logic, dispatch surfaces over helper spam, uv-only custody.
+- Infrastructure state is declarative: the Pulumi stack in admin/infra.py is the end-state topology owner and compose.yaml is its transitional declaration — drift between them is a defect, and imperative one-off scripts that mutate the VPS outside these owners are defects. Numbered migrations and up/down pairs are defects; canonical schema files replay to no-op.
+- Ops rails per docs/standards/ops-doctrine.md: thin CLI lowerers, one settings owner, typed operation receipts, one scoped SSH rail for remote work.
 - Doppler owns secrets end to end; the repo carries references, never values.
+- Generated projections (.mcp.json, .codex/) re-render from their generator; hand edits are defects.
 
 ## Universal bar
 
@@ -15,8 +17,19 @@ Anticipate 10x functionality growth: surfaces absorb new modalities as rows, cas
 ## Review priorities
 
 1. Secret leakage and custody violations outrank everything.
-2. Doctrine regressions (rails, dispatch, uv custody) outrank style.
+2. Doctrine regressions (rails, receipts, dispatch, uv custody, declarative SQL) outrank style.
 3. Cross-repo boundary breaches (machine config creeping in from Forge territory) are defects.
+
+## Load-bearing exceptions
+
+Code that violates generic best practice on purpose — do not flag:
+
+- Aggressive API breaks with every call site updated in the same change are the sanctioned rename path, not regressions.
+- Dense single-expression bodies and heavy polymorphic dispatch are the bar, not obfuscation.
+- Absent defensive guards inside domain logic reflect admission-once boundaries, not missing error handling.
+- Sparse 1-2 line agent-facing comments are compliance with comment law, not missing documentation.
+- Declarative schema files that drop and recreate objects on replay are the migration-free idiom, not destructive operations.
+- A large file that owns one full concern is sanctioned; never recommend splitting by size.
 
 ## Durable prose and skill detection
 

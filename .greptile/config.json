@@ -16,14 +16,38 @@
     },
     {
       "id": "python-doctrine",
-      "rule": "Python 3.15+ under the Rasm doctrine: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody.",
+      "rule": "Python follows docs/stacks/python law in this repo: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody, version floor per pyproject.toml.",
       "severity": "high",
       "scope": ["**/*.py", "pyproject.toml"]
     },
     {
       "id": "secret-custody",
-      "rule": "Doppler owns all secret custody. Credential values, tokens, or DSNs inlined in code, compose files, or docs are defects.",
+      "rule": "Doppler owns all secret custody. Credential values, tokens, or DSNs inlined in code, compose files, generated projections, or docs are defects; the repo carries references only.",
       "severity": "high"
+    },
+    {
+      "id": "ops-receipts",
+      "rule": "Ops rails per docs/standards/ops-doctrine.md: CLI handlers are thin lowerers, one settings owner feeds adapters, and every operation emits a typed receipt with route, resource changes, diagnostics, counts, and timings. Domain logic in handlers, direct os.environ reads, and generic envelope abstractions replacing operation-specific receipts are defects.",
+      "severity": "high",
+      "scope": ["admin/**"]
+    },
+    {
+      "id": "sql-declarative",
+      "rule": "SQL is declarative and idempotent: canonical schema files replay to no-op; numbered migrations and up/down pairs are defects. Search and ranking logic lives in database-owned routines, never application loops.",
+      "severity": "high",
+      "scope": ["db/**"]
+    },
+    {
+      "id": "compose-infra-drift",
+      "rule": "compose.yaml is transitional; the Pulumi stack in admin/infra.py is the end-state topology owner. Drift between a compose service row and its admin/infra.py counterpart, an inline credential, or a resolved DSN is a defect.",
+      "severity": "high",
+      "scope": ["compose.yaml", "admin/infra.py"]
+    },
+    {
+      "id": "generated-projections",
+      "rule": ".mcp.json and .codex/ are generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders.",
+      "severity": "medium",
+      "scope": [".mcp.json", ".codex/**"]
     }
   ]
 }
