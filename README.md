@@ -75,14 +75,15 @@ The connection string is `MAGHZ_DATABASE_DSN`, default `postgresql://maghz@127.0
 
 [Parametric_Forge](../Parametric_Forge) is the local-macOS Nix/Home-Manager owner of the machine toolchain and secret injection. Maghz assumes it on `PATH` and never imports it; when a toolchain or secret surface fails, fix the Forge owner, not `admin/`. `AGENTS.md [06]` carries the full per-tool inventory.
 
-Secret flow: `op inject` runs at `home-manager switch` against `~/.config/op/env.template`, writing `~/.config/hm-op-session.sh`; the shell sources it at login; `.claude/hooks/setup-env.sh` forwards the selected keys into each agent's environment.
+Secret flow: Doppler is the sole backend — the canonical `.claude/hooks/setup-env.sh` resolves each Doppler source row live (encrypted snapshot on fetch failure, per-source verdicts) and writes the selected keys into each agent's environment; 1Password holds only operator-personal items. Doppler topology — projects, configs, service tokens — mutates only through Forge `services/` Pulumi rows.
 
-| [CONCERN]            | [FORGE OWNER]                                                  |
-| -------------------- | ------------------------------------------------------------- |
-| Secret injection     | `modules/home/programs/shell-tools/1password.nix` (+ generated `~/.config/op/env.template`, `~/.config/hm-op-session.sh`) |
+| [CONCERN]            | [FORGE_OWNER]                                                  |
+| :------------------- | :------------------------------------------------------------- |
+| Secret custody       | `services/topology.ts` (Doppler rows) + the canonical `.claude/hooks/setup-env.sh` injection hook |
+| GitHub repo settings | `services/topology.ts` (`@pulumi/github` rows — merge hygiene, rulesets); the services driver preview verifies, never the GitHub UI |
 | Python toolchain     | `modules/home/programs/languages/python-tools.nix` (`uv`, `ruff`, `ty`), `…/scientific-tools.nix` (native build env) |
 | Postgres clients     | `modules/home/programs/languages/db-tools.nix` (`psql`, `pgcli`, `pg_dump`/`pg_restore`) |
-| Container runtime    | `modules/home/programs/container-tools/colima.nix` (`colima`, `docker`), `modules/home/environments/containers.nix` (session vars) |
+| Container runtime    | `modules/home/programs/container-tools/` (`colima`, `docker`), `modules/home/environments/containers.nix` (session vars) |
 | Pulumi / Node / Git  | `…/languages/dev-tools.nix` (`pulumi`), `…/languages/node-tools.nix` (`node`/`npx`), `…/git-tools/` (`git`, `gh`) |
 
 Gaps Forge does not cover: `ollama` has no Forge owner; Forge is local-macOS only and provisions no remote/VPS box.

@@ -53,11 +53,15 @@ Using gpt-5.5 inside workflows and subagents (the model parameter only takes Cla
 
 Use the route-owned standard for the file being edited:
 
-| [INDEX] | [FILE_TYPE]              | [ROUTE]         |
-| :-----: | ------------------------ | --------------- |
-|  [01]   | Python (`.py`)           | `coding-python` |
-|  [02]   | SQL (`.sql`)             | `coding-pg`     |
-|  [03]   | Bash/sh (`.sh`, `.bash`) | `coding-bash`   |
+| [INDEX] | [FILE_TYPE]              | [ROUTE]               |
+| :-----: | ------------------------ | --------------------- |
+|  [01]   | SQL (`.sql`)             | `coding-pg`           |
+|  [02]   | Bash/sh (`.sh`, `.bash`) | `coding-bash`         |
+|  [03]   | Durable markdown (`.md`) | `docgen`              |
+|  [04]   | Mermaid fences           | `mermaid-diagramming` |
+|  [05]   | HTML artifacts (`.html`) | `html-studio`         |
+
+Python has no route skill: this manifest's `[04]` constraints own Python shape, and `ruff`/`ty` gate style and types.
 
 ## [03]-[DEPENDENCY_POLICY]
 
@@ -123,14 +127,16 @@ Route each tooling concern through its owning skill:
 | [CONCERN]             | [SKILL]               |
 | --------------------- | --------------------- |
 | Heptabase content     | `heptabase-cli`       |
-| Source ingestion      | `notebooklm`          |
+| Source ingestion      | `notebooklm` MCP      |
 | Library documentation | `context7-mcp`        |
 | CI/CD pipelines       | `github-actions`      |
 | Diagrams              | `mermaid-diagramming` |
 | Lifecycle hooks       | `hooks-builder`       |
 | Workflow authoring    | `workflow-creator`    |
-| Container images      | `dockerfile`          |
-| Notebook research     | `jupyter`             |
+| Notebook research     | `jupyter-notebooks`   |
+| Secret custody        | `secrets`             |
+| VPS / domains         | `hostinger`           |
+| Infra as code         | `pulumi`              |
 
 Resolve any external library's current API through `context7` before internalizing it into a canonical owner — newest-stable usage, never training-data. The web and docs research selection law (`Exa`/`Tavily` over built-in fetch, the async Exa Agent and slow `Perplexity` for deep questions, `mcp__github__*` for the GitHub API versus `gh` for local repo ops, context-isolated bulk reads) is the user-global doctrine and is not restated here.
 

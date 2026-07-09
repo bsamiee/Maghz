@@ -61,7 +61,7 @@ Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth rem
 
 | [GROUP]          | [TOOLS]                                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| Python           | `uv`, `ruff`, `ty`, `basedpyright`, `python` (3.15)                                                          |
+| Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                          |
 | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
 | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
 | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`                                                    |
