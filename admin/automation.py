@@ -30,12 +30,6 @@ from admin.settings import MaghzSettings, settings
 # --- [TYPES] ---------------------------------------------------------------------------
 
 
-class AgentSkill(StrEnum):
-    DEEP_RESEARCH = "deep_research"
-    REFINE = "refine"
-    CREATE_ENTRY = "create_entry"
-
-
 class GateReason(StrEnum):
     status: Status
 
@@ -53,7 +47,7 @@ class GateReason(StrEnum):
 type TriggerTag = Literal["watch", "schedule", "manual"]
 
 
-type ActionTag = Literal["agent", "notify", "embed", "sync"]
+type ActionTag = Literal["notify", "embed", "sync"]
 
 
 # TypeForm-annotated targets: the alias reference coerces to the checkable form `tag_of` narrows into.
@@ -78,12 +72,6 @@ class Manual(msgspec.Struct, frozen=True, gc=False, tag="manual"):
     pass
 
 
-class AgentAction(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="agent"):
-    skill: AgentSkill
-    domain: str
-    params: msgspec.Raw = msgspec.Raw(b"null")
-
-
 class Notify(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="notify"):
     channel: Literal["stderr", "ndjson"]
     message: str
@@ -101,7 +89,7 @@ class Sync(msgspec.Struct, frozen=True, gc=False, tag_field="kind", tag="sync"):
 type Trigger = Watch | Schedule | Manual
 
 
-type Action = AgentAction | Notify | Embed | Sync
+type Action = Notify | Embed | Sync
 
 
 class AutomationSpec(msgspec.Struct, frozen=True, gc=False):
@@ -119,7 +107,6 @@ class AutomationReceipt(Detail, frozen=True, tag="automation"):
     fired_at: str
     attempt: int
     elapsed_ms: float
-    agent_skill: AgentSkill | msgspec.UnsetType = msgspec.UNSET
     rows_affected: int | msgspec.UnsetType = msgspec.UNSET
     job_id: str | msgspec.UnsetType = msgspec.UNSET
     cpu_percent: float | msgspec.UnsetType = msgspec.UNSET
@@ -135,9 +122,6 @@ class Gate(msgspec.Struct, frozen=True, gc=False):
 
         context = {"reason": self.reason.value, "spec_id": self.spec_id, "detail": self.detail}
         return completed(self.reason.status, error=self.detail, error_context=context)
-
-
-type Work = Callable[[AgentAction, AutomationSpec, MaghzSettings], Awaitable[RuntimeRail[_ActionEvidence]]]
 
 
 type _DispatchOutcome = RuntimeRail[AutomationReceipt] | Gate
@@ -159,7 +143,6 @@ class _Snapshot(msgspec.Struct, frozen=True, gc=False):
 class _ActionEvidence(msgspec.Struct, frozen=True, gc=False):
     rows_affected: int | msgspec.UnsetType = msgspec.UNSET
     job_id: str | msgspec.UnsetType = msgspec.UNSET
-    agent_skill: AgentSkill | msgspec.UnsetType = msgspec.UNSET
 
 
 _EMPTY_EVIDENCE = _ActionEvidence()
@@ -208,7 +191,7 @@ def _admit(spec: AutomationSpec, cfg: MaghzSettings, policy: LanePolicy) -> _Adm
 
 def _retry_of(action: Action) -> RetryClass:
     match action:
-        case AgentAction() | Notify():
+        case Notify():
             return RetryClass.HTTP
         case Embed() | Sync():
             return RetryClass.DB
@@ -226,7 +209,7 @@ def _work_of(spec: AutomationSpec, cfg: MaghzSettings, snapshot: _Snapshot, fact
 
     async def work() -> RuntimeRail[AutomationReceipt]:
         with structlog.contextvars.bound_contextvars(**bound):
-            return (await _exec(spec.action, spec, cfg, snapshot)).map(lambda evidence: _receipt(spec, Some(snapshot), evidence=evidence))
+            return (await _exec(spec.action, cfg, snapshot)).map(lambda evidence: _receipt(spec, Some(snapshot), evidence=evidence))
 
     return Admit.guarded(_retry_of(spec.action), work)
 
@@ -255,11 +238,9 @@ def _as_receipt(value: object) -> AutomationReceipt:
     return value
 
 
-async def _exec(action: Action, spec: AutomationSpec, cfg: MaghzSettings, snapshot: _Snapshot) -> RuntimeRail[_ActionEvidence]:
+async def _exec(action: Action, cfg: MaghzSettings, snapshot: _Snapshot) -> RuntimeRail[_ActionEvidence]:
 
     match action:
-        case AgentAction(skill=skill):
-            return await _AGENT_DISPATCH[skill](action, spec, cfg)
         case Notify(channel=channel, message=message):
             await _LOGGER.ainfo("automation.notify", channel=channel, message=message)
             return Ok(_EMPTY_EVIDENCE)
@@ -330,11 +311,6 @@ def _sync_evidence(rail: RuntimeRail[Envelope]) -> RuntimeRail[_ActionEvidence]:
             return Error(boundary_fault)
 
 
-async def _agent_pending(action: AgentAction, spec: AutomationSpec, _cfg: MaghzSettings) -> RuntimeRail[_ActionEvidence]:  # noqa: RUF029 - the `_AGENT_DISPATCH` `Work` contract is async; the placeholder matches it until the skill counterpart lands
-
-    return Error(BoundaryFault(api=(spec.id, f"no dispatch for skill {action.skill.value}")))
-
-
 def _receipt(spec: AutomationSpec, snapshot: Option[_Snapshot], *, evidence: _ActionEvidence = _EMPTY_EVIDENCE) -> AutomationReceipt:
 
     return AutomationReceipt(
@@ -345,7 +321,6 @@ def _receipt(spec: AutomationSpec, snapshot: Option[_Snapshot], *, evidence: _Ac
         fired_at=datetime.now(UTC).isoformat(),
         attempt=1 if snapshot.is_some() else 0,
         elapsed_ms=snapshot.map(lambda snap: (_now() - snap.started) * 1000.0).default_value(0.0),
-        agent_skill=evidence.agent_skill,
         rows_affected=evidence.rows_affected,
         job_id=evidence.job_id,
         cpu_percent=snapshot.map(lambda snap: snap.cpu_percent).default_value(msgspec.UNSET),
@@ -383,9 +358,6 @@ _WATCH_FILTER: Final[frozendict[Literal["default", "python", "none"], BaseFilter
     "python": PythonFilter(),
     "none": BaseFilter(),
 })
-
-
-_AGENT_DISPATCH: Final[frozendict[AgentSkill, Work]] = frozendict(dict.fromkeys(AgentSkill, _agent_pending))
 
 
 async def _manual_lane(spec: AutomationSpec, cfg: MaghzSettings, policy: LanePolicy, _tg: TaskGroup) -> _DispatchOutcome:
@@ -486,8 +458,6 @@ async def drive(spec: AutomationSpec, cfg: MaghzSettings) -> Envelope:
 
 __all__ = [
     "Action",
-    "AgentAction",
-    "AgentSkill",
     "AutomationReceipt",
     "AutomationSpec",
     "Embed",

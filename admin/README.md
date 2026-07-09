@@ -46,7 +46,7 @@
 A fully parameterized `Automation = Trigger × Action`, agent-invocable:
 
 - **`Trigger`** = `Watch` (`watchfiles` file events) · `Schedule` (APScheduler cron) · `Manual`.
-- **`Action`** = `AgentAction` · `Notify` · `Embed` · `Sync`.
+- **`Action`** = `Notify` · `Embed` · `Sync` — every case is a real rail; a new action lands as one struct, one dispatch arm, and one evidence row.
 - Agents drive it via `maghz automation run`; each run emits a typed `AutomationReceipt`, retries under the action-owned `RetryClass`, admits through lane-keyed capacity, is governed by a `psutil` resource snapshot, and appends to an NDJSON ledger.
 
 ## Data layer (`db/`)

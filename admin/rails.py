@@ -1,5 +1,5 @@
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable, Generator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 import contextlib
 from datetime import datetime, UTC
 from enum import StrEnum
@@ -7,7 +7,7 @@ from functools import partial
 from operator import itemgetter
 from pathlib import Path
 from subprocess import CompletedProcess  # noqa: S404
-from typing import Final, override
+from typing import Final
 
 import anyio
 from expression import Error, Nothing, Ok, Result, Some
@@ -429,7 +429,6 @@ class N8nOp(StrEnum):
 
 
 _CONTAINER_WORKFLOWS: Final[str] = "/home/node/workflows"
-_N8N_LIST_LIMIT: Final[int] = 250
 
 
 class N8nDetail(Detail, frozen=True, tag="n8n"):
@@ -444,35 +443,7 @@ class _Cli(msgspec.Struct, frozen=True, gc=False):
     subcommand: tuple[str, ...]
 
 
-class _Workflows(msgspec.Struct, frozen=True, gc=False):
-    data: tuple[msgspec.Raw, ...] = ()
-
-
-class _Liveness(msgspec.Struct, frozen=True, gc=False):
-    healthy: bool
-    count: int
-
-
-class _N8nAuth(httpx.Auth):
-    __slots__ = ("_key",)
-
-    def __init__(self, key: str) -> None:
-        self._key = key
-
-    @override
-    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
-
-        request.headers["X-N8N-API-KEY"] = self._key
-        yield request
-
-
-_WORKFLOWS_DECODER: Final[msgspec.json.Decoder[_Workflows]] = msgspec.json.Decoder(type=_Workflows)
 _LIMITS: Final[httpx.Limits] = httpx.Limits(max_connections=1, max_keepalive_connections=1)
-
-
-def _api_key(_cfg: MaghzSettings) -> Result[_N8nAuth, BoundaryFault]:
-
-    return Error(BoundaryFault(config=("status", "n8n API key is not configured; n8n setup is pending")))
 
 
 async def _census(cfg: MaghzSettings) -> int:
@@ -499,27 +470,24 @@ async def _workflow(cli: _Cli, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
             return _n8n_graded(run, cli, count, cfg.n8n.container_name)
 
 
-async def _probe(n8n: N8nConfig, auth: _N8nAuth) -> _Liveness:
+async def _probe(n8n: N8nConfig) -> bool:
 
     timeout = httpx.Timeout(connect=n8n.connect_timeout, read=n8n.connect_timeout, write=n8n.connect_timeout, pool=n8n.connect_timeout)
-    async with httpx.AsyncClient(base_url=n8n.api_url, auth=auth, timeout=timeout, limits=_LIMITS, headers={"accept": "application/json"}) as client:
-        health = await client.get("/healthz")
-        listing = (await client.get("/api/v1/workflows", params={"limit": _N8N_LIST_LIMIT})).raise_for_status()
-        return _Liveness(healthy=health.status_code == httpx.codes.OK, count=len(_WORKFLOWS_DECODER.decode(listing.content).data))
+    async with httpx.AsyncClient(base_url=n8n.api_url, timeout=timeout, limits=_LIMITS, headers={"accept": "application/json"}) as client:
+        return (await client.get("/healthz")).status_code == httpx.codes.OK
 
 
 async def _status(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-
-    match _api_key(cfg):
-        case Result(tag="error", error=config_fault):
-            return Error(config_fault)
-        case Result(ok=auth):
-            probed = await guarded(RetryClass.HTTP, lambda: _probe(cfg.n8n, auth), subject="n8n.status")
-            return probed.map(
-                lambda live: completed(
-                    Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=live.count, container=cfg.n8n.container_name, healthy=live.healthy)
-                )
-            )
+    # Container-plane status by ruling: unauthenticated /healthz liveness plus
+    # the on-disk workflow census. No n8n API key exists; API-managed workflow
+    # ownership is not claimed.
+    probed = await guarded(RetryClass.HTTP, lambda: _probe(cfg.n8n), subject="n8n.status")
+    count = await _census(cfg)
+    return probed.map(
+        lambda healthy: completed(
+            Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=count, container=cfg.n8n.container_name, healthy=healthy)
+        )
+    )
 
 
 _CLI: Final[frozendict[N8nOp, _Cli]] = frozendict({

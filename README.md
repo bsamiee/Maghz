@@ -1,6 +1,6 @@
 # Maghz
 
-An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — the n8n workflows and the autonomous agent skills ride infrastructure (the schema, the embed pipeline, the rails, the MCP fleet, the VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
+An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — the n8n workflows ride infrastructure (the schema, the embed pipeline, the rails, the MCP fleet, the VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
 
 ## [01]-[LAYOUT]
 
@@ -19,7 +19,7 @@ An agent-operated second brain. Heptabase owns note content, the PostgreSQL `mag
 
 The `admin/` package is functional Railway-Oriented Programming over one closed `BoundaryFault` family. Every domain operation returns a `RuntimeRail[Envelope]`; the CLI lowers it to one stdout `Envelope` at the edge. `admin/runtime.py` is the substrate — the rail, the fault classifier, the bounded `drain` lane, retry policies, and structured receipts — and every consumer module composes it rather than re-deriving spawn, retry, or fault handling.
 
-Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infra lifecycle. The MCP fleet owns live exploration: an agent reaches the database, web research, and the VPS through MCP when it is investigating, not committing. `postgres` and `n8n` are deliberately dual-surface — the rail is the deterministic owner (schema and ledger through the CLI; n8n workflow files on disk), and the MCP is the live agent lens over the same system. Deterministic work goes through the `maghz` CLI; exploratory work goes through MCP; never the reverse.
+Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infra lifecycle. The MCP fleet owns live exploration: an agent reaches the database, web research, and the VPS through MCP when it is investigating, not committing. `postgres` and `n8n` are deliberately dual-surface — the rail is the deterministic owner (schema and ledger through the CLI; n8n workflow files on disk), and the MCP is the live agent lens over the same system. Deterministic work goes through the `maghz` CLI; exploratory work goes through MCP; never the reverse. n8n is container-plane only: workflows move by file export/import, status is the unauthenticated `/healthz` liveness plus the on-disk census, and no n8n API key exists — API-managed workflow ownership is an admission decision (credential row plus real consumer), never a pending fault.
 
 Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW cosine (semantic), and `pg_trgm`/FTS (fuzzy) fused through Reciprocal Rank Fusion in `maghz.search()`. Embeddings are produced in the database — `pg_net` posts each concept to local Ollama `nomic-embed-text` and the response writes back as `vector(768)` — on a two-step `pg_cron` sweep, with no application round-trip and no embedding API key.
 
@@ -36,10 +36,10 @@ Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW
 |  [04]   | `ledger <kind>`          | Read projections over the ledger: `coverage`, `gaps`, `stale`, `next`, `owner`.                                                                             |
 |  [05]   | `sync`                   | Reconcile Heptabase cards against the ledger (`diff` the drift, `generate` the writes).                                                                     |
 |  [06]   | `cloud`                  | rclone off-site backup: `pg_dump` plus bisync to the configured remotes, and restore.                                                                       |
-|  [07]   | `n8n`                    | n8n workflow file export/import and an API status probe.                                                                                                    |
+|  [07]   | `n8n`                    | n8n workflow file export/import and a container-liveness probe.                                                                                              |
 |  [08]   | `mcp`                    | The MCP fleet as IaC: `generate`, `validate` (every `${MAGHZ_MCP__*}` placeholder is backed), `diff`, `watch`, and `converge` for docker-run server images. |
 |  [09]   | `exec`                   | Remote agent shell work over asyncssh: push the working tree, run one command in the workroot, pull artifacts back.                                         |
-|  [10]   | `automation run`         | Drive one automation spec (`--spec`); the `trigger` selects the watch/schedule/manual lane. The agent skills it dispatches are tracked open work.           |
+|  [10]   | `automation run`         | Drive one automation spec (`--spec`); the `trigger` selects the watch/schedule/manual lane over the notify/embed/sync actions.                              |
 
 ## [04]-[MCP_FLEET]
 
