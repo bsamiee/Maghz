@@ -32,10 +32,13 @@ reviews:
       instructions: >-
         Container topology for the VPS: services are declarative rows; host paths, ports, and
         credentials are parameterized via environment, never inlined.
-    - path: "docs/**"
+    - path: "**/*.md"
       instructions: >-
-        Agent-facing declarative artifacts: rules stated as fact, no provenance tails, no
-        checklist noise, no duplicated content an owning doc already carries.
+        Review prose and structure under the docgen discipline (the estate standard —
+        docs/standards in the sibling repos): agent-facing declarative artifacts, rules
+        stated as fact. Defects: no-op sentences, leading filler words, provenance tails,
+        checklist noise, heading proliferation, duplicated content an owning doc already
+        carries, drift from the [UPPER_CASE] label convention.
   auto_review:
     enabled: true
   tools:
