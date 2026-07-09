@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "description": "Repo execution standards and agent instructions"
+    },
+    {
+      "path": "AGENTS.md",
+      "description": "Repo role and ownership boundaries for agents"
+    },
+    {
+      "path": "README.md",
+      "description": "Repo structure register"
+    }
+  ]
+}

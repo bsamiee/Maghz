@@ -1,0 +1,61 @@
+language: en-US
+tone_instructions: "Senior-to-senior register. Dense, declarative, evidence-anchored findings. No praise, no emojis, no hedging. Doctrine violations (CLAUDE.md/AGENTS.md) are defects, not suggestions. Prefer polymorphic collapse over additive patches."
+reviews:
+  profile: assertive
+  high_level_summary: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  path_filters:
+    - "!uv.lock"
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        Universal bar: anticipate 10x functionality growth — surfaces absorb new modalities
+        as rows, cases, or dispatch arms, never as new files, flags, or knobs. Defects:
+        knob/param/flag spam, hardcoded values, fragile string plumbing, naive happy-path
+        logic, hand-rolled reimplementations of capability the ecosystem already provides.
+        External packages are first-class implementation material used at full power, newest
+        stable versions. Everything is agent-first: composable, receipt-bearing,
+        self-describing. Collapse spam relentlessly.
+    - path: "**/*.py"
+      instructions: >-
+        Python 3.15+, uv-managed, ruff and ty clean. The Rasm python doctrine applies: typed
+        result rails, expression-shaped logic, polymorphic dispatch over function spam, no
+        bare exceptions crossing domain boundaries. This repo is the VPS second-brain owner —
+        admin/ modules manage infrastructure; secret material never lands in code, logs, or
+        committed files (Doppler owns custody).
+    - path: "compose.yaml"
+      instructions: >-
+        Container topology for the VPS: services are declarative rows; host paths, ports, and
+        credentials are parameterized via environment, never inlined.
+    - path: "docs/**"
+      instructions: >-
+        Agent-facing declarative artifacts: rules stated as fact, no provenance tails, no
+        checklist noise, no duplicated content an owning doc already carries.
+  auto_review:
+    enabled: true
+  tools:
+    ruff:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    hadolint:
+      enabled: true
+knowledge_base:
+  web_search:
+    enabled: true
+  learnings:
+    scope: local
+  pull_requests:
+    scope: local
+issue_enrichment:
+  auto_enrich:
+    enabled: false

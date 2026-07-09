@@ -1,0 +1,29 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "triggerOnUpdates": true,
+  "statusCheck": true,
+  "fixWithAI": true,
+  "ignorePatterns": "uv.lock",
+  "context": {
+    "repos": ["bsamiee/Parametric_Forge", "bsamiee/Rasm"]
+  },
+  "rules": [
+    {
+      "id": "greenfield-only",
+      "rule": "No compat shims, aliases for retired names, or migration helpers. A rename replaces every call site in the same change.",
+      "severity": "high"
+    },
+    {
+      "id": "python-doctrine",
+      "rule": "Python 3.15+ under the Rasm doctrine: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody.",
+      "severity": "high",
+      "scope": ["**/*.py", "pyproject.toml"]
+    },
+    {
+      "id": "secret-custody",
+      "rule": "Doppler owns all secret custody. Credential values, tokens, or DSNs inlined in code, compose files, or docs are defects.",
+      "severity": "high"
+    }
+  ]
+}
