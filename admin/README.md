@@ -67,7 +67,7 @@ Stage-`prd` stack verbs converge the live Hostinger VPS directly: the Pulumi pro
 
 - **MCP-as-IaC** — `admin/mcp.py` models the 12-server fleet (`postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter`) and emits the committed Claude `.mcp.json` plus Codex `.codex/config.toml` projections from one table. Secret values stay in environment variables and never in generated config files.
 - **n8n** — future workflow automation surface; not part of the active MCP fleet until n8n is deliberately configured.
-- **Owned skills** — `maghz-operator`, `automations`, `cloud-sync`, `agy`, `forge-usage`. **Adopted** — `workspace-mcp`, `postgres-mcp`, `heptabase-cli`.
+- **Skills** — the estate skill mirror under `.claude/skills/` propagates from its masters (Forge harness skills, Rasm methodology skills); the MCP fleet rows above are the tool surface.
 
 ## Secrets
 
