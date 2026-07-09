@@ -14,7 +14,7 @@ from watchfiles import awatch, Change, DefaultFilter
 
 from admin.core import completed, Detail, Envelope, fault, Row, Status
 from admin.runtime import async_boundary, BoundaryFault, Fact, guarded, Receipt, RetryClass, RuntimeRail, Signals, spawn
-from admin.settings import MaghzSettings, McpServerSettings
+from admin.settings import MaghzSettings, McpServerSettings, REPO_ROOT
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -83,16 +83,14 @@ class McpConfigDetail(Detail, frozen=True, tag="mcp"):
     result: str = ""
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_PKG_DIR = str(Path(__file__).resolve().parent)
 _WATCHED_INPUTS = {Path(".env"), Path("admin/mcp.py"), Path("admin/settings.py")}
 _PLACEHOLDER = re.compile(r"\$\{MAGHZ_MCP__([A-Z0-9_]+)\}")
-# Module-anchored artifact paths: generate/validate/diff/watch are correct from
+# Root-anchored artifact paths: generate/validate/diff/watch are correct from
 # any CWD; receipts keep the repo-relative labels.
 _MCP_JSON_LABEL = ".mcp.json"
 _CODEX_CONFIG_LABEL = ".codex/config.toml"
-_MCP_JSON_PATH = str(_REPO_ROOT / _MCP_JSON_LABEL)
-_CODEX_CONFIG_PATH = str(_REPO_ROOT / _CODEX_CONFIG_LABEL)
+_MCP_JSON_PATH = str(REPO_ROOT / _MCP_JSON_LABEL)
+_CODEX_CONFIG_PATH = str(REPO_ROOT / _CODEX_CONFIG_LABEL)
 _MCP_FIELDS = frozenset(McpServerSettings.model_fields)
 _ENCODER = msgspec.json.Encoder()
 _DECODER = msgspec.json.Decoder(type=dict[str, object])
@@ -104,7 +102,7 @@ class _RenderInputsFilter(DefaultFilter):
         if not super().__call__(change, path):
             return False
         try:
-            relative = Path(path).relative_to(_REPO_ROOT)
+            relative = Path(path).relative_to(REPO_ROOT)
         except ValueError:
             return False
         return relative in _WATCHED_INPUTS
@@ -249,7 +247,7 @@ async def _watch(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
 
     if (initial := await _generate(cfg)).is_error():
         return initial
-    async for batch in awatch(_REPO_ROOT, watch_filter=_WATCH_FILTER):
+    async for batch in awatch(REPO_ROOT, watch_filter=_WATCH_FILTER):
         facts: dict[str, object] = {"changes": [change.raw_str() for change, _ in batch], "count": len(batch)}
         await Signals.emit_async(Receipt.of("mcp", Fact("admitted", McpOp.WATCH.value, facts)))
         if (regen := await _generate(cfg)).is_error():
@@ -276,7 +274,7 @@ async def _converge_images(cfg: MaghzSettings) -> RuntimeRail[McpConfigDetail]:
         # signature (a `TYPE_CHECKING`-only return annotation would crash the beartype claw's forward-ref eval).
         from pulumi import automation as auto  # noqa: PLC0415
 
-        state = (cfg.infra.state_dir / "mcp").resolve()
+        state = cfg.infra.state_dir / "mcp"
         state.mkdir(parents=True, exist_ok=True)  # the file:// backend cannot open a bucket whose directory does not exist
         opts = auto.LocalWorkspaceOptions(
             project_settings=auto.ProjectSettings(name="maghz-mcp", runtime="python", backend=auto.ProjectBackend(url=f"file://{state}")),
@@ -357,7 +355,9 @@ _SERVER_TABLE: frozendict[ServerKind, ServerSpec] = frozendict({
     ),
     # Bearer form matches the fleet-owner contract (mcp-fleet.nix headerNames
     # ["Authorization"], codex bearerEnvVar) so the five-way drift stays clean.
-    ServerKind.CONTEXT7: ServerSpec(http_url="https://mcp.context7.com/mcp", http_headers=frozendict({"Authorization": "Bearer ${CONTEXT7_API_KEY}"})),
+    ServerKind.CONTEXT7: ServerSpec(
+        http_url="https://mcp.context7.com/mcp", http_headers=frozendict({"Authorization": "Bearer ${CONTEXT7_API_KEY}"})
+    ),
     # HTTP code-review remote: whole-repo semantic review over the indexed codebase. Bears the bare
     # `${GREPTILE_API_KEY}` the env bootstrap forwards (the github/context7 placeholder shape), so it backs no
     # `McpServerSettings` field and resolves at the `op run -- claude` boundary.

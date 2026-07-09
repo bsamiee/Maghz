@@ -19,7 +19,8 @@ are excluded from the maghz census by construction — `auto_explain` registers 
 `pg_cron` lives only in the `postgres` maintenance DB — so the diff compares the maghz catalog membership
 against the maghz `pg_extension` rows exactly.
 
-This module is pure data and pure projection — no I/O, no rail, no settings handle. The `infra` runner
+This module is pure data and pure projection — no rail, no validated-settings handle, and I/O only inside
+the `regenerate` seam. The `infra` runner
 reads `shared_preload_libraries()` for the container command, and the three committed surfaces are
 GENERATED from `schema_prelude()`/`cron_prelude()`/`dockerfile_apt_block()` (committed artifacts, like
 `.mcp.json`), so the catalog is imported by the generator and the runner, never the reverse.
@@ -32,6 +33,8 @@ import re
 
 from frozendict import frozendict
 import msgspec
+
+from admin.settings import REPO_ROOT
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -126,12 +129,12 @@ class Extension(StrEnum):
 
 # --- [CONSTANTS] -----------------------------------------------------------------------
 
-# The committed-artifact paths, relative to the repository root the operator runs from. Each carries a
+# The committed-artifact paths, anchored on the repo root so `regenerate` is CWD-proof. Each carries a
 # `[CATALOG:<tag>] ... [/CATALOG:<tag>]` sentinel region the `regenerate` rewriter replaces with the
 # catalog projection, so the four downstream surfaces are GENERATED from `_PROFILE` rather than hand-kept.
-_SCHEMA_SQL = Path("db/schema.sql")
-_CRON_SQL = Path("db/cron.sql")
-_DOCKERFILE = Path("image/Dockerfile")
+_SCHEMA_SQL = REPO_ROOT / "db/schema.sql"
+_CRON_SQL = REPO_ROOT / "db/cron.sql"
+_DOCKERFILE = REPO_ROOT / "image/Dockerfile"
 
 # Extensions present in every maghz database outside the curated profile: `plpgsql` is the built-in
 # procedural language PostgreSQL installs in every database, and the PostGIS trio ships preinstalled in the

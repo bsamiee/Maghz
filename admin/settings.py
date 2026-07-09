@@ -11,10 +11,10 @@ from collections.abc import Mapping
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Literal, override, Self
+from typing import Annotated, Final, Literal, override, Self
 
 from frozendict import frozendict
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, GetPydanticSchema, model_validator, PostgresDsn, SecretStr
+from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, GetPydanticSchema, model_validator, PostgresDsn, SecretStr
 from pydantic_core import core_schema
 from pydantic_settings import BaseSettings, EnvSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -23,6 +23,18 @@ from pydantic_settings import BaseSettings, EnvSettingsSource, PydanticBaseSetti
 
 type LogFormat = Literal["json", "console"]
 type LogLevel = Literal["debug", "info", "warning", "error"]
+
+# The one repo-root anchor every module reads; resolved from this file, never from the CWD.
+REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+
+
+def _anchored(path: Path) -> Path:
+    """Anchor a relative path row onto the repo root; an absolute ingress wins unchanged."""
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+# Repo-owned path rows admit through this alias so every default and env override is CWD-proof.
+type AnchoredPath = Annotated[Path, AfterValidator(_anchored)]
 
 
 class Stage(StrEnum):
@@ -105,9 +117,9 @@ class DatabaseConfig(BaseModel):
     model_config = _GROUP
 
     dsn: PostgresDsn = Field(default=PostgresDsn("postgresql://maghz@127.0.0.1:15435/maghz"))
-    schema_file: Path = Path("db/schema.sql")
-    routines_file: Path = Path("db/routines.sql")
-    cron_file: Path = Path("db/cron.sql")
+    schema_file: AnchoredPath = Path("db/schema.sql")
+    routines_file: AnchoredPath = Path("db/routines.sql")
+    cron_file: AnchoredPath = Path("db/cron.sql")
     connect_timeout: int = Field(default=10, ge=1)
 
     @property
@@ -166,8 +178,8 @@ class InfraConfig(BaseModel):
     atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
     doppler_mcp_image: str = "node:24-alpine"
     doppler_mcp_version: str = "1.0.5"
-    state_dir: Path = Path(".cache/pulumi")
-    image_context: Path = Path("image")
+    state_dir: AnchoredPath = Path(".cache/pulumi")
+    image_context: AnchoredPath = Path("image")
 
 
 class HookConfig(BaseModel):
@@ -186,7 +198,7 @@ class HookConfig(BaseModel):
     container_name: str = "maghz-hook"
     port: int = Field(default=9000, ge=1024, le=65535)
     signing_secret: SecretStr | None = Field(default=None, repr=False)
-    server_file: Path = Path("hook/server.py")
+    server_file: AnchoredPath = Path("hook/server.py")
 
 
 class ProxyConfig(BaseModel):
@@ -230,7 +242,7 @@ class N8nConfig(BaseModel):
     webhook_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:5678/")
     proxy_hops: int = Field(default=0, ge=0)
     connect_timeout: float = Field(default=10.0, gt=0)
-    workflows_dir: Path = Path("workflows/n8n")
+    workflows_dir: AnchoredPath = Path("workflows/n8n")
 
     @property
     def api_url(self) -> str:
@@ -310,7 +322,7 @@ class AutomationConfig(BaseModel):
     cpu_ceil: float = Field(default=80.0, gt=0, le=100.0)
     rss_ceil_mb: float = Field(default=2048.0, gt=0)
     action_timeout_s: float = Field(default=120.0, gt=0)
-    ledger_file: Path = Path(".artifacts/automation.ndjson")
+    ledger_file: AnchoredPath = Path(".artifacts/automation.ndjson")
     lane_keys: tuple[str, ...] = ("default",)
 
     @model_validator(mode="after")
@@ -387,8 +399,8 @@ class CloudConfig(BaseModel):
     remotes: RemoteTable = Field(default_factory=lambda: frozendict({remote: RemoteCredentials() for remote in Remote}))
     remote_content_path: str = "maghz/content"
     remote_dump_path: str = "maghz/dumps"
-    content_root: Path = Path()
-    filter_file: Path = Path(".rclone-filter")
+    content_root: AnchoredPath = Path()
+    filter_file: AnchoredPath = Path(".rclone-filter")
     op_timeout_s: float = Field(default=3600.0, gt=0)
     force_resync: bool = False
 
@@ -437,7 +449,7 @@ class MaghzSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MAGHZ_",
         env_nested_delimiter="__",
-        env_file=".env",
+        env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         env_ignore_empty=True,
         case_sensitive=False,
@@ -458,8 +470,8 @@ class MaghzSettings(BaseSettings):
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     log: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
-    cache_dir: Path = Path(".cache")
-    artifacts_dir: Path = Path(".artifacts")
+    cache_dir: AnchoredPath = Path(".cache")
+    artifacts_dir: AnchoredPath = Path(".artifacts")
 
     @property
     def docker_host(self) -> str:
@@ -518,6 +530,8 @@ def settings() -> MaghzSettings:
 # --- [EXPORTS] -------------------------------------------------------------------------
 
 __all__ = [
+    "REPO_ROOT",
+    "AnchoredPath",
     "AutomationConfig",
     "CloudConfig",
     "DatabaseConfig",

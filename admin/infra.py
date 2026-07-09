@@ -14,7 +14,7 @@ import msgspec
 from admin.core import completed, Detail, Envelope, Row, Status
 from admin.profile import shared_preload_libraries
 from admin.runtime import Fact, guarded, Receipt, RetryClass, RuntimeRail, Signals
-from admin.settings import MaghzSettings, Stage
+from admin.settings import MaghzSettings, REPO_ROOT, Stage
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -65,9 +65,6 @@ _SEVERITY_RANK: frozendict[str, int] = frozendict({"warning": 1, "error": 2})
 _EXPORTS: tuple[str, ...] = ("db_dsn", "ollama_url", "n8n_url")
 
 
-_REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
-
-
 _OCI_BASE: frozendict[str, str] = frozendict({
     "org.opencontainers.image.vendor": "maghz",
     "org.opencontainers.image.source": "https://github.com/bsamiee/Maghz",
@@ -80,7 +77,7 @@ _N8N_KEY_HEX_BYTES: Final[int] = 32
 _N8N_KEY_CONTAINER_PATH: Final[str] = "/home/node/.n8n/encryptionKey"
 
 
-_N8N_INITDB: Final[Path] = _REPO_ROOT / "db/init/n8n.sql"
+_N8N_INITDB: Final[Path] = REPO_ROOT / "db/init/n8n.sql"
 
 
 _HOOK_INTERNAL_PORT: Final[int] = 9000
@@ -177,7 +174,7 @@ _PULL_DECODER: Final[msgspec.json.Decoder[_Pull]] = msgspec.json.Decoder(type=_P
 def _n8n_key_file(cfg: MaghzSettings) -> Path:
 
     cfg.n8n.workflows_dir.mkdir(parents=True, exist_ok=True)  # the n8n host_path workflows mount needs the dir to exist
-    key_dir = (cfg.cache_dir / "n8n").resolve()
+    key_dir = cfg.cache_dir / "n8n"
     key_dir.mkdir(parents=True, exist_ok=True)
     key_file = key_dir / "encryptionKey"
     try:
@@ -201,11 +198,11 @@ def _define(cfg: MaghzSettings) -> None:
     daemon = cfg.docker_host  # the one stage-resolved endpoint: Colima socket (local) or ssh://user@vps (prd)
     # Local mints-or-reads the host n8n key file; prd carries the Doppler-held key as env, so no file exists.
     key_file = _n8n_key_file(cfg) if stage is Stage.LOCAL else None
-    initdb_sql = _N8N_INITDB.resolve().read_text(encoding="utf-8")  # uploaded into initdb.d at create — no host path on either daemon
+    initdb_sql = _N8N_INITDB.read_text(encoding="utf-8")  # uploaded into initdb.d at create — no host path on either daemon
     # BuildKit local layer cache rows, local stage only: read prior layers on converge, write the rebuilt
     # set with `mode=max` so the heavy apt extension layers survive a re-converge. The prd docker-driver
     # daemon rejects cache export and keeps its own layer cache instead; `None` omits the rows entirely.
-    build_cache = (infra.state_dir / "buildkit-cache").resolve() if row.cache else None
+    build_cache = infra.state_dir / "buildkit-cache" if row.cache else None
     if build_cache is not None:
         build_cache.mkdir(parents=True, exist_ok=True)  # the local cache backend needs its dir present before the build writes to it
     cache_from = None if build_cache is None else [docker_build.CacheFromArgs(local=docker_build.CacheFromLocalArgs(src=str(build_cache)))]
@@ -326,7 +323,7 @@ def _define(cfg: MaghzSettings) -> None:
             if stage is Stage.LOCAL:
                 key_rows = [f"N8N_ENCRYPTION_KEY_FILE={_N8N_KEY_CONTAINER_PATH}"]
                 workflow_mounts = [
-                    docker.ContainerVolumeArgs(host_path=str(cfg.n8n.workflows_dir.resolve()), container_path="/home/node/workflows"),
+                    docker.ContainerVolumeArgs(host_path=str(cfg.n8n.workflows_dir), container_path="/home/node/workflows"),
                     docker.ContainerVolumeArgs(host_path=str(key_file), container_path=_N8N_KEY_CONTAINER_PATH, read_only=True),
                 ]
             else:
@@ -391,11 +388,7 @@ def _define(cfg: MaghzSettings) -> None:
                 command=["python", "/app/server.py"],
                 ports=[docker.ContainerPortArgs(internal=_HOOK_INTERNAL_PORT, external=cfg.hook.port, ip="127.0.0.1")],
                 # Uploaded at create like the initdb script — no host path on either daemon.
-                uploads=[
-                    docker.ContainerUploadArgs(
-                        content=(_REPO_ROOT / cfg.hook.server_file).resolve().read_text(encoding="utf-8"), file="/app/server.py"
-                    )
-                ],
+                uploads=[docker.ContainerUploadArgs(content=cfg.hook.server_file.read_text(encoding="utf-8"), file="/app/server.py")],
                 volumes=[docker.ContainerVolumeArgs(volume_name=hook_receipts.name, container_path="/data")],
                 networks_advanced=[docker.ContainerNetworksAdvancedArgs(name=network.name, aliases=["hook"])],
                 healthcheck=docker.ContainerHealthcheckArgs(
@@ -491,7 +484,7 @@ def _define(cfg: MaghzSettings) -> None:
 def _stack(cfg: MaghzSettings) -> Stack:
     from pulumi import automation as auto  # noqa: PLC0415 - dual-band: the Automation API drives the host-side plugin stack, gated off the core load
 
-    state = cfg.infra.state_dir.resolve()
+    state = cfg.infra.state_dir
     state.mkdir(parents=True, exist_ok=True)  # the file:// backend cannot open a bucket whose directory does not exist
     opts = auto.LocalWorkspaceOptions(
         project_settings=auto.ProjectSettings(name=cfg.infra.project, runtime="python", backend=auto.ProjectBackend(url=f"file://{state}")),
