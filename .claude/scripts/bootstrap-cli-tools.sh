@@ -18,8 +18,7 @@ readonly ALLOW_SYSTEM_LINKS="${CLAUDE_BOOTSTRAP_SYSTEM_LINKS:-${ALLOW_SUDO}}"
 readonly ALLOW_NETWORK="${CLAUDE_BOOTSTRAP_ALLOW_NETWORK:-0}"
 readonly ALLOW_REMOTE_INSTALLERS="${CLAUDE_BOOTSTRAP_ALLOW_REMOTE_INSTALLERS:-0}"
 readonly BINSTALL_URL='https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh'
-# Quoted subscripts: formatters parse bare hyphenated keys as arithmetic and
-# space them into broken lookups ("trash - put"); quoting pins the literal.
+# Quoted subscripts: formatters parse bare hyphenated keys as arithmetic and space them into broken lookups ("trash - put"); quoting pins the literal.
 declare -Ar TOOLS=(
     ["rg"]='ripgrep:binstall' ["fd"]='fd-find:binstall'
     ["sd"]='sd:binstall' ["bat"]='bat:binstall'
@@ -243,11 +242,11 @@ _install_github_release_sha() {
     raw_os="$(uname -s)"
     raw_arch="$(uname -m)"
     case "${raw_os}:${raw_arch}" in
-    Linux:x86_64) target="x86_64-unknown-linux-gnu" ;;
-    Linux:aarch64 | Linux:arm64) target="aarch64-unknown-linux-gnu" ;;
-    Darwin:arm64 | Darwin:aarch64) target="aarch64-apple-darwin" ;;
-    Darwin:x86_64) target="x86_64-apple-darwin" ;;
-    *) _die "Unsupported platform for ${binary}: ${raw_os}/${raw_arch}" ;;
+        Linux:x86_64) target="x86_64-unknown-linux-gnu" ;;
+        Linux:aarch64 | Linux:arm64) target="aarch64-unknown-linux-gnu" ;;
+        Darwin:arm64 | Darwin:aarch64) target="aarch64-apple-darwin" ;;
+        Darwin:x86_64) target="x86_64-apple-darwin" ;;
+        *) _die "Unsupported platform for ${binary}: ${raw_os}/${raw_arch}" ;;
     esac
     asset="google-workspace-cli-${target}.tar.gz"
     base_url="https://github.com/${repo}/releases/download/${tag}"
@@ -421,7 +420,7 @@ _apply() {
     _report
 }
 
-# --- [EXPORT] ---------------------------------------------------------------------------
+# --- [ENTRY] ----------------------------------------------------------------------------
 
 [[ -v COMMAND_DISPATCH["${COMMAND}"] ]] || {
     _usage >&2
