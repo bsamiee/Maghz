@@ -34,14 +34,15 @@ Choose the container by what the reader retrieves; convert before styling.
 
 - Prose carries law; a list carries parallel atomic items; a card — key plus earned field lines — carries a decision cluster; a table carries atomic lookup facts crossed row-by-column; a tree or diagram carries structure and relations. Tables enumerate, cards legislate.
 - A bullet is one atomic entry — one fact, one rule, one member. A closed token set referenced rather than defined rides inline after its group label on one line; the list form is earned only when members carry per-member content.
-- An entry carries one decision in one to two sentences, three at the hard cap; past the cap the entry is hiding a card, a labeled block, or section prose. Closed enumerations whose payload is the roster itself are registry entries and legal at length.
+- An entry carries one decision in one to two sentences, three at the hard cap; past the cap the entry is hiding a card, a labeled block, or section prose. Closed enumerations whose payload is the roster itself are registry entries and legal at length, and a `- Field: value` record field answers to the earned-field law at card altitude, never the entry budget.
 - A representation is declared regenerable, verified by tooling where a verifier exists, and never paraphrased back into prose — the paraphrase is a second copy that drifts.
 - Graphical labels carry concept names only: a node, edge, or tree-entry label stays under ten words, and code detail never rides a tree, seam edge, or diagram label.
 - Diagram fences — question admission, type selection, construction, render validation — ride the mermaid-diagramming skill; a doc admits one only as a declared regenerable representation.
 
 [FENCE_CONTENT]:
 
-- A fence carries a language tag plus one intent label from the closed set — `copy-safe` runs as written, `template` carries neutral placeholders, `conceptual` illustrates, `generated` and `output-only` carry produced output, `accepted` and `rejected` carry a worked contrast pair, `codemap` and `seams` carry width-capped topology — and the body honors its label: a copy-safe body runs, a renderable body renders under the corpus validator.
+- A fence carries a language tag plus one intent label from the closed set — `copy-safe` runs as written, `template` carries neutral placeholders, `conceptual` illustrates, `generated` and `output-only` carry produced output, `signature` carries a transcription-complete owner declaration an implementer copies verbatim, `test-only` carries test source, `accepted` and `rejected` carry a worked contrast pair, `codemap` and `seams` carry width-capped topology.
+- The body honors its label: a copy-safe body runs bare of placeholder slots and prompts, an output-only body carries no prompt-led run command, and a renderable body renders under the corpus validator — a mismatch retags the fence.
 - Reusable examples use legal neutral identifiers; placeholder strings such as `"<value-a>"` appear only inside literals, and no project, host, or domain concept anchors an example meant to travel.
 - Each example owns one demonstration region no sibling example repeats, and shows the form at real composed scale — admission, dispatch, and policy in one body with the growth axis visible — never an isolated minimum.
 
@@ -103,6 +104,7 @@ What an index-tier page carries is a selection decision, made for the agent edit
 A recurring file kind carries one declared schema — section set, marker vocabulary, entry shape — and every instance conforms byte-structurally. Uniformity is what makes a corpus machine-censusable and lets an agent work any instance without relearning its shape; a locally-optimized deviation is a defect even when it reads better in isolation.
 
 - The schema declares: the exact header set in order, the entry/card shape with its closed field vocabulary, the marker vocabulary, and the one sanctioned extension point if any.
+- Peer corpora of one file kind across languages carry one shared spine: the language changes the fence tag, never the section set, the numbering pad, or the card grammar — a branch-local skeleton is the same defect as a per-instance one.
 - A structural census is the conformance gate: identical header tokens across instances, identical field sets per entry, zero undeclared markers. A file kind whose instances cannot be censused has no schema — write one before writing another instance.
 - New capability lands as a row, entry, or declared extension inside the schema, never as a novel section invented per instance; pressure for a new section is a schema change made at the owner and rolled to every instance.
 

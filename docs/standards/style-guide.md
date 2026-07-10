@@ -79,6 +79,7 @@ The review vocabulary. Findings cite the defect name and the line.
 
 - Banned: Word-boundary, page-wide — `should`, `could`, `would`, `might`, `maybe`, `perhaps`, `likely`, `probably`, `propose`, `consider`, `recommended`, `ideally`, `TBD`, `TODO`, `FIXME`, `we`, `our`, `you` — and the synonym forms `is expected to`, `can be`, `aims to`, `is designed to`, `in the future`, `eventually`, `as needed`, `if necessary`.
 - Survivors: Contract qualifiers that scope behavior rather than defer decisions — `optional`, `if present`, `where supported`, `when configured`, `only when`, `unless`.
+- A prohibition's consequence states in the present tense: `delegating it silently swaps moduli`, never `would swap` — the subjunctive is the hedge wearing a rationale.
 - Rejected: Delivery is exactly-once effective — transport plus consumer dedupe by content key (never magic).
 - Accepted: Consumer dedupe by content key makes delivery exactly-once effective.
 - Reason: The guarantee is stated as the mechanism that produces it; the reassurance tail, the mood verb, and the anticipated objection all die.
@@ -112,7 +113,7 @@ The review vocabulary. Findings cite the defect name and the line.
 - Rejected: The neo look lands at 2.14.0+; the curve default moved at 2.13.0 — restore the spline with the prior key.
 - Accepted: The look key accepts `neo`; the curve default is `rounded`, and `basis` restores the spline.
 - Reason: Behavior is stated as the behavior — the newest stable's truth with no band. A genuine wire or persistence version boundary is a positive property stated once at its codec owner; every other pin lives in the owning manifest alone.
-- Survivors: A capability floor a doctrine page legislates — interpreter floor, tool major — is admission law stated once at the owning page; registry data inside a compatibility matrix is the document's own system of record; an ordering selector (`latest` session, `newest` commit) states a cursor, never freshness. Trigger vocabulary a law page enumerates rides code spans.
+- Survivors: A capability floor a doctrine page legislates — interpreter floor, tool major — is admission law stated once at the owning page; registry data inside a compatibility matrix is the document's own system of record; an ordering selector (`latest` session, `newest` commit) states a cursor, never freshness. Trigger vocabulary a law page enumerates rides code spans, and a standards-document clause or table citation (`Table 2.3.2`, `§ 6.3`) is a domain value, never a release pin.
 
 [SET_IN_STONE] — Wording that freezes the current shape against ground-up rebuild: SEALED, FROZEN, FINAL, legislated counts, "never re-opened", per-member byte-identical chants.
 
@@ -120,7 +121,7 @@ The review vocabulary. Findings cite the defect name and the line.
 - Accepted: The receipt's `[Key]` sequence is the persisted decode contract; growth is trailing-append.
 - Reason: A real wire contract is stated once at its owning declaration; a design-shape freeze is deleted outright. The partition principle is the law; a count is reported, never legislated.
 
-[WEAK_VERBS] — Permission verbs — supports, allows, enables, provides, offers — where an owning verb states law, including a permission verb smuggled into the object of an owning main verb (owns the option to enable).
+[WEAK_VERBS] — Permission verbs — `supports`, `allows`, `enables`, `provides`, `offers` — where an owning verb states law, including a permission verb smuggled into the object of an owning main verb (owns the option to enable).
 
 - Rejected: The package offers an optional self-hosted graph lane.
 - Accepted: The graph lane binds only under the self-hosted profile row.
@@ -131,6 +132,7 @@ The review vocabulary. Findings cite the defect name and the line.
 - Rejected: DECISION [V10]: the trust gate binds every identifier crossing into engine SQL — LANDED, verify and extend.
 - Accepted: The trust gate binds every identifier crossing into engine SQL.
 - Reason: The rule is the authority. Open work moves to the card owner; anything resolved reads as if it had always been so — the reader cannot tell which parts were built when.
+- In a design-first corpus, realization status is this class: `planned or implemented`, `treat as realized`, `the eventual source file`, and verification narration (`verified against the live decompile`) all die — the corpus charter states once what the work product is, and no page narrates its distance from code.
 
 [ASSERTED_IMPOSSIBILITY] — An impossibility claim ("unspellable", "structurally impossible") whose clause does not name the enforcing structure — a victory lap standing in for the mechanism.
 
@@ -157,13 +159,16 @@ Comments — in source files and in transcription-complete fences alike — exis
 - A comment carries the one in-situ constraint the code cannot show: the why, the invariant, the trap. Never the what, never a duplicate of card or index content, never process or session narration.
 - A comment line fills toward the 150-column width before wrapping; a block is 1-2 wrapped lines, 3-4 only when the constraint truly needs them, never more than 4 stacked. Prefer shortening a kept comment over keeping a long one.
 - Stacked short fragments are one shredded thought: 2 or more consecutive comment lines each under 100 columns merge into one dense line or one properly wrapped block. A wrapped block is legal by construction — its early lines ride near the cap.
-- The file's leading header block — title rows, the dash divider, and the docstring below it — is structural, outside every stack count; so are shebangs, doc-comment glyphs, and tool pragmas.
+- A wrapped block never ends on a runt trailing line: a final fragment far under the width signals re-flow — tighten into fewer lines, let a near-fit collapse ride slightly past 150, or rebalance so the last line carries real width. When content exceeds one cap, the split is asymmetric: the first line packs to 100 columns or more and the tail keeps 50 or more — never an even split, which shreds both lines.
+- The header's identity rows and dash divider are frozen structural surfaces, as are shebangs, doc-comment glyphs, and tool pragmas. The charter docstring below the divider is prose under full comment discipline — it fills toward the cap and merges its shreds — exempt only from the stack cap; a dense filled charter earns its length.
 - Remediation runs one ladder per comment, in order: delete whole when no load survives — narration, code restatement, a human-facing tour; tighten the load-bearing survivor in place — active voice, coordinating conjunctions, filler dropped; re-wrap the multi-line survivor toward the cap, collapsing 3 lines to 2 and 2 to 1 where the tightened prose fits; inline the one-line survivor governing exactly one line or entry as its trailing tail. Deletion never drops payload.
+- A merge is a rewrite, never a concatenation: packing runs only over already-tightened prose, and a collapse that joins fragments verbatim or preserves weak prose is a rejected fix. Detection is mechanical; repair is exclusively read-and-rewrite judgment — no fixer arm, `sed`/regex pass, or scripted bulk rewrite ever mutates comment text.
 - A trailing comment rides its code line outside every count and width budget — the inline form is the preferred spelling for a per-line or per-entry constraint. A comment governing a block, category, or more than one line stays a full-line comment above what it governs; inlining it couples the group's law to one member.
 - Inlining follows tightening, never replaces it: the tail carries the same discipline — short, atomic, re-tightened on every pass that touches the line — and runs long only where the file kind's own convention carries columnar tails.
 - Section dividers, sub-section dividers, and file docstring headers are structural surfaces: corrected in style, structure, or label, never deleted as comment noise.
-- Comments are uncoupled: no paths that break on rename, no references to sessions, passes, reviews, or sibling docs.
-- Comment hygiene is a standing obligation: every pass that touches a file — ad hoc or workflow — prunes its stale, drifted, or unnecessary comments and tightens the survivors in the same pass.
+- A divider's label truthfully charters the block below it. A phantom section — a label naming a concern the block does not own, or a full divider standing where a sub-section belongs — is corrected only after reading the enclosing section structure, never by lexical swap.
+- Comments are uncoupled: no paths that break on rename, no references to sessions, passes, reviews, or sibling docs. A machine-config comment naming its owning module's path carries an in-situ ownership constraint and survives; a path that merely narrates is deleted.
+- Comment hygiene is a standing obligation: every pass that touches a file — ad hoc or workflow — prunes its stale, drifted, or unnecessary comments and tightens the survivors in the same pass. The ladder audits existing comments; it never obligates authoring one on a surface whose code already carries the constraint.
 
 ## [06]-[SENTENCES]
 
@@ -214,7 +219,7 @@ Use one term for one concept inside a bounded context. Names are load-bearing: p
 - Capitalize the first word after a colon only when the following material is a complete sentence.
 - Use parentheses for nonessential clarification; promote required conditions into the main sentence.
 - If a parenthetical is a full sentence, put the period inside the closing parenthesis; otherwise outside.
-- Use spaced em dashes only for prose interruptions; en dashes for inclusive ranges and name-based compounds outside copyable text.
+- Use spaced em dashes only for prose interruptions, spelled as the character — ASCII `--` or `---` never stands in for it in prose; en dashes carry inclusive ranges and name-based compounds outside copyable text.
 - Hyphenate compound modifiers before nouns when needed for clarity; omit hyphens after `-ly` adverbs; use a suspended hyphen for shared compounds such as `short- and long-term`.
 - Prefer sentence splits or vertical lists over semicolon-ended bullets.
 
@@ -248,6 +253,7 @@ A durable artifact holds only its own concern. Links, citations, numbered refere
 - Routing is a file class, never a section grafted onto an ordinary page: `README.md`, a skill root `SKILL.md`, an instruction root (`CLAUDE.md`, `AGENTS.md`), and a memory index `MEMORY.md` are the only durable files that carry links, file paths, or cross-references. Prose in every other file states law without naming where the law came from or where a sibling's law lives; the prose gate fails a relative link anywhere else as `coupled-link`.
 - No numbered references, footnotes, citation apparatus, or source names in prose — an external fact is verified before authoring and stated as law; the origin dies.
 - No meta-references to sibling artifacts, paraphrased or direct: a fact owned elsewhere is composed silently, or the owning symbol alone is named. Cross-reference and boundaries sections institutionalize coupling and are banned.
+- A sibling earns at most one boundary pointer line naming the owner and the one consumed symbol; a section-anchored reference (`page#SECTION`) couples prose to the sibling's interior, and a page never names itself.
 - Link text in a routing surface describes the destination; bare URLs appear only as example values.
 
 ## [11]-[EXAMPLES]
