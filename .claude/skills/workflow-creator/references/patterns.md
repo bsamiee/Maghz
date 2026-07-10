@@ -6,18 +6,21 @@ Copy-paste orchestration shapes. Each names when it wins, the primitive it rests
 
 The whole space is built from five primitives: `pipeline` (streaming stages, no barrier), `parallel` (a barrier — waits for every thunk), a plain-JS loop, a bounded worker pool (throughput reference), and the `agent()` leaf itself. Every shape below is a canonical topology or a hardened specialization:
 
-| [INDEX] | [TOPOLOGY]           | [PRIMITIVES]                                  | [FITS]                                                                 | [GUARDS]                                                   |
-| :-----: | :------------------- | :-------------------------------------------- | :--------------------------------------------------------------------- | :--------------------------------------------------------- |
-|  [01]   | Prompt chaining      | `pipeline` or a sequential `agent()` chain    | Fixed ordered subtasks, each consuming the last's output               | One overloaded call losing accuracy                        |
-|  [02]   | Sectioning           | `parallel` barrier, or `pipeline` fan-out     | Independent subtasks run at once, then combine                         | Sequential wall-clock; divided focus diluting every aspect |
-|  [03]   | Voting               | `parallel` over N identical-input thunks      | One high-stakes judgement wanting agreement                            | A single confident-but-wrong answer surviving              |
-|  [04]   | Tournament           | plain-JS bracket over blind pairwise judges   | Wide solution space; relative quality is measurable, absolute is not   | Absolute-score drift; source bias ratifying a favorite     |
-|  [05]   | Debate               | position → rebuttal → separate judge          | Ambiguous, high-stakes judgment where disagreement exposes blind spots | A lone perspective missing what a counter-position catches |
-|  [06]   | Routing              | plain-JS discriminant → one `agent()` of many | Input classes each handled best by a different specialist              | One generic prompt mediocre at every class                 |
-|  [07]   | Escalation           | tiered re-dispatch of residuals               | Bulk work a cheap tier resolves, with a hard residue                   | Paying the strongest model for work a floor model finishes |
-|  [08]   | Orchestrator-workers | planner `agent()` → fan-out over its output   | The subtask list is not known up front                                 | Hardcoding a worklist the problem does not have            |
-|  [09]   | Evaluator-optimizer  | loop: generate `agent()` → evaluate `agent()` | Clear pass criteria; one draft rarely enough                           | Shipping a first pass; an agent grading its own work       |
-|  [10]   | Self-repair          | loop: check command → fix agent               | A machine-checkable target (types, tests, lint) reachable in rounds    | Exit driven by the worker's claim instead of the check     |
+| [INDEX] | [TOPOLOGY]           | [PRIMITIVES]                        | [FITS]                             | [GUARDS]                            |
+| :-----: | :------------------- | :---------------------------------- | :--------------------------------- | :---------------------------------- |
+|  [01]   | Prompt chaining      | `pipeline` or `agent()` chain       | Fixed ordered subtasks; chained    | One overloaded call losing accuracy |
+|  [02]   | Sectioning           | `parallel` barrier or fan-out       | Independent subtasks, then combine | Sequential cost; diluted focus      |
+|  [03]   | Voting               | `parallel`, N identical inputs      | One judgement wanting agreement    | A confident-wrong answer surviving  |
+|  [04]   | Tournament           | JS bracket, blind pairwise judges   | Wide space, relative quality only  | Absolute-score drift; source bias   |
+|  [05]   | Debate               | position → rebuttal → judge         | High-stakes ambiguous judgment     | Lone view missing the counter-catch |
+|  [06]   | Routing              | JS discriminant → one `agent()`     | Classes want distinct specialists  | Generic prompt mediocre everywhere  |
+|  [07]   | Escalation           | tiered residual re-dispatch         | Bulk on a cheap tier; hard residue | Top model doing floor-model work    |
+|  [08]   | Orchestrator-workers | planner `agent()` → fan-out         | Subtask list unknown up front      | Hardcoding an absent worklist       |
+|  [09]   | Evaluator-optimizer  | loop: generate → evaluate `agent()` | Clear pass bar; one draft too few  | Shipping first pass; self-grading   |
+|  [10]   | Self-repair          | loop: check → fix agent             | Machine-checkable target in rounds | Exit on the claim, not the check    |
+
+- Debate: disagreement exposes blind spots a lone view misses.
+- Self-repair: machine-checkable means types, tests, or lint.
 
 Selection rules that sit on top of the map: sectioning defaults to `pipeline`, never `parallel` — reach for the barrier only when a stage needs the ENTIRE previous result set at once. The evaluator is always a separate `agent()` from the generator — self-grading finds nothing. A verdict that a command measures belongs to self-repair or an eval gate, never to a model judge. The discrimination order runs as one dispatch — every edge is a shape answer, every leaf the owning section:
 
@@ -77,26 +80,23 @@ The delegation contract — objective, territory, exclusions, output contract, s
 
 Canonical: prompt chaining. Primitive: `pipeline`. Guards: the accuracy loss of one overloaded call, by giving each subtask its own clean-context agent. Cost: stages × items agent calls; wall-clock is the slowest item's full chain. When: the work splits into a fixed sequence where each stage consumes the previous stage's output — outline → draft → tighten; extract → normalize → validate.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'spec-to-draft',
-  description: 'Turn each spec section into an outline, then a draft, then a tightened pass',
-  phases: [{ title: 'Outline' }, { title: 'Draft' }, { title: 'Tighten' }],
-}
+    name: "spec-to-draft",
+    description: "Turn each spec section into an outline, then a draft, then a tightened pass",
+    phases: [{ title: "Outline" }, { title: "Draft" }, { title: "Tighten" }],
+};
 
-const sections = ['geometry kernel', 'mesh pipeline', 'IFC export']
+const sections = ["geometry kernel", "mesh pipeline", "IFC export"];
 
 const out = await pipeline(
-  sections,
-  s             => agent(`Outline the doc section for: ${s}. Return headings only.`,
-                        { label: `outline:${s}`, phase: 'Outline', schema: OUTLINE_SCHEMA }),
-  (outline, s)  => agent(`Draft "${s}" from this outline:\n${JSON.stringify(outline)}`,
-                        { label: `draft:${s}`, phase: 'Draft' }),
-  (draft, s)    => agent(`Tighten this "${s}" draft — cut redundancy, keep every claim:\n${draft}`,
-                        { label: `tighten:${s}`, phase: 'Tighten' }),
-)
+    sections,
+    (s) => agent(`Outline the doc section for: ${s}. Return headings only.`, { label: `outline:${s}`, phase: "Outline", schema: OUTLINE_SCHEMA }),
+    (outline, s) => agent(`Draft "${s}" from this outline:\n${JSON.stringify(outline)}`, { label: `draft:${s}`, phase: "Draft" }),
+    (draft, s) => agent(`Tighten this "${s}" draft — cut redundancy, keep every claim:\n${draft}`, { label: `tighten:${s}`, phase: "Tighten" }),
+);
 
-return { sections: out.filter(Boolean) }
+return { sections: out.filter(Boolean) };
 ```
 
 A gate variant adds a JS check between stages — an outline that fails a cheap structural test drops (`return null`) before paying for the draft; the heavier machine-checked form is the eval gate at [10].
@@ -105,32 +105,28 @@ A gate variant adds a JS check between stages — an outline that fails a cheap 
 
 Canonical: sectioning. Primitive: `parallel` barrier. Guards: sequential wall-clock, and the quality dilution of one call covering every angle. Cost: N + 1 calls; wall-clock is the slowest lane plus the synthesis. The synthesis genuinely needs every result, so the barrier is correct here.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'research-fanout',
-  description: 'Research independent questions in parallel, synthesize one report',
-  phases: [{ title: 'Research' }, { title: 'Synthesize' }],
-}
+    name: "research-fanout",
+    description: "Research independent questions in parallel, synthesize one report",
+    phases: [{ title: "Research" }, { title: "Synthesize" }],
+};
 
 // `args` arrives as structured data — an array stays an array. Default the no-args run.
-const questions = Array.isArray(args) && args.length ? args : ['demo question']
+const questions = Array.isArray(args) && args.length ? args : ["demo question"];
 
-phase('Research')
+phase("Research");
 const findings = await parallel(
-  questions.map((q, i) => () =>
-    agent(`Research and report verified facts:\n\n${q}`,
-          { label: `q${i + 1}`, phase: 'Research', schema: RESEARCH_SCHEMA }))
-)
-const clean = findings
-  .map((f, i) => (f ? { question: questions[i], ...f } : null))
-  .filter(Boolean)
+    questions.map(
+        (q, i) => () => agent(`Research and report verified facts:\n\n${q}`, { label: `q${i + 1}`, phase: "Research", schema: RESEARCH_SCHEMA }),
+    ),
+);
+const clean = findings.map((f, i) => (f ? { question: questions[i], ...f } : null)).filter(Boolean);
 
-phase('Synthesize')
-const report = await agent(
-  'Combine the research below into one cohesive briefing; call out disagreements.\n\n'
-  + JSON.stringify(clean, null, 2))
+phase("Synthesize");
+const report = await agent("Combine the research below into one cohesive briefing; call out disagreements.\n\n" + JSON.stringify(clean, null, 2));
 
-return { questionCount: clean.length, report }
+return { questionCount: clean.length, report };
 ```
 
 Inline synthesis is small-output only: past ~50 rows of collected product, the `JSON.stringify` handoff spends the synthesizer's context before its work starts — route heavy products through the report-file topology at [23].
@@ -139,28 +135,39 @@ Inline synthesis is small-output only: past ~50 rows of collected product, the `
 
 Canonical: chaining ⋈ sectioning — staged work where each item also fans out within a stage. Primitive: `pipeline` with a nested `parallel` inside one stage. Guards: the idle time a barrier inflicts; each item advances the moment IT is ready. Cost: the same calls as the barriered form, but wall-clock is the slowest single item's chain, never the sum of stage maxima. This is the default multi-stage shape; prefer it over barriered `parallel()` pairs.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'review-and-verify',
-  description: 'Review each dimension, verify each finding as soon as its review lands',
-  phases: [{ title: 'Review' }, { title: 'Verify' }],
-}
+    name: "review-and-verify",
+    description: "Review each dimension, verify each finding as soon as its review lands",
+    phases: [{ title: "Review" }, { title: "Verify" }],
+};
 
 const DIMENSIONS = [
-  { key: 'bugs', prompt: 'Find logic bugs in the changed files.' },
-  { key: 'perf', prompt: 'Find performance regressions in the changed files.' },
-]
+    { key: "bugs", prompt: "Find logic bugs in the changed files." },
+    { key: "perf", prompt: "Find performance regressions in the changed files." },
+];
 
 const results = await pipeline(
-  DIMENSIONS,
-  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDINGS_SCHEMA }),
-  review => parallel((review?.findings ?? []).map(f => () =>
-    agent(`Adversarially verify: ${f.title}`,
-          { label: `verify:${f.file}`, phase: 'Verify', schema: VERDICT_SCHEMA })
-      .then(v => ({ ...f, verdict: v }))))
-)
+    DIMENSIONS,
+    (d) => agent(d.prompt, { label: `review:${d.key}`, phase: "Review", schema: FINDINGS_SCHEMA }),
+    (review) =>
+        parallel(
+            (review?.findings ?? []).map(
+                (f) => () =>
+                    agent(`Adversarially verify: ${f.title}`, { label: `verify:${f.file}`, phase: "Verify", schema: VERDICT_SCHEMA }).then((v) => ({
+                        ...f,
+                        verdict: v,
+                    })),
+            ),
+        ),
+);
 
-return { confirmed: results.flat().filter(Boolean).filter(f => f.verdict?.isReal) }
+return {
+    confirmed: results
+        .flat()
+        .filter(Boolean)
+        .filter((f) => f.verdict?.isReal),
+};
 ```
 
 Dimension `bugs` verifies its findings while `perf` is still under review.
@@ -169,48 +176,46 @@ Dimension `bugs` verifies its findings while `perf` is still under review.
 
 Canonical: sectioning. Primitive: `parallel` as a true barrier. Guards: double work and wasted spend — the next stage needs the ENTIRE previous result set in hand to dedup, merge, or early-exit on a count. Cost: wall-clock is each stage's slowest lane summed across stages — paid only because the dedup or early-exit genuinely needs the whole set. This is the legitimate use of `parallel` over a `pipeline`.
 
-```js
-const all = await parallel(
-  DIMENSIONS.map(d => () => agent(d.prompt, { schema: FINDINGS_SCHEMA })))
+```js conceptual
+const all = await parallel(DIMENSIONS.map((d) => () => agent(d.prompt, { schema: FINDINGS_SCHEMA })));
 
-const deduped = dedupeByFileAndLine(
-  all.filter(Boolean).flatMap(r => r.findings))   // genuinely needs ALL at once
+const deduped = dedupeByFileAndLine(all.filter(Boolean).flatMap((r) => r.findings)); // genuinely needs ALL at once
 
-if (deduped.length === 0) return { confirmed: [], note: 'nothing to verify' }
+if (deduped.length === 0) return { confirmed: [], note: "nothing to verify" };
 
-const verified = await parallel(
-  deduped.map(f => () => agent(verifyPrompt(f), { schema: VERDICT_SCHEMA })))
-return { confirmed: verified.filter(Boolean).filter(v => v.isReal) }
+const verified = await parallel(deduped.map((f) => () => agent(verifyPrompt(f), { schema: VERDICT_SCHEMA })));
+return { confirmed: verified.filter(Boolean).filter((v) => v.isReal) };
 ```
 
 ## [06]-[ROUTE]
 
 Canonical: routing. Primitive: a plain-JS discriminant choosing one `agent()` from a table. Guards: the mediocrity of one generic prompt forced to cover every input class, and cross-class interference where tuning for one class hurts another. Cost: one call per item, plus one classifier call only when the class is not a simple key; a new class is one table row at zero orchestration cost. The classifier is itself an `agent()` when the class is not a simple key.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'route-fix',
-  description: 'Classify each changed file by language, route it to the matching specialist',
-  phases: [{ title: 'Classify' }, { title: 'Fix' }],
-}
+    name: "route-fix",
+    description: "Classify each changed file by language, route it to the matching specialist",
+    phases: [{ title: "Classify" }, { title: "Fix" }],
+};
 
 // One row per class: the discriminant value, the specialist prompt, and its model.
 const ROUTES = {
-  cs:  { prompt: f => `Refactor ${f} to LanguageExt ROP; collapse parallel types into a [Union].`,   model: 'inherit' },
-  ts:  { prompt: f => `Refactor ${f} to Effect-TS; replace throws with typed error channels.`,       model: 'inherit' },
-  py:  { prompt: f => `Refactor ${f} to expression style; replace mutable accumulation with folds.`, model: 'inherit' },
-  sql: { prompt: f => `Rewrite ${f} set-algebraically; push filters into the query.`,                model: 'sonnet'  },
-}
-const classify = f => f.endsWith('.cs') ? 'cs' : f.endsWith('.ts') ? 'ts'
-                    : f.endsWith('.py') ? 'py' : f.endsWith('.sql') ? 'sql' : null
+    cs: { prompt: (f) => `Refactor ${f} to LanguageExt ROP; collapse parallel types into a [Union].`, model: "inherit" },
+    ts: { prompt: (f) => `Refactor ${f} to Effect-TS; replace throws with typed error channels.`, model: "inherit" },
+    py: { prompt: (f) => `Refactor ${f} to expression style; replace mutable accumulation with folds.`, model: "inherit" },
+    sql: { prompt: (f) => `Rewrite ${f} set-algebraically; push filters into the query.`, model: "sonnet" },
+};
+const classify = (f) => (f.endsWith(".cs") ? "cs" : f.endsWith(".ts") ? "ts" : f.endsWith(".py") ? "py" : f.endsWith(".sql") ? "sql" : null);
 
-phase('Fix')
-const fixed = await parallel(changedFiles.map(f => () => {
-  const route = ROUTES[classify(f)]
-  return route ? agent(route.prompt(f), { label: `fix:${f}`, model: route.model }) : null
-}))
+phase("Fix");
+const fixed = await parallel(
+    changedFiles.map((f) => () => {
+        const route = ROUTES[classify(f)];
+        return route ? agent(route.prompt(f), { label: `fix:${f}`, model: route.model }) : null;
+    }),
+);
 
-return { fixed: fixed.filter(Boolean) }
+return { fixed: fixed.filter(Boolean) };
 ```
 
 The dispatch table is the pattern: adding a class is one row, never a new branch threaded through the body. An unroutable input returns `null` and falls out at the `.filter(Boolean)` rather than hitting a wrong specialist. The full worked file is `assets/examples/route-and-refactor.js`.
@@ -219,30 +224,31 @@ The dispatch table is the pattern: adding a class is one row, never a new branch
 
 Canonical: orchestrator-workers. Primitive: a planner `agent()` whose structured output becomes the items a `parallel`/`pipeline` fans out over. Guards: hardcoding a fixed worklist when the subtasks cannot be known up front — the files a migration touches, the modules a feature spans, the questions a topic raises. Cost: planner + N workers + integrator; wall-clock is the plan, then the slowest worker, then the integration.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'migrate',
-  description: 'Plan a migration into per-unit tasks, then run each unit, then integrate',
-  phases: [{ title: 'Plan' }, { title: 'Work' }, { title: 'Integrate' }],
-}
+    name: "migrate",
+    description: "Plan a migration into per-unit tasks, then run each unit, then integrate",
+    phases: [{ title: "Plan" }, { title: "Work" }, { title: "Integrate" }],
+};
 
-phase('Plan')
+phase("Plan");
 const plan = await agent(
-  `Decompose this migration into independent units. One task per file or module that `
-  + `can be changed on its own.\n\n${task}`,
-  { label: 'orchestrator', schema: PLAN_SCHEMA })  // → { tasks: [{ id, file, instruction }] }
+    `Decompose this migration into independent units. One task per file or module that ` + `can be changed on its own.\n\n${task}`,
+    { label: "orchestrator", schema: PLAN_SCHEMA },
+); // → { tasks: [{ id, file, instruction }] }
 
-phase('Work')
-const done = (await parallel((plan?.tasks ?? []).map(t => () =>
-  agent(`${t.instruction}\n\nFile: ${t.file}`, { label: `work:${t.id}`, schema: WORK_SCHEMA })
-    .then(r => ({ ...t, ...r })))
-)).filter(Boolean)
+phase("Work");
+const done = (
+    await parallel(
+        (plan?.tasks ?? []).map(
+            (t) => () => agent(`${t.instruction}\n\nFile: ${t.file}`, { label: `work:${t.id}`, schema: WORK_SCHEMA }).then((r) => ({ ...t, ...r })),
+        ),
+    )
+).filter(Boolean);
 
-phase('Integrate')
-const integrated = await agent(
-  'Integrate these independently-completed units; resolve any seam between them.\n\n'
-  + JSON.stringify(done))
-return { integrated, unitCount: done.length }
+phase("Integrate");
+const integrated = await agent("Integrate these independently-completed units; resolve any seam between them.\n\n" + JSON.stringify(done));
+return { integrated, unitCount: done.length };
 ```
 
 The planner returns DATA (a typed task list via `schema`), never prose — the JS fans out over it. The integrator is the orchestrator's other half: workers cannot see each other's context, so a terminal stage owns whatever spans them.
@@ -251,54 +257,63 @@ The planner returns DATA (a typed task list via `schema`), never prose — the J
 
 Canonical: evaluator-optimizer. Primitive: a plain-JS loop wrapping a generate `agent()` and a SEPARATE evaluate `agent()`. Guards: shipping a weak first pass, and the self-correction anti-pattern — a generator grading its own work rubber-stamps it. Cost: two calls per round under the cap; the verdict-driven exit usually lands well below it. The pass verdict drives the loop; a hard round cap stops an unsatisfiable bar from looping forever. When the bar is machine-checkable, use self-repair at [09] instead — a command verdict beats a model verdict wherever one exists.
 
-```js
-const MAX_ROUNDS = 4
-let draft = null
-let feedback = ''
+```js conceptual
+const MAX_ROUNDS = 4;
+let draft = null;
+let feedback = "";
 
 for (let round = 1; round <= MAX_ROUNDS; round++) {
-  draft = await agent(
-    `Implement the task. Address this feedback from the last attempt:\n${feedback || '(first attempt)'}`
-    + `\n\nTask: ${task}`,
-    { label: `attempt:${round}` })
+    draft = await agent(`Implement the task. Address this feedback from the last attempt:\n${feedback || "(first attempt)"}` + `\n\nTask: ${task}`, {
+        label: `attempt:${round}`,
+    });
 
-  const review = await agent(  // SEPARATE agent — never self-grade
-    `Evaluate this attempt against the acceptance criteria. Be strict.\n\n${draft}`,
-    { label: `evaluate:${round}`, schema: REVIEW_SCHEMA })  // → { passed, feedback }
+    const review = await agent(
+        // SEPARATE agent — never self-grade
+        `Evaluate this attempt against the acceptance criteria. Be strict.\n\n${draft}`,
+        { label: `evaluate:${round}`, schema: REVIEW_SCHEMA },
+    ); // → { passed, feedback }
 
-  log(`round ${round}: ${review?.passed ? 'PASS' : 'revise'}`)
-  if (review?.passed) return { draft, rounds: round }
-  feedback = review?.feedback ?? ''
+    log(`round ${round}: ${review?.passed ? "PASS" : "revise"}`);
+    if (review?.passed) return { draft, rounds: round };
+    feedback = review?.feedback ?? "";
 }
-return { draft, rounds: MAX_ROUNDS, note: 'hit round cap without passing' }
+return { draft, rounds: MAX_ROUNDS, note: "hit round cap without passing" };
 ```
 
 ## [09]-[SELF_REPAIR]
 
 Canonical: evaluator-optimizer with a deterministic evaluator. Primitive: a loop alternating a read-only check agent (running a command) and a fixer agent. Guards: the exit firing on the worker's claim of done instead of an externally measurable verdict — a fixer that believes it finished while the suite is red, or a loop that burns rounds re-verifying fixes that changed nothing. Cost: a cheap low-effort check plus a fixer per round; check-first means an already-green target exits after one floor-model call. The stop condition is a machine fact: a passing suite, zero diagnostics, an empty queue.
 
-```js
-const MAX_ROUNDS = 6
-const CHECK = { type: 'object', additionalProperties: false, required: ['passed', 'failures', 'sample'],
-  properties: { passed: { type: 'boolean' }, failures: { type: 'integer' }, sample: { type: 'string' } } }
+```js conceptual
+const MAX_ROUNDS = 6;
+const CHECK = {
+    type: "object",
+    additionalProperties: false,
+    required: ["passed", "failures", "sample"],
+    properties: { passed: { type: "boolean" }, failures: { type: "integer" }, sample: { type: "string" } },
+};
 
-let last = Infinity
-let stalled = 0
+let last = Infinity;
+let stalled = 0;
 for (let round = 1; round <= MAX_ROUNDS; round++) {
-  const check = await agent(                                    // read-only verdict agent — edits NOTHING
-    'Run exactly `npx tsc --noEmit`. Report passed, the failure count, and the first error verbatim. Do not edit any file.',
-    { label: `check:${round}`, schema: CHECK, model: 'sonnet', effort: 'low' })
-  if (check?.passed) return { passed: true, rounds: round }
+    const check = await agent(
+        // read-only verdict agent — edits NOTHING
+        "Run exactly `npx tsc --noEmit`. Report passed, the failure count, and the first error verbatim. Do not edit any file.",
+        { label: `check:${round}`, schema: CHECK, model: "sonnet", effort: "low" },
+    );
+    if (check?.passed) return { passed: true, rounds: round };
 
-  stalled = (check?.failures ?? Infinity) >= last ? stalled + 1 : 0
-  if (stalled >= 2) return { passed: false, failures: check?.failures ?? -1, note: 'no progress across rounds' }
-  last = check?.failures ?? Infinity
+    stalled = (check?.failures ?? Infinity) >= last ? stalled + 1 : 0;
+    if (stalled >= 2) return { passed: false, failures: check?.failures ?? -1, note: "no progress across rounds" };
+    last = check?.failures ?? Infinity;
 
-  await agent(                                                  // fresh-context fixer per round — no degradation
-    'Fix the errors `npx tsc --noEmit` reports. Start from this one and re-run the command as you go:\n' + (check?.sample ?? ''),
-    { label: `fix:${round}` })
+    await agent(
+        // fresh-context fixer per round — no degradation
+        "Fix the errors `npx tsc --noEmit` reports. Start from this one and re-run the command as you go:\n" + (check?.sample ?? ""),
+        { label: `fix:${round}` },
+    );
 }
-return { passed: false, failures: last, note: 'hit round cap' }
+return { passed: false, failures: last, note: "hit round cap" };
 ```
 
 Why each choice: the check runs FIRST, so an already-green target exits at zero cost; the checker is a separate read-only agent, so the fixer never grades itself; the failure count is the progress gate — a non-decreasing count across consecutive rounds means the loop stopped converging, and the cap is only the runaway backstop; each round's fixer is a fresh context, so quality never degrades with accumulated transcript. For unattended long-horizon variants, a separate background verifier re-reviews the changed files each round with its own lens — an independent check, never a re-run of the fixer's claim.
@@ -309,22 +324,28 @@ Canonical: chaining hardened with an admission check. Primitive: a grader betwee
 
 The grader ladder, strongest first: a deterministic grader (a command with a machine verdict — build, schema check, linter) wherever one exists; a model grader only for what no command measures, rubric-scoped to one dimension per call; a human only at the terminal artifact. Grade what the stage produced, never the path it took — a tool-call-sequence check breaks on every valid approach the design did not anticipate.
 
-```js
-const GATE = { type: 'object', additionalProperties: false, required: ['passed', 'reason'],
-  properties: { passed: { type: 'boolean' }, reason: { type: 'string' } } }
+```js conceptual
+const GATE = {
+    type: "object",
+    additionalProperties: false,
+    required: ["passed", "reason"],
+    properties: { passed: { type: "boolean" }, reason: { type: "string" } },
+};
 
 const out = await pipeline(
-  items,
-  (it)        => agent(draftPrompt(it), { label: `draft:${it.id}`, phase: 'Draft' }),
-  async (draft, it) => {
-    const gate = await agent(                                   // deterministic verdict, cheap lane
-      'Run `' + it.check + '` against the draft at ' + it.path + '. Return the machine verdict; do not repair anything.',
-      { label: `gate:${it.id}`, phase: 'Gate', schema: GATE, model: 'sonnet', effort: 'low' })
-    return gate?.passed ? draft : null                          // rejected items drop before the expensive stage
-  },
-  (draft, it) => draft && agent(publishPrompt(it, draft), { label: `publish:${it.id}`, phase: 'Publish', effort: 'high' }),
-)
-return { published: out.filter(Boolean).length }
+    items,
+    (it) => agent(draftPrompt(it), { label: `draft:${it.id}`, phase: "Draft" }),
+    async (draft, it) => {
+        const gate = await agent(
+            // deterministic verdict, cheap lane
+            "Run `" + it.check + "` against the draft at " + it.path + ". Return the machine verdict; do not repair anything.",
+            { label: `gate:${it.id}`, phase: "Gate", schema: GATE, model: "sonnet", effort: "low" },
+        );
+        return gate?.passed ? draft : null; // rejected items drop before the expensive stage
+    },
+    (draft, it) => draft && agent(publishPrompt(it, draft), { label: `publish:${it.id}`, phase: "Publish", effort: "high" }),
+);
+return { published: out.filter(Boolean).length };
 ```
 
 Trial law for a stochastic gate: when a stage must pass CONSISTENTLY, run the trial k times and demand every one passes (`parallel` over k thunks, then `.every`); a single-trial pass is enough only when a later verifier catches the false positives. Repeated gate mechanics are a staged script, never prose the grader re-derives — the throughput reference carries that law.
@@ -333,88 +354,122 @@ Trial law for a stochastic gate: when a stage must pass CONSISTENTLY, run the tr
 
 Canonical: voting. Primitive: `parallel` over N identical-input thunks. Guards: a single confident hallucination surviving — a plausible-but-wrong finding one verifier waves through. Cost: N votes per claim — reserve it for findings that survive cheaper screens, never the raw candidate flood. Spawn N independent skeptics, each told to REFUTE; keep the finding only on a majority.
 
-```js
+```js conceptual
 async function survives(claim) {
-  const votes = await parallel(Array.from({ length: 3 }, (_, i) => () =>
-    agent(`Try hard to REFUTE this claim. Default to refuted=true if uncertain.\n\n${claim}`,
-          { label: `skeptic:${i + 1}`, schema: VERDICT_SCHEMA })))
-  return votes.filter(Boolean).filter(v => !v.refuted).length >= 2
+    const votes = await parallel(
+        Array.from(
+            { length: 3 },
+            (_, i) => () =>
+                agent(`Try hard to REFUTE this claim. Default to refuted=true if uncertain.\n\n${claim}`, {
+                    label: `skeptic:${i + 1}`,
+                    schema: VERDICT_SCHEMA,
+                }),
+        ),
+    );
+    return votes.filter(Boolean).filter((v) => !v.refuted).length >= 2;
 }
 
-const real = []
+const real = [];
 for (const f of candidateFindings) {
-  if (await survives(f.title)) real.push(f)
+    if (await survives(f.title)) real.push(f);
 }
-return { real }
+return { real };
 ```
 
 ## [12]-[PANEL]
 
 Canonical: voting feeding sectioning. Primitive: `parallel` to draft, `parallel` to score, one `agent()` to synthesize. Guards: the weakness of one-attempt-then-iterate when the solution space is wide — independent attempts from different angles, scored by parallel judges, then synthesized from the winner while grafting the runners-up's best ideas. Cost: 2N + 1 calls in three barriers. For a deeper field where absolute scores drift, use the tournament at [13].
 
-```js
-const ANGLES = ['MVP-first', 'risk-first', 'user-first', 'cost-first']
+```js conceptual
+const ANGLES = ["MVP-first", "risk-first", "user-first", "cost-first"];
 
 // `args` is structured data — a free-text task arrives as a string. Default the no-args run.
-const idea = typeof args === 'string' && args.trim() ? args : 'the plan described in TASK.md'
+const idea = typeof args === "string" && args.trim() ? args : "the plan described in TASK.md";
 
-phase('Draft')
-const drafts = await parallel(ANGLES.map(a => () =>
-  agent(`Produce a plan for: ${idea}. Take a strictly ${a} approach.`, { label: a })))
+phase("Draft");
+const drafts = await parallel(ANGLES.map((a) => () => agent(`Produce a plan for: ${idea}. Take a strictly ${a} approach.`, { label: a })));
 
-phase('Judge')
-const scored = await parallel(drafts.filter(Boolean).map((d, i) => () =>
-  agent(`Score this plan 1-10 for feasibility and impact. Return {score, why}.\n\n${d}`,
-        { label: `judge:${i + 1}`, schema: SCORE_SCHEMA }).then(s => ({ draft: d, ...s }))))
+phase("Judge");
+const scored = await parallel(
+    drafts
+        .filter(Boolean)
+        .map(
+            (d, i) => () =>
+                agent(`Score this plan 1-10 for feasibility and impact. Return {score, why}.\n\n${d}`, {
+                    label: `judge:${i + 1}`,
+                    schema: SCORE_SCHEMA,
+                }).then((s) => ({ draft: d, ...s })),
+        ),
+);
 
-const ranked = scored.filter(Boolean).sort((a, b) => b.score - a.score)
+const ranked = scored.filter(Boolean).sort((a, b) => b.score - a.score);
 
-phase('Synthesize')
+phase("Synthesize");
 const final = await agent(
-  'Write the definitive plan. Base it on the WINNER, grafting the best ideas '
-  + 'from the runners-up.\n\nWINNER:\n' + ranked[0].draft
-  + '\n\nRUNNERS-UP:\n' + ranked.slice(1).map(r => r.draft).join('\n---\n'))
-return { final }
+    "Write the definitive plan. Base it on the WINNER, grafting the best ideas " +
+        "from the runners-up.\n\nWINNER:\n" +
+        ranked[0].draft +
+        "\n\nRUNNERS-UP:\n" +
+        ranked
+            .slice(1)
+            .map((r) => r.draft)
+            .join("\n---\n"),
+);
+return { final };
 ```
 
 ## [13]-[TOURNAMENT]
 
 Canonical: voting hardened for wide fields. Primitive: a plain-JS single-elimination bracket over blind pairwise judges. Guards: absolute-score drift — parallel judges scoring 1-10 calibrate differently, so ranks reshuffle run to run — and source bias, where a judge that knows which agent or angle produced a draft ratifies pedigree instead of quality. A comparative pick between two concrete artifacts is stable where an absolute scale is not.
 
-```js
-phase('Draft')
-const drafts = (await parallel(ANGLES.map((a, i) => () =>
-  agent(draftPrompt(a), { label: `draft:${i}`, phase: 'Draft' })))).filter(Boolean)
+```js conceptual
+phase("Draft");
+const drafts = (await parallel(ANGLES.map((a, i) => () => agent(draftPrompt(a), { label: `draft:${i}`, phase: "Draft" })))).filter(Boolean);
 
-const PICK = { type: 'object', additionalProperties: false, required: ['winner', 'why'],
-  properties: { winner: { type: 'string', enum: ['A', 'B'] }, why: { type: 'string' } } }
+const PICK = {
+    type: "object",
+    additionalProperties: false,
+    required: ["winner", "why"],
+    properties: { winner: { type: "string", enum: ["A", "B"] }, why: { type: "string" } },
+};
 
-phase('Bracket')
-let pool = drafts.map((body, id) => ({ id, body }))
-let round = 0
+phase("Bracket");
+let pool = drafts.map((body, id) => ({ id, body }));
+let round = 0;
 while (pool.length > 1) {
-  round++
-  const pairs = []
-  for (let i = 0; i + 1 < pool.length; i += 2) pairs.push([pool[i], pool[i + 1]])
-  const bye = pool.length % 2 ? [pool[pool.length - 1]] : []
-  const winners = await parallel(pairs.map(([a, b], i) => () => {
-    const [first, second] = i % 2 ? [b, a] : [a, b]          // alternate order — cancels position bias
-    return agent(
-      'Pick the stronger submission strictly on the criteria. The labels are arbitrary and carry no meaning.\n\n'
-      + 'CRITERIA:\n' + CRITERIA + '\n\nA:\n' + first.body + '\n\nB:\n' + second.body,
-      { label: `judge:${round}:${i}`, phase: 'Bracket', schema: PICK, effort: 'high' })
-      .then(v => (v?.winner === 'A' ? first : second))
-  }))
-  pool = winners.filter(Boolean).concat(bye)
+    round++;
+    const pairs = [];
+    for (let i = 0; i + 1 < pool.length; i += 2) pairs.push([pool[i], pool[i + 1]]);
+    const bye = pool.length % 2 ? [pool[pool.length - 1]] : [];
+    const winners = await parallel(
+        pairs.map(([a, b], i) => () => {
+            const [first, second] = i % 2 ? [b, a] : [a, b]; // alternate order — cancels position bias
+            return agent(
+                "Pick the stronger submission strictly on the criteria. The labels are arbitrary and carry no meaning.\n\n" +
+                    "CRITERIA:\n" +
+                    CRITERIA +
+                    "\n\nA:\n" +
+                    first.body +
+                    "\n\nB:\n" +
+                    second.body,
+                { label: `judge:${round}:${i}`, phase: "Bracket", schema: PICK, effort: "high" },
+            ).then((v) => (v?.winner === "A" ? first : second));
+        }),
+    );
+    pool = winners.filter(Boolean).concat(bye);
 }
 
-phase('Graft')
-const losers = drafts.filter(d => d !== pool[0].body)
+phase("Graft");
+const losers = drafts.filter((d) => d !== pool[0].body);
 const final = await agent(
-  'Improve the WINNER by grafting the strongest members of the runners-up; change nothing that already works.\n\n'
-  + 'WINNER:\n' + pool[0].body + '\n\nRUNNERS-UP:\n' + losers.join('\n---\n'),
-  { label: 'graft', phase: 'Graft', effort: 'high' })
-return { final, rounds: round }
+    "Improve the WINNER by grafting the strongest members of the runners-up; change nothing that already works.\n\n" +
+        "WINNER:\n" +
+        pool[0].body +
+        "\n\nRUNNERS-UP:\n" +
+        losers.join("\n---\n"),
+    { label: "graft", phase: "Graft", effort: "high" },
+);
+return { final, rounds: round };
 ```
 
 Laws that ride the bracket: the judge sees only the artifacts and the criteria — never provenance, never prior verdicts; presentation order alternates by pair index, because a fixed A-first ordering leaks a measurable position preference; the graft stage is the only place provenance unblinds, after every comparison is done. Cost is N−1 judge calls for N drafts — cheaper than N absolute scorings once N passes a handful, and strictly better calibrated. Distinct from [12]: a panel scores in one shot and suits a shallow field; a bracket compares pairwise and suits a wide or close field.
@@ -423,28 +478,47 @@ Laws that ride the bracket: the judge sees only the artifacts and the criteria �
 
 Canonical: adversarial sectioning. Primitive: independent positions → one anonymized rebuttal round → a separate ruling agent. Guards: a lone perspective missing what a counter-position catches, and its inverse — consensus pressure, where positions converge because agreement is comfortable, not because the argument won. Cost: 2N + 1 calls; the single rebuttal round is the whole spend — further rounds buy convergence pressure, not signal. Use it for ambiguous, high-stakes judgment (an architecture choice, a contested diagnosis); an objectively checkable claim routes to the skeptic vote at [11] instead.
 
-```js
-const LENSES = ['operational risk', 'long-term maintainability', 'raw performance']
+```js conceptual
+const LENSES = ["operational risk", "long-term maintainability", "raw performance"];
 
-phase('Position')
-const open = (await parallel(LENSES.map((l, i) => () =>
-  agent('Argue the strongest position on the question below strictly from the lens of ' + l + '.\n\n' + QUESTION,
-        { label: `pos:${i}`, phase: 'Position' })))).filter(Boolean)
+phase("Position");
+const open = (
+    await parallel(
+        LENSES.map(
+            (l, i) => () =>
+                agent("Argue the strongest position on the question below strictly from the lens of " + l + ".\n\n" + QUESTION, {
+                    label: `pos:${i}`,
+                    phase: "Position",
+                }),
+        ),
+    )
+).filter(Boolean);
 
-phase('Rebut')
-const closed = (await parallel(open.map((p, i) => () =>
-  agent('Revise the OWN position after weighing the counter-positions. Concede a point only to a stronger argument, '
-    + 'never to numbers — majority is not evidence. Keep what survives.\n\nOWN:\n' + p
-    + '\n\nCOUNTER:\n' + open.filter((_, j) => j !== i).join('\n---\n'),
-    { label: `rebut:${i}`, phase: 'Rebut' })))).filter(Boolean)
+phase("Rebut");
+const closed = (
+    await parallel(
+        open.map(
+            (p, i) => () =>
+                agent(
+                    "Revise the OWN position after weighing the counter-positions. Concede a point only to a stronger argument, " +
+                        "never to numbers — majority is not evidence. Keep what survives.\n\nOWN:\n" +
+                        p +
+                        "\n\nCOUNTER:\n" +
+                        open.filter((_, j) => j !== i).join("\n---\n"),
+                    { label: `rebut:${i}`, phase: "Rebut" },
+                ),
+        ),
+    )
+).filter(Boolean);
 
-phase('Rule')
+phase("Rule");
 const ruling = await agent(
-  'Adjudicate the dispute below point by point: where the positions agree after rebuttal, that is settled; where they '
-  + 'still disagree, rule with reasons. Return the decision and the residual open questions.\n\n'
-  + closed.join('\n===\n'),
-  { label: 'rule', phase: 'Rule', schema: RULING_SCHEMA, effort: 'xhigh' })
-return { ruling }
+    "Adjudicate the dispute below point by point: where the positions agree after rebuttal, that is settled; where they " +
+        "still disagree, rule with reasons. Return the decision and the residual open questions.\n\n" +
+        closed.join("\n===\n"),
+    { label: "rule", phase: "Rule", schema: RULING_SCHEMA, effort: "xhigh" },
+);
+return { ruling };
 ```
 
 Laws: the diversity of the lenses does the work, not debate length — one rebuttal round captures the gain, and further rounds mostly manufacture convergence; positions travel anonymized (no author labels), so rebuttals attack arguments, never reputations; the judge is a separate agent that never held a position; post-rebuttal agreement is signal, but unanimity without reasons is treated as pressure, not proof.
@@ -453,32 +527,46 @@ Laws: the diversity of the lenses does the work, not debate length — one rebut
 
 Canonical: routing by outcome. Primitive: a tier table and a residual loop — every item enters the cheapest tier, and only items that FAIL a tier's check re-dispatch to the next. Guards: paying the strongest model for volume a floor model finishes; the bulk resolves cheap, and the expensive tiers see only what defeated the tier below. Cost: expected spend per item is the tier ladder weighted by residual rates — the top tier prices only the hard residue.
 
-```js
+```js conceptual
 const TIERS = [
-  { model: 'sonnet',  effort: 'low'  },
-  { model: 'inherit', effort: 'high' },
-  { model: 'fable',   effort: 'high' },
-]
-const OUT = { type: 'object', additionalProperties: false, required: ['passed', 'nav'],
-  properties: { passed: { type: 'boolean' }, nav: { type: 'array', items: { type: 'string' } } } }
+    { model: "sonnet", effort: "low" },
+    { model: "inherit", effort: "high" },
+    { model: "fable", effort: "high" },
+];
+const OUT = {
+    type: "object",
+    additionalProperties: false,
+    required: ["passed", "nav"],
+    properties: { passed: { type: "boolean" }, nav: { type: "array", items: { type: "string" } } },
+};
 
-let pending = items.map(it => ({ it, tier: 0, nav: [] }))
-const done = []
+let pending = items.map((it) => ({ it, tier: 0, nav: [] }));
+const done = [];
 while (pending.length) {
-  const wave = (await parallel(pending.map(({ it, tier, nav }) => () =>
-    agent(workPrompt(it) + (nav.length ? '\nTouched so far (locations only): ' + nav.join(', ') : ''),
-          { label: `t${tier}:${it.id}`, model: TIERS[tier].model, effort: TIERS[tier].effort, schema: OUT })
-      .then(r => ({ it, tier, r }))))).filter(Boolean)
+    const wave = (
+        await parallel(
+            pending.map(
+                ({ it, tier, nav }) =>
+                    () =>
+                        agent(workPrompt(it) + (nav.length ? "\nTouched so far (locations only): " + nav.join(", ") : ""), {
+                            label: `t${tier}:${it.id}`,
+                            model: TIERS[tier].model,
+                            effort: TIERS[tier].effort,
+                            schema: OUT,
+                        }).then((r) => ({ it, tier, r })),
+            ),
+        )
+    ).filter(Boolean);
 
-  pending = []
-  for (const w of wave) {
-    if (w.r?.passed) done.push({ id: w.it.id, tier: w.tier })
-    else if (w.tier + 1 < TIERS.length) pending.push({ it: w.it, tier: w.tier + 1, nav: w.r?.nav ?? [] })
-    else done.push({ id: w.it.id, tier: w.tier, failed: true })
-  }
-  log(`${done.length} settled · ${pending.length} escalate`)
+    pending = [];
+    for (const w of wave) {
+        if (w.r?.passed) done.push({ id: w.it.id, tier: w.tier });
+        else if (w.tier + 1 < TIERS.length) pending.push({ it: w.it, tier: w.tier + 1, nav: w.r?.nav ?? [] });
+        else done.push({ id: w.it.id, tier: w.tier, failed: true });
+    }
+    log(`${done.length} settled · ${pending.length} escalate`);
 }
-return { done }
+return { done };
 ```
 
 Laws: the tier verdict comes from a check (the schema's `passed` backed by a command or a separate verifier), never the worker's optimism; the escalated prompt carries the failed attempt's NAVIGATION only — files and locations touched, never its rationale or self-assessment, per the anchoring law at [22]; the top tier's failures return as data, never silently dropped. The same ladder tiers a review: a floor-model screen passes only its uncertain findings to the expensive judge.
@@ -487,49 +575,50 @@ Laws: the tier verdict comes from a check (the schema's `passed` backed by a com
 
 Canonical: orchestrator-workers with an unknown count — the loop IS the orchestrator. Primitive: a plain-JS `while` with a counter. Guards: stopping short on discovery work with a fixed goal, and running forever, via the explicit count cap. Cost: rounds scale inversely with per-round yield; the target count is the only ceiling.
 
-```js
-const bugs = []
+```js conceptual
+const bugs = [];
 while (bugs.length < 10) {
-  const r = await agent('Find bugs not already listed below.\n\n'
-    + JSON.stringify(bugs.map(b => b.title)), { schema: BUGS_SCHEMA })
-  bugs.push(...r.bugs)
-  log(`${bugs.length}/10 found`)
+    const r = await agent("Find bugs not already listed below.\n\n" + JSON.stringify(bugs.map((b) => b.title)), { schema: BUGS_SCHEMA });
+    bugs.push(...r.bugs);
+    log(`${bugs.length}/10 found`);
 }
-return { bugs: bugs.slice(0, 10) }
+return { bugs: bugs.slice(0, 10) };
 ```
 
 ## [17]-[BUDGET_LOOP]
 
 Canonical: orchestrator-workers scaled to a token target. Primitive: a `while` guarded on `budget`. Guards: over- or under-spending — depth scales to the user's token target, so spend is pinned by construction. The `budget.total &&` guard is essential: without a target, `remaining()` is `Infinity` and the loop runs to the 1000-agent cap.
 
-```js
-const issues = []
+```js conceptual
+const issues = [];
 while (budget.total && budget.remaining() > 50_000) {
-  const r = await agent('Find one more issue in this codebase.', { schema: ISSUE_SCHEMA })
-  issues.push(...r.issues)
-  log(`${issues.length} found · ${Math.round(budget.remaining() / 1000)}k tokens left`)
+    const r = await agent("Find one more issue in this codebase.", { schema: ISSUE_SCHEMA });
+    issues.push(...r.issues);
+    log(`${issues.length} found · ${Math.round(budget.remaining() / 1000)}k tokens left`);
 }
-return { issues }
+return { issues };
 ```
 
 ## [18]-[DRY_LOOP]
 
 Canonical: orchestrator-workers, count unknown and unbounded. Primitive: a `while` with a dry-streak counter and a hard cap. Guards: both halves of the unknown-size trap — a fixed counter stops short of the long tail, and an open loop never terminates. Cost: yield-adaptive — spend tracks the corpus's true size plus K dry rounds of overhead. Keep spawning finders until K consecutive rounds turn up nothing new.
 
-```js
-const seen = new Set()
-const found = []
-let dryRounds = 0
+```js conceptual
+const seen = new Set();
+const found = [];
+let dryRounds = 0;
 
 while (dryRounds < 2 && found.length < 100) {
-  const r = await agent('Find issues NOT in this list:\n' + [...seen].join('\n'),
-                        { schema: ISSUE_SCHEMA })
-  const fresh = (r.issues ?? []).filter(x => !seen.has(x.id))
-  fresh.forEach(x => { seen.add(x.id); found.push(x) })
-  dryRounds = fresh.length === 0 ? dryRounds + 1 : 0
-  log(`+${fresh.length} new · ${found.length} total · dry streak ${dryRounds}`)
+    const r = await agent("Find issues NOT in this list:\n" + [...seen].join("\n"), { schema: ISSUE_SCHEMA });
+    const fresh = (r.issues ?? []).filter((x) => !seen.has(x.id));
+    fresh.forEach((x) => {
+        seen.add(x.id);
+        found.push(x);
+    });
+    dryRounds = fresh.length === 0 ? dryRounds + 1 : 0;
+    log(`+${fresh.length} new · ${found.length} total · dry streak ${dryRounds}`);
 }
-return { found }
+return { found };
 ```
 
 ## [19]-[RECONCILE]
@@ -538,51 +627,77 @@ Canonical: sectioning with a terminal orchestrator stage. Primitive: `parallel` 
 
 The deferral must be DATA whose resource slot is a LIST, so a deferral spanning files names them ALL — that is what permits clustering by shared resource.
 
-```js
+```js conceptual
 // per-worker schema: a residual carries a FILE LIST, not a free string; `residual` is
 // required-but-possibly-empty per the strict profile
-const FIX = { type: 'object', additionalProperties: false, required: ['file', 'residual'], properties: {
-  file: { type: 'string' },
-  residual: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['files', 'claim'],
-    properties: { files: { type: 'array', items: { type: 'string' } }, claim: { type: 'string' } } } } } }
+const FIX = {
+    type: "object",
+    additionalProperties: false,
+    required: ["file", "residual"],
+    properties: {
+        file: { type: "string" },
+        residual: {
+            type: "array",
+            items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["files", "claim"],
+                properties: { files: { type: "array", items: { type: "string" } }, claim: { type: "string" } },
+            },
+        },
+    },
+};
 
-const done = (await parallel(items.map(it => () => agent(workPrompt(it), { schema: FIX })))).filter(Boolean)
+const done = (await parallel(items.map((it) => () => agent(workPrompt(it), { schema: FIX })))).filter(Boolean);
 
 // BARRIER (pure JS, zero tokens): collect, dedup, cluster by connected file-set (union-find).
-const all = done.flatMap(d => d.residual ?? [])
-const uniq = [...new Map(all.map(r => [r.files.join(',') + '|' + r.claim, r])).values()]
-const clusters = unionFindBySharedFile(uniq)   // residuals sharing any file land in one cluster
+const all = done.flatMap((d) => d.residual ?? []);
+const uniq = [...new Map(all.map((r) => [r.files.join(",") + "|" + r.claim, r])).values()];
+const clusters = unionFindBySharedFile(uniq); // residuals sharing any file land in one cluster
 
-let hard = []
-if (clusters.length) {                          // count-barrier early-exit ([05])
-  const out = await pipeline(                    // each disjoint cluster verifies the moment ITS fix lands
-    clusters,
-    cl       => agent('Fix these cross-file deferrals in place; read every listed file.\n' + JSON.stringify(cl), { schema: FIXED }),
-    (fix, cl) => agent('Adversarially verify each claim is ACTUALLY resolved; read the files from disk. One verdict per claim.\n' + JSON.stringify(cl), { schema: VERIFY }).then(v => ({ cl, v })))
-  hard = out.filter(Boolean).flatMap(o => (o.v?.claims ?? []).filter(c => !c.resolved).map(c => c.claim))
+let hard = [];
+if (clusters.length) {
+    // count-barrier early-exit ([05])
+    const out = await pipeline(
+        // each disjoint cluster verifies the moment ITS fix lands
+        clusters,
+        (cl) => agent("Fix these cross-file deferrals in place; read every listed file.\n" + JSON.stringify(cl), { schema: FIXED }),
+        (fix, cl) =>
+            agent("Adversarially verify each claim is ACTUALLY resolved; read the files from disk. One verdict per claim.\n" + JSON.stringify(cl), {
+                schema: VERIFY,
+            }).then((v) => ({ cl, v })),
+    );
+    hard = out.filter(Boolean).flatMap((o) => (o.v?.claims ?? []).filter((c) => !c.resolved).map((c) => c.claim));
 }
-return { hard }                                  // only genuinely-unresolvable deferrals reach the human
+return { hard }; // only genuinely-unresolvable deferrals reach the human
 ```
 
 Why each choice: disjoint clusters write non-overlapping files, so the per-cluster fixers run concurrently with no collision — `isolation:'worktree'` is unnecessary. The verifier is a SEPARATE agent handed the claims as a checklist, and the one-verdict-per-claim schema is what proves completeness — a dropped claim cannot validate. Distinct from [03] (synthesize one report) and [11] (skeptic vote on one claim): this is cluster-by-shared-resource, then fix-and-verify each cluster. The full worked file is `assets/examples/rebuild-and-reconcile.js`. When clusters must consolidate into a bounded agent count, the work-weight packer and the fair-share atomicity budget in the throughput reference own the balancing — a count-balanced or cluster-atomic packer recreates a 2x-plus long pole.
 
 Iterating to drive-to-zero — the progress gate. The shape above fixes each cluster ONCE. When the reconcile instead ITERATES — re-queue the residuals a verify left `open`, re-cluster, fix again, round after round — every round MUST gate on file-changing PROGRESS, or it spends rounds verifying fixes that changed nothing:
 
-```js
-const seen = new Set(); let pending = uniq; let round = 0
+```js conceptual
+const seen = new Set();
+let pending = uniq;
+let round = 0;
 while (pending.length && round++ < MAX_ROUNDS) {
-  let changed = false; const next = []
-  for (const cl of unionFindBySharedFile(pending)) {
-    const fix = await agent(fixPrompt(cl), { schema: FIXED })
-    if (!(fix?.files ?? []).filter(inRepo).length || fix?.verdict === 'clean') continue  // (1) no change -> NO verify
-    changed = true
-    const v = await agent(verifyPrompt(cl, fix.files), { schema: VERIFY })
-    for (const c of v?.claims ?? []) if (!c.resolved && !seen.has(key(c))) { seen.add(key(c)); next.push(c) }  // (2) only NEW
-  }
-  if (!changed) break  // (3) a round that changed no file never will -> stop
-  pending = next
+    let changed = false;
+    const next = [];
+    for (const cl of unionFindBySharedFile(pending)) {
+        const fix = await agent(fixPrompt(cl), { schema: FIXED });
+        if (!(fix?.files ?? []).filter(inRepo).length || fix?.verdict === "clean") continue; // (1) no change -> NO verify
+        changed = true;
+        const v = await agent(verifyPrompt(cl, fix.files), { schema: VERIFY });
+        for (const c of v?.claims ?? [])
+            if (!c.resolved && !seen.has(key(c))) {
+                seen.add(key(c));
+                next.push(c);
+            } // (2) only NEW
+    }
+    if (!changed) break; // (3) a round that changed no file never will -> stop
+    pending = next;
 }
-return { hard: pending }  // still-open: log LOUDLY + return, never drop
+return { hard: pending }; // still-open: log LOUDLY + return, never drop
 ```
 
 (1) a fix that touched no file (or returned `clean`) has nothing to verify — skip the verify and drop the cluster; (2) the cumulative `seen` set (key `sorted-files|claim`) stops a fixer that re-surfaces the same residual from feeding the loop forever; (3) a round that changes no file never will, so break — `MAX_ROUNDS` is a runaway backstop, never the exit. The no-defer guarantee holds: a genuinely-open residual is still surfaced, never dropped.
@@ -591,14 +706,13 @@ return { hard: pending }  // still-open: log LOUDLY + return, never drop
 
 Canonical: composition — a topology as a worker inside a larger one. Primitive: `workflow()`. Guards: re-inlining a self-contained sub-job by hand. Cost: the child spends from this run's shared caps and budget — nesting isolates state, never spend. `workflow()` runs a saved workflow inline and returns its result; nesting is one level deep.
 
-```js
-phase('Gather')
-const research = await workflow('research-fanout', ['question one', 'question two'])
+```js conceptual
+phase("Gather");
+const research = await workflow("research-fanout", ["question one", "question two"]);
 
-phase('Write')
-const article = await agent('Write an article from this research:\n'
-  + JSON.stringify(research))
-return { article }
+phase("Write");
+const article = await agent("Write an article from this research:\n" + JSON.stringify(research));
+return { article };
 ```
 
 Call the child once with the whole work-set, never once per item in a loop. Each `workflow()` invocation owns its internal state — caches, `seen`-sets, dedup closures. A `for (const item of items) await workflow('child', item)` re-runs the child's shared discovery per item, and when the child's reachability overlaps it both redoes the overlapping work and mis-classifies an item that is primary in one call yet secondary in another. Make the child accept its scope as a single value OR an array, and pass the full set in one call; the child's dedup, closure, and classification guarantees hold only WITHIN one invocation. Thread cross-cutting run flags (a dry-run toggle, a model override) into the child's `args` too, so the whole tree honors them.
@@ -614,41 +728,69 @@ What makes it robust:
 - Derive the owning unit by splitting on a STRUCTURAL SENTINEL, never a fixed depth: splitting `unit/.planning/a/b/c.md` on `'/.planning/'` homes it correctly; a fixed-depth `split('/')[2]` breaks the moment a sub-folder nests deeper.
 - A sub-domain whose governing root is an ANCESTOR needs an explicit homing branch named in the discovery prompt.
 
-```js
+```js conceptual
 // A target, an array of targets, or {targets:[...]}; empty = no-op
-const ROOT = 'libs/python'
-const normTarget = t => { const s = String(t).trim().replace(/\/+$/, ''); return (s === ROOT || s.indexOf(ROOT + '/') === 0) ? s : ROOT + '/' + s.replace(/^\/+/, '') }
-const rawTargets = Array.isArray(args) ? args
-  : (args && typeof args === 'object' && Array.isArray(args.targets)) ? args.targets
-  : (typeof args === 'string' && args.trim()) ? [args]
-  : []
-const TARGETS = [...new Set(rawTargets.filter(Boolean).map(normTarget))]
+const ROOT = "libs/python";
+const normTarget = (t) => {
+    const s = String(t).trim().replace(/\/+$/, "");
+    return s === ROOT || s.indexOf(ROOT + "/") === 0 ? s : ROOT + "/" + s.replace(/^\/+/, "");
+};
+const rawTargets = Array.isArray(args)
+    ? args
+    : args && typeof args === "object" && Array.isArray(args.targets)
+      ? args.targets
+      : typeof args === "string" && args.trim()
+        ? [args]
+        : [];
+const TARGETS = [...new Set(rawTargets.filter(Boolean).map(normTarget))];
 
-const DISCOVERY = { type: 'object', additionalProperties: false, required: ['packages', 'targetPages', 'folderPages'], properties: {
-  packages:    { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'root'], properties: { name: { type: 'string' }, root: { type: 'string' } } } },
-  targetPages: { type: 'array', items: { type: 'string' } },     // the granular subset to act on
-  folderPages: { type: 'array', items: { type: 'string' } } } }  // every page under each owning unit — the blast radius
+const DISCOVERY = {
+    type: "object",
+    additionalProperties: false,
+    required: ["packages", "targetPages", "folderPages"],
+    properties: {
+        packages: {
+            type: "array",
+            items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["name", "root"],
+                properties: { name: { type: "string" }, root: { type: "string" } },
+            },
+        },
+        targetPages: { type: "array", items: { type: "string" } }, // the granular subset to act on
+        folderPages: { type: "array", items: { type: "string" } },
+    },
+}; // every page under each owning unit — the blast radius
 
-const inv = await agent('Resolve these TARGETS into owning units + page sets. A target is a UNIT root, a SUB-FOLDER at ANY depth, or a FILE; the owning '
-  + 'unit is the path BEFORE the structural sentinel "/.planning/" (or the target itself when it has none). A UNIT-root target expands to every page '
-  + 'under it; a SUB-FOLDER to every page under it at any depth; a FILE to itself. Return packages, targetPages (the union of targeted pages), and '
-  + 'folderPages (every page under each owning unit). Use find; do not cd.\n' + JSON.stringify(TARGETS),
-  { label: 'discover', schema: DISCOVERY, model: 'sonnet', effort: 'low' })
+const inv = await agent(
+    "Resolve these TARGETS into owning units + page sets. A target is a UNIT root, a SUB-FOLDER at ANY depth, or a FILE; the owning " +
+        'unit is the path BEFORE the structural sentinel "/.planning/" (or the target itself when it has none). A UNIT-root target expands to every page ' +
+        "under it; a SUB-FOLDER to every page under it at any depth; a FILE to itself. Return packages, targetPages (the union of targeted pages), and " +
+        "folderPages (every page under each owning unit). Use find; do not cd.\n" +
+        JSON.stringify(TARGETS),
+    { label: "discover", schema: DISCOVERY, model: "sonnet", effort: "low" },
+);
 
-const targetPages = [...new Set((inv?.targetPages ?? []).filter(Boolean))]
-const folderPages = [...new Set((inv?.folderPages ?? []).filter(Boolean))]
-if (!targetPages.length) { log('no targets — pass a file, sub-folder, or unit path'); return { targets: TARGETS, total: 0 } }
+const targetPages = [...new Set((inv?.targetPages ?? []).filter(Boolean))];
+const folderPages = [...new Set((inv?.folderPages ?? []).filter(Boolean))];
+if (!targetPages.length) {
+    log("no targets — pass a file, sub-folder, or unit path");
+    return { targets: TARGETS, total: 0 };
+}
 
-const done = (await pool(targetPages, CAP, p => processPage(p))).filter(Boolean)  // cost ∝ targeted subset (pool: throughput reference)
+const done = (await pool(targetPages, CAP, (p) => processPage(p))).filter(Boolean); // cost ∝ targeted subset (pool: throughput reference)
 
 // terminal folder-wide concern over each owning unit — only where untargeted siblings exist
-const seam = (inv?.packages ?? []).map(pkg => {
-  const t = targetPages.filter(p => p.indexOf(pkg.root + '/') === 0)
-  const f = folderPages.filter(p => p.indexOf(pkg.root + '/') === 0)
-  return { pkg, hasSiblings: t.length > 0 && t.length < f.length }  // skip when the whole unit was targeted
-}).filter(x => x.hasSiblings)
-const seamed = (await pool(seam, CAP, x => agent(seamPrompt(x.pkg), { schema: SEAM_SCHEMA, effort: 'xhigh' }))).filter(Boolean)
-return { targets: TARGETS, units: (inv?.packages ?? []).map(p => p.name), done: done.length, seamed: seamed.length }
+const seam = (inv?.packages ?? [])
+    .map((pkg) => {
+        const t = targetPages.filter((p) => p.indexOf(pkg.root + "/") === 0);
+        const f = folderPages.filter((p) => p.indexOf(pkg.root + "/") === 0);
+        return { pkg, hasSiblings: t.length > 0 && t.length < f.length }; // skip when the whole unit was targeted
+    })
+    .filter((x) => x.hasSiblings);
+const seamed = (await pool(seam, CAP, (x) => agent(seamPrompt(x.pkg), { schema: SEAM_SCHEMA, effort: "xhigh" }))).filter(Boolean);
+return { targets: TARGETS, units: (inv?.packages ?? []).map((p) => p.name), done: done.length, seamed: seamed.length };
 ```
 
 The `string | array | unit-root | sub-folder | file` target space collapses to one discovery agent plus pure-JS filtering — accepting many targets is the array branch in `rawTargets`, never a second entrypoint. A "many"-granularity sibling (one agent per whole unit instead of per file) is the same shape with a coarser work unit and the terminal stage promoted to a cross-unit align; size the unit to the coherence boundary the stages need, and scope every terminal stage to the TARGETED units, never the whole corpus.
@@ -661,10 +803,10 @@ The rules that make a writer → critic → red-team chain fast AND independent:
 
 - Pass navigation, withhold assessment. The inter-stage payload carries only verifiable location facts — touched files, symbol deltas as data (`{symbol, change}`), seam/ripple pointers — never the producer's summary, verdict, confidence, or rationale. Scope ("look here first") is legitimate; assessment ("this is complete") is the anchor. Build the projection in JS from schema fields so adjectives cannot leak:
 
-  ```js
-  const navOf = (fix) => ({ files: fix.files, deltas: fix.deltas, seams: fix.seamsTouched })
-  const crit = await agent(criticPrompt(pages, navOf(fix)), { schema: REVIEW })  // fix.summary never travels
-  ```
+    ```js conceptual
+    const navOf = (fix) => ({ files: fix.files, deltas: fix.deltas, seams: fix.seamsTouched });
+    const crit = await agent(criticPrompt(pages, navOf(fix)), { schema: REVIEW }); // fix.summary never travels
+    ```
 
 - Own verdict first. Order the reviewer's work explicitly: derive an independent defect list from the artifact on disk FIRST, then use the navigation to reach touched territory fast. Never place the prior stage's output last in the prompt — trailing content reads as the conclusion; end on the task and output contract instead.
 - Third-party framing. Present the artifact as another author's submission under review — models catch errors in others' text that they cannot see in work they believe is their own.
@@ -678,11 +820,14 @@ Canonical: sectioning hardened for heavy products. Primitive: a fan of producing
 
 Vocabulary, one meaning each: a LANE is one concurrent worker in a fan — its own scope, product, and receipt; a STAGE is one position in a pipeline; a PRODUCT is a lane's complete output; a RECEIPT is the thin `{ok, report, entries, headline, failure}` envelope that stands in for it on the wire. Sourcing rides product size, never mixed ad hoc:
 
-| [INDEX] | [TIER]                   | [WHEN]                                                                                        | [MECHANISM]                                                                                           |
-| :-----: | :----------------------- | :-------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-|  [01]   | Inline structured output | Small structural outputs — plans, slices, verdicts, counts, paths; the default below ~50 rows | Schema-tight `agent()` structured output                                                              |
-|  [02]   | Scratch product file     | Any heavy product — maps, findings, dossiers, reports                                         | Lane WRITES the complete product to run scratch, returns the receipt; consumers READ THE FILE IN FULL |
-|  [03]   | `journal.jsonl`          | Recovery only                                                                                 | Never a designed data path                                                                            |
+| [INDEX] | [TIER]                   | [WHEN]                                           | [MECHANISM]                                     |
+| :-----: | :----------------------- | :----------------------------------------------- | :---------------------------------------------- |
+|  [01]   | Inline structured output | Small structural outputs; default below ~50 rows | Schema-tight `agent()` structured output        |
+|  [02]   | Scratch product file     | Any heavy product                                | Lane writes product to scratch, returns receipt |
+|  [03]   | `journal.jsonl`          | Recovery only                                    | Never a designed data path                      |
+
+- Inline structured output: the default is plans, slices, verdicts, counts, paths.
+- Scratch product file: heavy product means maps, findings, dossiers, reports; consumers READ THE FILE IN FULL.
 
 The scratch convention — one layout, no exceptions:
 
@@ -694,40 +839,78 @@ The scratch convention — one layout, no exceptions:
 
 Dual schema: the PRODUCT schema types the on-disk file; the RECEIPT types the wire. Both strict — every object `additionalProperties: false` with every property required — so one shape serves AJV lanes and codex `--output-schema` alike.
 
-```js
+```js conceptual
 // One anchor = one fact at one coordinate; interpretation never lives in an anchor row. `note` is the shortest literal witness under 20 words,
 // or empty when path+line suffice; an `absence` anchor names where the expected thing was searched and not found.
-const ANCHOR = { type: 'object', additionalProperties: false, required: ['path', 'line', 'role', 'note'], properties: {
-  path: { type: 'string' }, line: { type: 'integer' },
-  role: { type: 'string', enum: ['defect', 'ruling', 'catalog', 'counterpart', 'absence'] },
-  note: { type: 'string' } } }
+const ANCHOR = {
+    type: "object",
+    additionalProperties: false,
+    required: ["path", "line", "role", "note"],
+    properties: {
+        path: { type: "string" },
+        line: { type: "integer" },
+        role: { type: "string", enum: ["defect", "ruling", "catalog", "counterpart", "absence"] },
+        note: { type: "string" },
+    },
+};
 
 // Defect-shaped PRODUCT. A recon/inventory product swaps the defect fields for prose `info`
 // facts plus verified `members`, framed inventory-never-instruction, and swaps the anchor
 // role `defect` for `state`; anchors and coverage stay.
-const PRODUCT = { type: 'object', additionalProperties: false, required: ['findings', 'coverage', 'summary'], properties: {
-  findings: { type: 'array', items: { type: 'object', additionalProperties: false,
-    required: ['claimKey', 'target', 'files', 'class', 'severity', 'claim', 'anchors', 'mechanism', 'owner', 'reject', 'acceptance'], properties: {
-    claimKey: { type: 'string' },  // <class>|<owner>|<primary symbol or absence route> — stable across lanes, never lane wording
-    target: { type: 'string' },                                        // short display label
-    files: { type: 'array', items: { type: 'string' } },               // What the reader must open or edit first
-    class: { type: 'string', enum: ['missing', 'wrong', 'faked', 'naive', 'drift', 'phantom'] },
-    severity: { type: 'string', enum: ['blocker', 'major', 'minor'] }, // bound to consequence, never prose confidence
-    claim: { type: 'string' },                                         // The observed defect as fact
-    anchors: { type: 'array', items: ANCHOR },
-    mechanism: { type: 'string' },                                     // WHY it fails — factual, zero repair verbs
-    owner: { type: 'string' },                                         // canonical owner that must absorb the resolution
-    reject: { type: 'array', items: { type: 'string' } },              // forms the repair must NOT take
-    acceptance: { type: 'array', items: { type: 'string' } } } } },    // signals proving resolution
-  coverage: { type: 'object', additionalProperties: false, required: ['requested', 'read', 'skipped', 'unverified'], properties: {
-    requested: { type: 'array', items: { type: 'string' } }, read: { type: 'array', items: { type: 'string' } },
-    skipped: { type: 'array', items: { type: 'string' } }, unverified: { type: 'array', items: { type: 'string' } } } },
-  summary: { type: 'string' } } }
+const PRODUCT = {
+    type: "object",
+    additionalProperties: false,
+    required: ["findings", "coverage", "summary"],
+    properties: {
+        findings: {
+            type: "array",
+            items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["claimKey", "target", "files", "class", "severity", "claim", "anchors", "mechanism", "owner", "reject", "acceptance"],
+                properties: {
+                    claimKey: { type: "string" }, // <class>|<owner>|<primary symbol or absence route> — stable across lanes, never lane wording
+                    target: { type: "string" }, // short display label
+                    files: { type: "array", items: { type: "string" } }, // What the reader must open or edit first
+                    class: { type: "string", enum: ["missing", "wrong", "faked", "naive", "drift", "phantom"] },
+                    severity: { type: "string", enum: ["blocker", "major", "minor"] }, // bound to consequence, never prose confidence
+                    claim: { type: "string" }, // The observed defect as fact
+                    anchors: { type: "array", items: ANCHOR },
+                    mechanism: { type: "string" }, // WHY it fails — factual, zero repair verbs
+                    owner: { type: "string" }, // canonical owner that must absorb the resolution
+                    reject: { type: "array", items: { type: "string" } }, // forms the repair must NOT take
+                    acceptance: { type: "array", items: { type: "string" } },
+                },
+            },
+        }, // signals proving resolution
+        coverage: {
+            type: "object",
+            additionalProperties: false,
+            required: ["requested", "read", "skipped", "unverified"],
+            properties: {
+                requested: { type: "array", items: { type: "string" } },
+                read: { type: "array", items: { type: "string" } },
+                skipped: { type: "array", items: { type: "string" } },
+                unverified: { type: "array", items: { type: "string" } },
+            },
+        },
+        summary: { type: "string" },
+    },
+};
 
 // Thin wire receipt: the lane's PRODUCT stays on disk at `report`; only status + counts travel.
-const RECEIPT = { type: 'object', additionalProperties: false, required: ['ok', 'report', 'entries', 'headline', 'failure'], properties: {
-  ok: { type: 'boolean' }, report: { type: 'string' }, entries: { type: 'integer' },
-  headline: { type: 'string' }, failure: { type: 'string' } } }
+const RECEIPT = {
+    type: "object",
+    additionalProperties: false,
+    required: ["ok", "report", "entries", "headline", "failure"],
+    properties: {
+        ok: { type: "boolean" },
+        report: { type: "string" },
+        entries: { type: "integer" },
+        headline: { type: "string" },
+        failure: { type: "string" },
+    },
+};
 
 // Dispatch helper: codex wrapper when CODEX, native lane otherwise. `codexPrompt` is the
 // launch-only template in the codex-lanes reference (Write-tool task/schema files + stale
@@ -735,25 +918,51 @@ const RECEIPT = { type: 'object', additionalProperties: false, required: ['ok', 
 // attaches the ORCHESTRATOR-ASSIGNED scope so a lane that dies before writing still names
 // its territory. Codex wrappers are LAUNCH-ONLY: they return a launch receipt in seconds;
 // the orchestrator setTimeout harvest loop owns waiting + promotion.
-const lane = (task, o) => (CODEX
-  ? agent(codexPrompt(o.label, task, PRODUCT, !!o.writes),
-    { label: 'gpt-5.5:' + o.label, phase: o.phase, model: 'sonnet', effort: 'low', schema: RECEIPT, stallMs: STALL })
-  : agent(task + '\n\nPRODUCT TO DISK: write your COMPLETE product as one JSON file matching this schema at ' +
-    SCRATCH + '/' + o.label + '-report.json (Write tool, absolute path under the repo root): ' + JSON.stringify(PRODUCT) +
-    ' — then return ONLY the receipt: ok, report path, entries count, one-line mechanical headline, failure empty.',
-    { label: o.label, phase: o.phase, model: 'opus', effort: 'high', schema: RECEIPT, stallMs: STALL })
-).then((r) => ({ lane: o.label, scope: o.scope || [], ok: !!(r && r.ok && r.report), report: (r && r.report) || '',
-  entries: (r && r.entries) || 0, headline: (r && r.headline) || '', failure: (r && r.failure) || (r ? '' : 'lane died') }))
+const lane = (task, o) =>
+    (CODEX
+        ? agent(codexPrompt(o.label, task, PRODUCT, !!o.writes), {
+              label: "gpt-5.5:" + o.label,
+              phase: o.phase,
+              model: "sonnet",
+              effort: "low",
+              schema: RECEIPT,
+              stallMs: STALL,
+          })
+        : agent(
+              task +
+                  "\n\nPRODUCT TO DISK: write your COMPLETE product as one JSON file matching this schema at " +
+                  SCRATCH +
+                  "/" +
+                  o.label +
+                  "-report.json (Write tool, absolute path under the repo root): " +
+                  JSON.stringify(PRODUCT) +
+                  " — then return ONLY the receipt: ok, report path, entries count, one-line mechanical headline, failure empty.",
+              { label: o.label, phase: o.phase, model: "opus", effort: "high", schema: RECEIPT, stallMs: STALL },
+          )
+    ).then((r) => ({
+        lane: o.label,
+        scope: o.scope || [],
+        ok: !!(r && r.ok && r.report),
+        report: (r && r.report) || "",
+        entries: (r && r.entries) || 0,
+        headline: (r && r.headline) || "",
+        failure: (r && r.failure) || (r ? "" : "lane died"),
+    }));
 
-const roster = (await parallel(slices.map((s, i) => () =>
-  lane(producePrompt(s), { label: 's' + i, phase: 'Produce', scope: s })))).filter(Boolean)
-const unmapped = roster.filter((r) => !r.ok).flatMap((r) => r.scope.map((sc) => ({ lane: r.lane, scope: sc })))
-log(roster.filter((r) => r.ok).reduce((a, r) => a + r.entries, 0) + ' entries across ' + roster.length + ' lanes')
+const roster = (await parallel(slices.map((s, i) => () => lane(producePrompt(s), { label: "s" + i, phase: "Produce", scope: s })))).filter(Boolean);
+const unmapped = roster.filter((r) => !r.ok).flatMap((r) => r.scope.map((sc) => ({ lane: r.lane, scope: sc })));
+log(roster.filter((r) => r.ok).reduce((a, r) => a + r.entries, 0) + " entries across " + roster.length + " lanes");
 
 // FIXLOG: {files, resolved[], beyond[], rejected[], summary} — required-but-possibly-empty
 // `beyond` is an attestation that the reader's own hunt ran, not only the signal list.
-const done = await agent(readerPrompt() + ' UNMAPPED: ' + JSON.stringify(unmapped) + ' ROSTER: ' + JSON.stringify(roster),
-  { label: 'resolve', phase: 'Resolve', model: 'fable', effort: 'high', schema: FIXLOG, stallMs: STALL })
+const done = await agent(readerPrompt() + " UNMAPPED: " + JSON.stringify(unmapped) + " ROSTER: " + JSON.stringify(roster), {
+    label: "resolve",
+    phase: "Resolve",
+    model: "fable",
+    effort: "high",
+    schema: FIXLOG,
+    stallMs: STALL,
+});
 ```
 
 Laws that ride the shape:
@@ -783,38 +992,38 @@ Canonical: composition with the harness — a workflow as the deterministic inne
 
 A schema is a plain JSON Schema object. Keep them small, strict, and `required`-tight so the subagent returns exactly what the next line needs. Default to the strict profile — `additionalProperties: false` on every object, every property listed in `required`, conditional fields required-but-empty — so the same shape is copyable into a codex `--output-schema` lane without edits (validator split: api reference).
 
-```js
+```js conceptual
 const FINDINGS_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['findings'],
-  properties: {
-    findings: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['title', 'file', 'line'],
-        properties: {
-          title: { type: 'string' },
-          file:  { type: 'string' },
-          line:  { type: 'integer' },
+    type: "object",
+    additionalProperties: false,
+    required: ["findings"],
+    properties: {
+        findings: {
+            type: "array",
+            items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["title", "file", "line"],
+                properties: {
+                    title: { type: "string" },
+                    file: { type: "string" },
+                    line: { type: "integer" },
+                },
+            },
         },
-      },
     },
-  },
-}
+};
 
 const VERDICT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['isReal', 'refuted', 'reason'],
-  properties: {
-    isReal:   { type: 'boolean' },
-    refuted:  { type: 'boolean' },
-    reason:   { type: 'string' },  // empty string when there is nothing to say
-  },
-}
+    type: "object",
+    additionalProperties: false,
+    required: ["isReal", "refuted", "reason"],
+    properties: {
+        isReal: { type: "boolean" },
+        refuted: { type: "boolean" },
+        reason: { type: "string" }, // empty string when there is nothing to say
+    },
+};
 ```
 
 Define schemas in the body (after `meta`), as `const`s — never inside `meta`.

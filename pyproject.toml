@@ -29,11 +29,21 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "coloraide", # coloraide through xxhash: mirrored skill scripts import them; the env resolves every skill import for ty
+    "lxml",
     "mypy",
+    "networkx",
+    "ruamel-yaml",
     "ruff>=0.15.20,<0.16",
+    "tinycss2",
+    "tree-sitter",
+    "tree-sitter-typescript",
     "ty",
+    "types-lxml",
+    "types-networkx",
     "types-psutil",
     "validate-pyproject[all]",
+    "xxhash",
 ]
 
 [project.scripts]
@@ -69,11 +79,17 @@ respect-type-ignore-comments = false
 
 [tool.ty.src]
 exclude = [
+    ".archive",
     ".artifacts",
     ".cache",
-    ".claude/skills/**/.cache",
     ".claude/worktrees",
+    ".history",
+    ".scratch",
+    ".tmp",
     ".venv",
+    "_archive",
+    "_tmp",
+    "scratch",
 ]
 
 [tool.ty.rules]
@@ -109,9 +125,9 @@ enable_error_code = [
     "unused-awaitable",
 ]
 exclude = [
+    "(^|/)(\\.archive|_archive|scratch|\\.scratch|_tmp|\\.tmp|\\.cache|\\.history)/",
     "^\\.artifacts/",
-    "^\\.cache/",
-    "^\\.claude/",
+    "^\\.claude/worktrees/",
     "^\\.venv/",
     "^build/",
     "^dist/",
@@ -136,11 +152,16 @@ line-length =      150
 required-version = ">=0.15.20,<0.16"
 target-version =   "py315"
 extend-exclude = [
+    "**/.archive/**",
     "**/.artifacts/**",
     "**/.cache/**",
-    "**/.claude/skills/**/.cache/**",
     "**/.claude/worktrees/**",
     "**/.history/**",
+    "**/.scratch/**",
+    "**/.tmp/**",
+    "**/_archive/**",
+    "**/_tmp/**",
+    "**/scratch/**",
 ]
 
 [tool.ruff.format]
@@ -336,3 +357,10 @@ max-locals =        10
 max-nested-blocks = 4
 max-public-methods = 10
 max-statements =    30
+
+[tool.sqlfluff.core]
+dialect =         "postgres"
+max_line_length = 150
+
+[tool.sqlfluff.indentation]
+tab_space_size = 4

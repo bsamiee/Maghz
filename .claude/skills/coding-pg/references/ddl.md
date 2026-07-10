@@ -2,12 +2,11 @@
 
 Schema design patterns for PostgreSQL 18.
 
-
-## Canonical table pattern
+## [01]-[CANONICAL_TABLE_PATTERN]
 
 One polymorphic example demonstrating: domains, generated columns, range types, NOT NULL defaults, uuidv7(), JSONB validation.
 
-```sql
+```sql conceptual
 CREATE DOMAIN email AS citext CHECK (VALUE ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$');
 CREATE DOMAIN money_precise AS numeric(19,4) CHECK (VALUE >= 0);
 
@@ -52,12 +51,11 @@ CREATE INDEX organization_search_idx ON organization USING gin (search_vector);
 - Stored generated columns: for indexed computed values (GIN on tsvector, B-tree on sort keys)
 - `jsonb_matches_schema()` CHECK: declarative JSONB validation at DDL level (requires `CREATE EXTENSION pg_jsonschema`)
 
-
-## Domain types
+## [02]-[DOMAIN_TYPES]
 
 Domains brand primitive scalars with validation. Column declarations reference the domain — never inline equivalent CHECKs.
 
-```sql
+```sql conceptual
 -- CHECK-constrained domain: validation on every INSERT/UPDATE
 CREATE DOMAIN slug AS text
     CHECK (VALUE ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' AND length(VALUE) BETWEEN 3 AND 63);
@@ -73,12 +71,11 @@ CREATE TYPE monetary AS (amount numeric(19,4), currency text);
 - Domain constraints fire on every INSERT/UPDATE — avoid expensive expressions (subqueries, function calls)
 - Domains cannot appear in composite types used in `BEFORE` trigger `NEW`/`OLD` in some PL/pgSQL contexts — cast explicitly
 
-
-## Composite types
+## [03]-[COMPOSITE_TYPES]
 
 Composite types model structured return values and function parameters. Prefer over OUT parameter proliferation.
 
-```sql
+```sql conceptual
 CREATE TYPE audit_entry AS (
     actor_id uuid, action text, payload jsonb, occurred_at timestamptz
 );
@@ -95,16 +92,15 @@ CREATE FUNCTION recent_audits(p_entity_id uuid, p_limit int DEFAULT 10)
 - Composite types cannot have constraints or defaults — validation at function/trigger level
 - `ALTER TYPE ... ADD ATTRIBUTE` rewrites all tables using it as column — use JSONB for frequently evolving structures
 
-
-## Range types and temporal constraints (PG 18)
+## [04]-[RANGE_TYPES_AND_TEMPORAL_CONSTRAINTS_PG_18]
 
 Range types replace dual start/end columns with algebraic interval semantics. Built-in: `int4range`, `int8range`, `numrange`, `tsrange`, `tstzrange`, `daterange`.
 
 Dual `start_date`/`end_date` columns are FORBIDDEN — always `tstzrange` with range constraint.
 
-**WITHOUT OVERLAPS is the primary PostgreSQL 18 temporal constraint mechanism.** Use `WITHOUT OVERLAPS` in PRIMARY KEY or UNIQUE constraints for temporal non-overlap. EXCLUDE constraints are the manual fallback ONLY when compatibility with older PostgreSQL is required or when the constraint involves operators beyond equality + range overlap (e.g., three-way exclusion with non-equality operators).
+WITHOUT OVERLAPS is the primary PostgreSQL 18 temporal constraint mechanism. Use `WITHOUT OVERLAPS` in PRIMARY KEY or UNIQUE constraints for temporal non-overlap. EXCLUDE constraints are the manual fallback ONLY when compatibility with older PostgreSQL is required or when the constraint involves operators beyond equality + range overlap (e.g., three-way exclusion with non-equality operators).
 
-```sql
+```sql conceptual
 CREATE TYPE price_range AS RANGE (SUBTYPE = numeric);
 
 -- Multirange for non-contiguous intervals
@@ -152,15 +148,15 @@ ALTER TABLE employment
 
 Range operators:
 
-| Operator | Semantics    | Example                                     |
-| -------- | ------------ | ------------------------------------------- |
-| `&&`     | Overlap      | `'[2024-01-01,2024-06-01)'::tstzrange && r` |
-| `@>`     | Contains     | `r @> '2024-03-15'::timestamptz`            |
-| `<@`     | Contained by | `r <@ '[2024-01-01,2025-01-01)'::tstzrange` |
-| `-\|-`   | Adjacent     | `r1 -\|- r2`                                |
-| `*`      | Intersection | `r1 * r2`                                   |
-| `+`      | Union        | `r1 + r2` (must overlap or be adjacent)     |
-| `-`      | Difference   | `r1 - r2`                                   |
+| [INDEX] | [OPERATOR] | [SEMANTICS]  | [EXAMPLE]                                   |
+| :-----: | :--------: | :----------- | :------------------------------------------ |
+|  [01]   |    `&&`    | Overlap      | `'[2024-01-01,2024-06-01)'::tstzrange && r` |
+|  [02]   |    `@>`    | Contains     | `r @> '2024-03-15'::timestamptz`            |
+|  [03]   |    `<@`    | Contained by | `r <@ '[2024-01-01,2025-01-01)'::tstzrange` |
+|  [04]   |   `-\|-`   | Adjacent     | `r1 -\|- r2`                                |
+|  [05]   |    `*`     | Intersection | `r1 * r2`                                   |
+|  [06]   |    `+`     | Union        | `r1 + r2` (must overlap or be adjacent)     |
+|  [07]   |    `-`     | Difference   | `r1 - r2`                                   |
 
 - Always `tstzrange` over `tsrange` — timezone-naive ranges corrupt across DST transitions
 - Canonical bound: `[)` (inclusive-exclusive) — gap-free partitioning, no off-by-one
@@ -170,12 +166,11 @@ Range operators:
 - `btree_gist` extension required for equality columns in exclusion constraints
 - Multirange aggregation: `range_agg()` collapses, `unnest()` expands
 
-
-## Enum alternatives
+## [05]-[ENUM_ALTERNATIVES]
 
 Enums are rigid — reordering impossible, removal requires full type recreation. Prefer domain-constrained text or FK lookup.
 
-```sql
+```sql conceptual
 -- Domain-constrained text: transactional, no type recreation
 CREATE DOMAIN order_status AS text
     CHECK (VALUE IN ('draft', 'confirmed', 'shipped', 'delivered', 'cancelled'));
@@ -189,10 +184,9 @@ ALTER TABLE orders ADD CONSTRAINT fk_order_status
     FOREIGN KEY (status) REFERENCES order_status_ref(code);
 ```
 
+## [06]-[TYPE_COMPOSITION]
 
-## Type composition
-
-```sql
+```sql conceptual
 -- Domain + range: branded temporal interval with floor constraint
 CREATE DOMAIN booking_period AS tstzrange
     CHECK (NOT isempty(VALUE) AND lower(VALUE) >= '2020-01-01'::timestamptz);
@@ -207,12 +201,11 @@ CREATE TABLE articles (
 );
 ```
 
-
-## Virtual generated columns (PG 18)
+## [07]-[VIRTUAL_GENERATED_COLUMNS_PG_18]
 
 Virtual columns compute at read time — zero storage, instant `ALTER TABLE ADD`. Expressions must be IMMUTABLE.
 
-```sql
+```sql conceptual
 ALTER TABLE customer ADD COLUMN
     full_name text GENERATED ALWAYS AS (
         profile->>'firstName' || ' ' || profile->>'lastName'
@@ -224,20 +217,19 @@ ALTER TABLE product ADD COLUMN
     ) VIRTUAL;
 ```
 
-| Restriction                                     | Applies to       |
-| ----------------------------------------------- | ---------------- |
-| Cannot reference other generated columns        | Virtual + Stored |
-| Cannot use subqueries, aggregates, window fns   | Virtual + Stored |
-| Cannot be part of PRIMARY KEY / UNIQUE          | Virtual only     |
-| CAN appear in WHERE (planner pushes expression) | Virtual only     |
-| Use STORED when column needs indexing           | —                |
+| [INDEX] | [RESTRICTION]                                   | [APPLIES_TO]     |
+| :-----: | :---------------------------------------------- | :--------------- |
+|  [01]   | Cannot reference other generated columns        | Virtual + Stored |
+|  [02]   | Cannot use subqueries, aggregates, window fns   | Virtual + Stored |
+|  [03]   | Cannot be part of PRIMARY KEY / UNIQUE          | Virtual only     |
+|  [04]   | CAN appear in WHERE (planner pushes expression) | Virtual only     |
+|  [05]   | Use STORED when column needs indexing           | —                |
 
-
-## Partitioning
+## [08]-[PARTITIONING]
 
 TimescaleDB hypertables for time-series; pg_partman for non-time-series range/list. Never hand-roll partition creation.
 
-```sql
+```sql conceptual
 -- Range partition by time
 CREATE TABLE events (
     id          uuid        DEFAULT uuidv7(),
@@ -280,10 +272,9 @@ SELECT partman.create_parent(
 - Updating a partition key can route the row to another partition by deleting from the old partition and inserting into the new one; it is materially more expensive than same-partition UPDATE and can surface concurrency conflicts. Treat partition key columns as effectively immutable after insert
 - Default partition catches unmatched rows — monitor size as health signal
 
+## [09]-[CONSTRAINTS]
 
-## Constraints
-
-```sql
+```sql conceptual
 -- Exclusion constraint: no overlapping periods per tenant (requires btree_gist)
 ALTER TABLE lease ADD CONSTRAINT no_overlapping_leases
     EXCLUDE USING gist (tenant_id WITH =, lease_period WITH &&);
@@ -324,53 +315,51 @@ ALTER TABLE documents ADD CONSTRAINT valid_metadata
 - DEFERRABLE UNIQUE enables batch INSERT without intermediate violations; raised at COMMIT
 - Lock-level awareness: see `validation.md` Migration Safety.
 
-
-## Effect-SQL alignment
+## [10]-[EFFECT_SQL_ALIGNMENT]
 
 DDL properties governing `Model.Class` field modifier selection:
 
-| DDL Property                      | Effect-SQL Implication                                                       |
-| --------------------------------- | ---------------------------------------------------------------------------- |
-| `DEFAULT uuidv7()`                | Maps to `Model.Generated` — excluded from insert projections                 |
-| `GENERATED ALWAYS AS ... VIRTUAL` | Maps to `Model.Generated` — excluded from insert/update                      |
-| `GENERATED ALWAYS AS ... STORED`  | Maps to `Model.Generated` — excluded from insert/update                      |
-| `DEFAULT clock_timestamp()`       | Maps to `Model.DateTimeInsertFromDate` or `DateTimeUpdateFromDate`           |
-| `NOT NULL`                        | Must NOT use `Model.FieldOption`                                             |
-| Nullable column                   | Must use `Model.FieldOption`                                                 |
-| RLS-enforced tenant column        | Maps to `Model.FieldExcept("update", "jsonUpdate")` — immutable after insert |
+| [INDEX] | [DDL_PROPERTY]                    | [EFFECT_SQL]                                                                 |
+| :-----: | :-------------------------------- | :--------------------------------------------------------------------------- |
+|  [01]   | `DEFAULT uuidv7()`                | Maps to `Model.Generated` — excluded from insert projections                 |
+|  [02]   | `GENERATED ALWAYS AS ... VIRTUAL` | Maps to `Model.Generated` — excluded from insert/update                      |
+|  [03]   | `GENERATED ALWAYS AS ... STORED`  | Maps to `Model.Generated` — excluded from insert/update                      |
+|  [04]   | `DEFAULT clock_timestamp()`       | Maps to `Model.DateTimeInsertFromDate` or `DateTimeUpdateFromDate`           |
+|  [05]   | `NOT NULL`                        | Must NOT use `Model.FieldOption`                                             |
+|  [06]   | Nullable column                   | Must use `Model.FieldOption`                                                 |
+|  [07]   | RLS-enforced tenant column        | Maps to `Model.FieldExcept("update", "jsonUpdate")` — immutable after insert |
 
 Model.Class mapping for the canonical table (branded entity IDs):
 
-```typescript
-const OrganizationId = S.UUID.pipe(S.brand("OrganizationId"))
+```typescript conceptual
+const OrganizationId = S.UUID.pipe(S.brand("OrganizationId"));
 
 class Organization extends Model.Class<Organization>()("Organization", {
-    id:           Model.Generated(OrganizationId),
-    slug:         S.NonEmptyTrimmedString,
-    displayName:  S.NonEmptyTrimmedString,
+    id: Model.Generated(OrganizationId),
+    slug: S.NonEmptyTrimmedString,
+    displayName: S.NonEmptyTrimmedString,
     contactEmail: S.NonEmptyTrimmedString,
-    plan:         S.Literal("starter", "business", "enterprise"),
-    metadata:     Model.JsonFromString(OrganizationMetadata),
-    revenue:      S.BigDecimal,
-    tier:         Model.Generated(S.Literal("starter", "business", "enterprise")),
+    plan: S.Literal("starter", "business", "enterprise"),
+    metadata: Model.JsonFromString(OrganizationMetadata),
+    revenue: S.BigDecimal,
+    tier: Model.Generated(S.Literal("starter", "business", "enterprise")),
     searchVector: Model.Generated(S.String),
-    createdAt:    Model.DateTimeInsertFromDate,
-    updatedAt:    Model.DateTimeUpdateFromDate,
+    createdAt: Model.DateTimeInsertFromDate,
+    updatedAt: Model.DateTimeUpdateFromDate,
 }) {}
 ```
 
-- **Branded entity IDs**: `S.UUID.pipe(S.brand("EntityId"))` for every PK and FK — raw `S.UUID` is forbidden for identity fields. Branding prevents accidental cross-entity ID mixing at the type level
+- [BRANDED_ENTITY_IDS]: `S.UUID.pipe(S.brand("EntityId"))` for every PK and FK — raw `S.UUID` is forbidden for identity fields. Branding prevents accidental cross-entity ID mixing at the type level
 - `Model.Generated` for `id`, `tier`, `searchVector` — server-computed, excluded from insert/update
 - `Model.DateTimeInsertFromDate` / `DateTimeUpdateFromDate` — server-defaulted but readable
 - `S.Literal(...)` for constrained text — mirrors CHECK constraint in DDL
 - `Model.JsonFromString(schema)` for JSONB with typed codec — mirrors `jsonb_matches_schema` CHECK
 
-
-## RAG pipeline schema
+## [11]-[RAG_PIPELINE_SCHEMA]
 
 Canonical document-chunk-embedding schema for retrieval-augmented generation:
 
-```sql
+```sql conceptual
 CREATE TABLE documents (
     id          uuid        DEFAULT uuidv7() PRIMARY KEY,
     tenant_id   uuid        NOT NULL,
@@ -413,5 +402,9 @@ CREATE INDEX ON chunks (tenant_id, created_at);
 - Tenant isolation via RLS — vector queries automatically scoped
 - `position` preserves document ordering for context window assembly
 - pg_trgm completes the retrieval triad: semantic (vector distance) + lexical (BM25 rank) + fuzzy (trigram similarity) — each captures different user intent failure modes
-- **Multi-tenant scale (>1M vectors)**: replace HNSW with DiskANN plus label-column filtering when `vectorscale` is available. Store discrete tenant/category labels in the indexed label column and query with label containment so filtering participates in index search instead of relying only on post-filtering. HNSW + RLS post-filter visits `ef_search` neighbors first then discards non-matching tenants, which at high selectivity can return fewer than `LIMIT k` results or require expensive iterative scan expansion
-- **Write amplification**: the three-index strategy (HNSW + GIN tsvector + GIN trgm) means each INSERT touches three indexes — acceptable for moderate ingestion but bottleneck for bulk pipelines. Mitigation: load into unindexed staging table, batch-merge via `MERGE INTO chunks ... USING staging`, then `CREATE INDEX CONCURRENTLY` post-load. For incremental ingestion, maintain indexes but set `gin_pending_list_limit = 64MB` to batch GIN updates and accept slightly stale trigram results during high-write bursts
+- [MULTI_TENANT_SCALE]: replace HNSW with DiskANN plus label-column filtering when `vectorscale` is available.
+    - Store discrete tenant/category labels in the indexed label column and query with label containment so filtering participates in index search instead of relying only on post-filtering.
+    - HNSW + RLS post-filter visits `ef_search` neighbors first then discards non-matching tenants, which at high selectivity can return fewer than `LIMIT k` results or require expensive iterative scan expansion
+- [WRITE_AMPLIFICATION]: the three-index strategy (HNSW + GIN tsvector + GIN trgm) means each INSERT touches three indexes — acceptable for moderate ingestion but bottleneck for bulk pipelines.
+    - Bulk mitigation: load into an unindexed staging table, batch-merge via `MERGE INTO chunks ... USING staging`, then `CREATE INDEX CONCURRENTLY` post-load.
+    - Incremental ingestion: maintain indexes but set `gin_pending_list_limit = 64MB` to batch GIN updates and accept slightly stale trigram results during high-write bursts

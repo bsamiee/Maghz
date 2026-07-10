@@ -10,7 +10,7 @@ Choose the lifecycle role before adding an owner, construct, rail, or projection
 
 [ROLE_INDEX]:
 
-| [INDEX] | [ROLE]          | [POSITION]             | [ACCEPTS]             | [EMITS]            | [OWNER]          | [REJECT]             |
+| [INDEX] | [ROLE]          | [POSITION]             | [ACCEPTS]             | [EMITS]            | [OWNER]          | [REJECTED_FORM]      |
 | :-----: | :-------------- | :--------------------- | :-------------------- | :----------------- | :--------------- | :------------------- |
 |  [01]   | Raw ingress     | before admission       | external material     | payload or ingress | boundary adapter | domain raw           |
 |  [02]   | Typed payload   | before materialization | static dictionary law | ingress or owner   | payload contract | interior payload     |
@@ -93,7 +93,7 @@ Choose the invariant owner before choosing a package-backed model, wrapper, prot
 
 [OWNER_INDEX]:
 
-| [INDEX] | [DECISION]             | [DISCRIMINANT]           | [OWNER]              | [CHOOSE]                   | [REJECT]              |
+| [INDEX] | [DECISION]             | [DISCRIMINANT]           | [OWNER]              | [CHOOSE]                   | [REJECTED_FORM]       |
 | :-----: | :--------------------- | :----------------------- | :------------------- | :------------------------- | :-------------------- |
 |  [01]   | static keys            | untrusted, def-time      | `[BOUNDARY_SHAPES]`  | closed `TypedDict`         | `dict[str, object]`   |
 |  [02]   | untrusted admission    | untrusted, runtime       | `[BOUNDARY_SHAPES]`  | Pydantic                   | interior revalidation |
@@ -113,7 +113,7 @@ Choose the invariant owner before choosing a package-backed model, wrapper, prot
 - Reject: a package-branded interior layer, a parallel DTO, a one-field wrapper without an independent invariant, `None`-as-failure, `Option` masking an error cause, mutable staging after materialization, and a protocol minted to repair weak ownership — each is a row answered by package convenience instead of by discriminant.
 
 [COLLAPSE_AND_GROWTH]:
-- Law: the collapse move is keyed on which owner absorbs the family — sibling shapes sharing a field set fold into one `[DOMAIN_SHAPES]` closed family (a union of distinct frozen records for distinct payloads, a `@tagged_union` when each case carries payload), sibling module constants fold into one `[TOKEN_STATE_PORT]` `frozendict` table or `StrEnum`, and a wrapper renaming a package API dissolves into the `[BOUNDARY_SHAPES]` package surface used directly.
+- Law: the collapse move is keyed on which owner absorbs the family, and the absorption test is the `[02]` discriminants, never a field-count or a resemblance judgment — sibling shapes answering admission, identity regime, payload timing, and consumer identically fold into one `[DOMAIN_SHAPES]` closed family (a union of distinct frozen records for distinct payloads, a `@tagged_union` when each case carries payload), sibling module constants fold into one `[TOKEN_STATE_PORT]` `frozendict` table or `StrEnum`, a wrapper renaming a package API dissolves into the `[BOUNDARY_SHAPES]` package surface used directly, and a sibling survives beside the family only on a genuinely distinct discriminant answer it can name.
 - Law: a one-field wrapper, a field-rename class, a sibling factory, and a variant shell each fold into the deeper owner — the wrapper becomes a refinement alias on the owner's field, the rename becomes an egress projection, the sibling factory becomes one classmethod discriminating on input shape, the shell becomes one case under the owner's `match`.
 - Law: the same owner is the single growth site forward, and the diff of the next requirement names it — a new `[BOUNDARY_SHAPES]` key is one `extra_items`/`Required` line plus one promotion-fold branch, a new `[DOMAIN_SHAPES]` variant is one frozen record plus one arm under the total `match`, a new `[TOKEN_STATE_PORT]` token is one vocabulary member, a new policy correspondence is one `frozendict` row, and the projection and rail follow by derivation so a new field reaches the wire through one projection, never a parallel edit across owner, wire, and row.
 - Reject: a shape minted to lower local line count, a mirror total/non-total payload pair, an enum-plus-parallel-`dict` where the enum should carry the column, a second owner restating an invariant the first proves, a new requirement answered by a parallel type or boolean flag rather than a case/row/member, and an owner sized for the single case in hand whose every consumer must change when the second arrives.
@@ -422,7 +422,7 @@ A durable owner is frozen after materialization, and state change is a transitio
 - Law: durable collections are `tuple`, `frozenset`, `frozendict`, `Map`, `Block`, or another admitted immutable owner; a transition returns `Self`, `Result[Self, E]`, or a closed successor union.
 - Law: a trusted swap uses `copy.replace`, `msgspec.structs.replace`, `frozendict` union, or a persistent `Map`/`Block` combinator; an untrusted delta validates a closed patch first, then becomes a replacement expression.
 - Law: a patch is a closed `TypedDict` with `NotRequired` update fields and `Required[ReadOnly[...]]` identity or version fields, admitted exactly once through the `[03]-[PAYLOAD_AND_MATERIALIZATION]` `TypeAdapter` gate; the replacement lane receives the admitted patch and never re-validates it, so this section owns the transition algebra and not the admission it composes.
-- Law: deep transition rebuilds nested identity when a shallow swap would replay cached, mutable, or session-owned state — a composite owner's transition replaces the inner owner through its own kernel and the outer owner through `copy.replace`, so a stale nested map, cursor, or session is never carried forward by a top-level field swap.
+- Law: deep transition rebuilds nested identity when a shallow swap replays cached, mutable, or session-owned state — a composite owner's transition replaces the inner owner through its own kernel and the outer owner through `copy.replace`, so a stale nested map, cursor, or session is never carried forward by a top-level field swap.
 - Law: a `frozendict` field transitions through union (`row | {key: value}`), a `Map`/`Block` field through its persistent combinator, and the whole successor is one expression; aliases normalize before replacement and never key an owner replacement.
 - Reject: a mutable field on a frozen owner, a direct `__replace__` where `copy.replace` states the transition, mutate-then-freeze, a shallow nested-dict update, cached-session replay by shallow replace, a second `TypeAdapter` pass over the already-admitted patch, and `MappingProxyType` as durable immutability.
 
@@ -471,11 +471,13 @@ class Shape:
             case {"key": ""}:
                 return Error(ReplaceFault(empty_key=None))
             case _:
-                return Ok(replace(
-                    self,
-                    key=patch.get("key", self.key),
-                    version=self.version + 1,
-                    labels=self.labels | patch.get("labels", frozendict()),
-                    cursor=self.cursor.rewound(self.version + 1),
-                ))
+                return Ok(
+                    replace(
+                        self,
+                        key=patch.get("key", self.key),
+                        version=self.version + 1,
+                        labels=self.labels | patch.get("labels", frozendict()),
+                        cursor=self.cursor.rewound(self.version + 1),
+                    )
+                )
 ```

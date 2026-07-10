@@ -1,24 +1,24 @@
 # [H1][BASH-TESTING]
 
-Production testing for Bash 5.2+/5.3. bats-core 1.13+, test isolation via subshell sandboxing, mocks via PATH manipulation, coverage via kcov 43+, CI with multi-shell container matrix, property-based fuzzing.
+Production testing for Bash `5.2+`/5.3. bats-core `1.13+`, test isolation via subshell sandboxing, mocks via PATH manipulation, coverage via kcov 43+, CI with multi-shell container matrix, property-based fuzzing.
 
-| [IDX] | [PATTERN]           |  [S]  | [USE_WHEN]                                    |
-| :---: | :------------------ | :---: | :-------------------------------------------- |
-| [01]  | bats-core framework |  S1   | Every test suite — lifecycle, helpers, tags   |
-| [02]  | Test isolation      |  S2   | Side-effect-free — temp dirs, FD sandbox, env |
-| [03]  | Mock/stub patterns  |  S3   | External command interception, function stubs |
-| [04]  | Coverage/mutation   |  S4   | Quality gates — kcov, lcov, mutation sweep    |
-| [05]  | CI integration      |  S5   | GH Actions — lint, test matrix, coverage gate |
-| [06]  | Property-based      |  S6   | Input domain exploration, random generation   |
-| [07]  | Snapshot testing    |  S7   | Output baseline comparison, approval workflow |
-| [08]  | Contract testing    |  S8   | CLI exit codes, stdout schema, stderr rules   |
-| [09]  | ShellCheck 0.11.0   |  S9   | SC2327-SC2332 — new codes for test/prod code  |
+| [INDEX] | [PATTERN]           | [S] | [USE_WHEN]                                    |
+| :-----: | :------------------ | :-: | :-------------------------------------------- |
+|  [01]   | bats-core framework | S1  | Every test suite — lifecycle, helpers, tags   |
+|  [02]   | Test isolation      | S2  | Side-effect-free — temp dirs, FD sandbox, env |
+|  [03]   | Mock/stub patterns  | S3  | External command interception, function stubs |
+|  [04]   | Coverage/mutation   | S4  | Quality gates — kcov, lcov, mutation sweep    |
+|  [05]   | CI integration      | S5  | GH Actions — lint, test matrix, coverage gate |
+|  [06]   | Property-based      | S6  | Input domain exploration, random generation   |
+|  [07]   | Snapshot testing    | S7  | Output baseline comparison, approval workflow |
+|  [08]   | Contract testing    | S8  | CLI exit codes, stdout schema, stderr rules   |
+|  [09]   | ShellCheck 0.11.0   | S9  | SC2327-SC2332 — new codes for test/prod code  |
 
 ## [01]-[BATS_CORE_FRAMEWORK]
 
-bats-core 1.13+: `setup_file`/`teardown_file` (suite fixtures), `bats_load_library` (dependency resolution), `bats::on_failure` (v1.12+ failure-only diagnostics), test tagging via `# bats test_tags=` with `--filter-tags` (v1.8+), `--negative-filter` (v1.13+), `--abort` (v1.13+ fail-fast — halts entire suite on first failure), JUnit/TAP13 formatters, `--jobs` parallel execution. Each `@test` runs in a subshell — variable mutations isolated by default. v1.13 fix: `run` now unsets `output`, `stderr`, `lines`, `stderr_lines` at invocation start — eliminates variable crosstalk between successive `run` calls within a test.
+bats-core `1.13+`: `setup_file`/`teardown_file` (suite fixtures), `bats_load_library` (dependency resolution), `bats::on_failure` (`v1.12+` failure-only diagnostics), test tagging via `# bats test_tags=` with `--filter-tags` (`v1.8+`), `--negative-filter` (`v1.13+`), `--abort` (`v1.13+` fail-fast — halts entire suite on first failure), JUnit/TAP13 formatters, `--jobs` parallel execution. Each `@test` runs in a subshell — variable mutations isolated by default. `v1.13` fix: `run` now unsets `output`, `stderr`, `lines`, `stderr_lines` at invocation start — eliminates variable crosstalk between successive `run` calls within a test.
 
-```bash
+```bash conceptual
 #!/usr/bin/env bats
 # bats file_tags=component:deploy
 bats_require_minimum_version 1.13.0
@@ -65,18 +65,20 @@ _run_validation_case() {
 @test "validate_replicas: positive accepted" { _run_validation_case valid; }
 ```
 
-### [1.1]-[HELPERS_TAGS_CONFIG]
+### [01.1]-[HELPERS_TAGS_CONFIG]
 
-| [LIBRARY]      | [KEY_ASSERTIONS]                                                                                                                                                                    |
-| :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bats-support` | `fail`, `bats_require_minimum_version`                                                                                                                                              |
-| `bats-assert`  | `assert_success`, `assert_failure`, `assert_output`, `assert_line/regex`, `assert_stderr`/`refute_stderr`, `assert_stderr_line`/`refute_stderr_line`, `assert_regex`/`refute_regex` |
-| `bats-file`    | `assert_file_exist`, `assert_dir_exist`, `assert_file_contains`                                                                                                                     |
-| `bats-detik`   | k8s resource assertions (kubectl wait)                                                                                                                                              |
+`bats-assert` also exposes `assert_stderr`/`refute_stderr`, `assert_stderr_line`/`refute_stderr_line`, and `assert_regex`/`refute_regex`.
+
+| [INDEX] | [LIBRARY]      | [KEY_ASSERTIONS]                                                         |
+| :-----: | :------------- | :----------------------------------------------------------------------- |
+|  [01]   | `bats-support` | `fail`, `bats_require_minimum_version`                                   |
+|  [02]   | `bats-assert`  | `assert_success`, `assert_failure`, `assert_output`, `assert_line/regex` |
+|  [03]   | `bats-file`    | `assert_file_exist`, `assert_dir_exist`, `assert_file_contains`          |
+|  [04]   | `bats-detik`   | k8s resource assertions (kubectl wait)                                   |
 
 BREAKING (bats-assert): `assert_output`/`refute_output` without args no longer reads stdin — requires `-` or `--stdin`.
 
-```bash
+```bash conceptual
 # tests/.bats — runtime configuration
 --recursive
 --jobs 4
@@ -89,7 +91,7 @@ BREAKING (bats-assert): `assert_output`/`refute_output` without args no longer r
 
 Tags: `# bats file_tags=` applies to all tests in file; `# bats test_tags=` applies to next `@test`. Tags compose (merge). `bats:focus` forces exclusive execution + exit 1 — prevents committing focused subsets. `--no-parallelize-within-files` keeps tests sequential within each file while parallelizing across files.
 
-```bash
+```bash conceptual
 bats --filter-tags integration,!slow tests/         # include/exclude by tag
 bats --negative-filter "legacy_" tests/              # exclude by name (v1.13+)
 bats --abort tests/                                  # halt suite on first failure (v1.13+)
@@ -99,7 +101,7 @@ bats --abort tests/                                  # halt suite on first failu
 
 `BATS_TEST_TMPDIR` (per-test, auto-cleaned) is the primary isolation mechanism. `BATS_FILE_TMPDIR` persists across tests in a file for expensive fixtures. PATH restriction prevents non-deterministic system commands.
 
-```bash
+```bash conceptual
 _sandbox_env() {
     local -n _sb_ref=$1
     _sb_ref[HOME]="${BATS_TEST_TMPDIR}/home"
@@ -131,9 +133,9 @@ _make_project_fixture() {
 }
 ```
 
-### [2.1]-[ADVANCED_ISOLATION]
+### [02.1]-[ADVANCED_ISOLATION]
 
-```bash
+```bash conceptual
 # faketime: deterministic time-dependent tests (requires libfaketime)
 @test "log rotation triggers at midnight" {
     LD_PRELOAD=/usr/lib/faketime/libfaketime.so.1 \
@@ -172,7 +174,7 @@ _make_project_fixture() {
 
 Preference order: (1) function override — subshell-isolated by bats, (2) PATH mock — shadows system command via `tests/mocks/`, (3) stub file — controlled data dependency. Function overrides are zero-setup; PATH mocks required when code uses `command`, `env`, or absolute path.
 
-```bash
+```bash conceptual
 # Uses printf %q for safe quoting — handles responses containing single quotes, newlines
 _mock_with_recording() {
     local -r fn_name="$1" response="$2" rc="${3:-0}"; local -n _log=$4
@@ -209,11 +211,11 @@ _assert_call_count() {
 
 `export -f` propagates function overrides into child processes. Mock scripts must reject unrecognized arguments with `exit 1` — silent acceptance masks bugs. `printf '%q'` safely quotes responses containing single quotes, newlines, or special characters for use in `eval`-constructed function bodies.
 
-### [3.1]-[PLAN_BASED_MOCKS]
+### [03.1]-[PLAN_BASED_MOCKS]
 
 `buildkite-plugins/bats-mock` provides `stub`/`unstub` with plan-based call expectations — verifies both behavior and call sequence on `unstub`.
 
-```bash
+```bash conceptual
 # bats-mock: plan declares expected calls in order; unstub asserts plan fulfilled
 @test "deploy_container builds then pushes" {
     stub docker \
@@ -231,7 +233,7 @@ Embedded `--self-test` assertion primitives (`_assert_eq`, `_assert_match`, `_as
 
 kcov 43+ instruments bash via `PS4` + `BASH_XTRACEFD` — zero source modification. `--include-path=./lib` restricts to production code. `--bash-dont-parse-binary-dir` prevents instrumenting non-bash executables. `--bash-parse-files-in-dir` tracks indirectly sourced files. v43: `--dump-summary` emits JSON coverage to stdout — machine-readable for CI gating without parsing HTML/Cobertura.
 
-```bash
+```bash conceptual
 kcov --include-path=./lib \
      --exclude-pattern=tests/,node_modules/ \
      --bash-dont-parse-binary-dir \
@@ -251,9 +253,9 @@ _check_coverage() {
 # kcov --dump-summary coverage/ | jq -r '.percent_covered' | { read -r pct; (( ${pct%.*} >= 80 )); }
 ```
 
-### [4.1]-[MUTATION_TESTING]
+### [04.1]-[MUTATION_TESTING]
 
-```bash
+```bash conceptual
 # Automated mutation: flip operator, run suite, check if tests catch it
 # Every surviving mutant is an assertion gap
 _mutate_operators() {
@@ -288,60 +290,60 @@ _mutation_sweep() {
 
 CI pipeline owned by bash-testing.md. validation.md cross-references for ShellCheck-specific diagnostic codes. `koalaman/shellcheck-action@v2` (maintained by ShellCheck author). Container matrix references bash-portability.md S5.1 image selection.
 
-```yaml
+```yaml conceptual
 # .github/workflows/shell-tests.yml — canonical pipeline: lint -> test (container matrix) -> coverage
 name: Shell Tests
 on: [push, pull_request]
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: koalaman/shellcheck-action@v2
-        with: { scandir: ./lib, severity: warning }
-  test:
-    needs: lint
-    strategy:
-      matrix:
-        include:
-          - { os: ubuntu-latest, bash: '5.2', container: '' }
-          - { os: ubuntu-latest, bash: '5.2', container: 'alpine:3.21' }
-          - { os: ubuntu-latest, bash: '5.2', container: 'cgr.dev/chainguard/wolfi-base:latest' }
-          - { os: macos-latest, bash: '5.3', container: '' }
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || null }}
-    steps:
-      - uses: actions/checkout@v4
-      - if: matrix.container == 'alpine:3.21'
-        run: apk add --no-cache bash>=5.2 curl git
-      - uses: bats-core/bats-action@4.0.0
-        with: { support-install: true, assert-install: true, file-install: true, detik-install: false }
-      - run: bats --recursive --jobs 2 --timing --print-output-on-failure --formatter pretty --report-formatter junit --output tests/reports/ tests/
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with: { name: 'test-results-${{ matrix.os }}-${{ matrix.bash }}-${{ matrix.container || "native" }}', path: tests/reports/ }
-  coverage:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: bats-core/bats-action@4.0.0
-        with: { support-install: true, assert-install: true, file-install: true }
-      - run: sudo apt-get install -y kcov
-      - run: kcov --include-path=./lib --bash-dont-parse-binary-dir coverage/ bats tests/
-      - run: |
-          pct=$(jq -r '.percent_covered' coverage/bats/kcov-result.json)
-          (( ${pct%.*} >= 80 )) || { echo "Coverage ${pct}% below 80%" >&2; exit 1; }
-      - uses: actions/upload-artifact@v4
-        with: { name: coverage-report, path: coverage/ }
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: koalaman/shellcheck-action@v2
+              with: { scandir: ./lib, severity: warning }
+    test:
+        needs: lint
+        strategy:
+            matrix:
+                include:
+                    - { os: ubuntu-latest, bash: "5.2", container: "" }
+                    - { os: ubuntu-latest, bash: "5.2", container: "alpine:3.21" }
+                    - { os: ubuntu-latest, bash: "5.2", container: "cgr.dev/chainguard/wolfi-base:latest" }
+                    - { os: macos-latest, bash: "5.3", container: "" }
+            fail-fast: false
+        runs-on: ${{ matrix.os }}
+        container: ${{ matrix.container || null }}
+        steps:
+            - uses: actions/checkout@v4
+            - if: matrix.container == 'alpine:3.21'
+              run: apk add --no-cache bash>=5.2 curl git
+            - uses: bats-core/bats-action@4.0.0
+              with: { support-install: true, assert-install: true, file-install: true, detik-install: false }
+            - run: bats --recursive --jobs 2 --timing --print-output-on-failure --formatter pretty --report-formatter junit --output tests/reports/ tests/
+            - if: always()
+              uses: actions/upload-artifact@v4
+              with: { name: 'test-results-${{ matrix.os }}-${{ matrix.bash }}-${{ matrix.container || "native" }}', path: tests/reports/ }
+    coverage:
+        needs: test
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: bats-core/bats-action@4.0.0
+              with: { support-install: true, assert-install: true, file-install: true }
+            - run: sudo apt-get install -y kcov
+            - run: kcov --include-path=./lib --bash-dont-parse-binary-dir coverage/ bats tests/
+            - run: |
+                  pct=$(jq -r '.percent_covered' coverage/bats/kcov-result.json)
+                  (( ${pct%.*} >= 80 )) || { echo "Coverage ${pct}% below 80%" >&2; exit 1; }
+            - uses: actions/upload-artifact@v4
+              with: { name: coverage-report, path: coverage/ }
 ```
 
-### [5.1]-[CONTAINERIZED_TESTING]
+### [05.1]-[CONTAINERIZED_TESTING]
 
 `bats/bats` Docker image (Alpine-based, 5M+ pulls) bundles `bats-support` and `bats-assert` — `bats_load_library` resolves them without installation. Mount scripts read-only to prevent test pollution.
 
-```bash
+```bash conceptual
 # Local: run tests in containerized bats with bundled helpers
 docker run --rm -v "${PWD}/lib:/code/lib:ro" -v "${PWD}/tests:/code/tests:ro" \
     bats/bats:latest --jobs 4 --timing /code/tests
@@ -351,20 +353,20 @@ docker run --rm -v "${PWD}/lib:/code/lib:ro" -v "${PWD}/tests:/code/tests:ro" \
 # RUN apk --no-cache add jq curl
 ```
 
-```yaml
+```yaml conceptual
 # docker-compose.test.yml — CI-local parity
 services:
-  tests:
-    image: bats/bats:latest
-    volumes: ['./lib:/code/lib:ro', './tests:/code/tests:ro']
-    command: ['--formatter', 'junit', '--output', '/code/tests/reports/', '/code/tests']
+    tests:
+        image: bats/bats:latest
+        volumes: ["./lib:/code/lib:ro", "./tests:/code/tests:ro"]
+        command: ["--formatter", "junit", "--output", "/code/tests/reports/", "/code/tests"]
 ```
 
 ## [06]-[PROPERTY_BASED_PATTERNS]
 
 No mature property-based testing framework exists for bash. Pattern: generate random inputs from constrained domains, verify invariants (not specific outputs). `SRANDOM` for uniform 32-bit numeric domains; `/dev/urandom` for byte-stream domains.
 
-```bash
+```bash conceptual
 _gen_string() {
     local -r len="${1:-16}" charset="${2:-A-Za-z0-9}"
     tr -dc "${charset}" < /dev/urandom | head -c "${len}"
@@ -422,11 +424,11 @@ _prop_test() {
 
 Shrinking on violation: binary-search input size `[lo=1, hi=failing_size]` to find minimal reproducing case.
 
-### [6.1]-[HYPOTHESIS_PBT]
+### [06.1]-[HYPOTHESIS_PBT]
 
 Python Hypothesis provides structured shrinking, replay databases, and rich strategies unavailable in pure bash. Pattern: Hypothesis generates inputs, `subprocess.run` invokes the script under test, assertions verify algebraic properties. Pass data via stdin — never interpolate into shell strings (injection). Set `timeout=` on every subprocess call.
 
-```python
+```python conceptual
 # test_sort_pbt.py — sort idempotency via Hypothesis
 import subprocess
 from hypothesis import given, settings, assume
@@ -460,7 +462,7 @@ Constraints: `assume("\x00" not in value)` — bash variables cannot hold NUL by
 
 ## [07]-[SNAPSHOT_TESTING]
 
-```bash
+```bash conceptual
 _snapshot_dir="${BATS_TEST_DIRNAME}/snapshots"
 
 _assert_snapshot() {
@@ -485,7 +487,7 @@ _assert_snapshot() {
 
 ## [08]-[CONTRACT_TESTING]
 
-```bash
+```bash conceptual
 _assert_cli_contract() {
     local -r cmd="$1" expected_rc="$2"; shift 2
     # shellcheck disable=SC2086 # intentional word splitting
@@ -512,38 +514,40 @@ _assert_cli_contract() {
 
 ## [09]-[SHELLCHECK_0_11_0]
 
-Full ShellCheck reference in validation.md S3. Test-relevant codes from 0.11.0 below — each surfaces in test infrastructure or scripts under test.
+Full ShellCheck reference in validation.md S3. Test-relevant codes from `0.11.0` below — each surfaces in test infrastructure or scripts under test.
 
-| [CODE]     | [SEV] | [ISSUE]                          | [VIOLATION]                            | [FIX]                                     |
-| ---------- | :---: | :------------------------------- | :------------------------------------- | :---------------------------------------- |
-| **SC2327** | warn  | Capture + redirect clash         | `v=$(cmd > out.txt)` — `$v` is empty   | `v=$(cmd \| tee out.txt)` or separate ops |
-| **SC2328** | warn  | Redirect steals from `$()`       | `v=$(tr -d ':' < in > out)` — empty    | `v=$(tr -d ':' < in)` or redirect only    |
-| **SC2329** | warn  | Function never invoked           | Defined `f()` but never called in file | Call, remove, or disable (dispatch-table) |
-| **SC2330** | warn  | BusyBox `[[ ]]` glob unsupported | `[[ $1 == https:* ]]` in busybox sh    | `case "$1" in https:*) ... esac`          |
-| **SC2331** | warn  | `-a` file test ambiguous         | `[ -a ~/.bashrc ]` — `-a` is also AND  | `[ -e ~/.bashrc ]` — unambiguous          |
-| **SC2332** | error | `[ ! -o opt ]` always true       | OR precedence: `[ "!" ] -o [ "opt" ]`  | `[[ ! -o opt ]]` or `! [ -o opt ]`        |
+| [INDEX] | [CODE]     | [SEV] | [ISSUE]                          | [VIOLATION]                         | [FIX]                            |
+| :-----: | :--------- | :---: | :------------------------------- | :---------------------------------- | :------------------------------- |
+|  [01]   | **SC2327** | warn  | Capture + redirect clash         | `v=$(cmd > out.txt)` empties `$v`   | `v=$(cmd \| tee out.txt)`        |
+|  [02]   | **SC2328** | warn  | Redirect steals from `$()`       | `v=$(tr -d ':' < in > out)` — empty | `v=$(tr -d ':' < in)`            |
+|  [03]   | **SC2329** | warn  | Function never invoked           | Defined `f()`, never called         | Call, remove, or disable         |
+|  [04]   | **SC2330** | warn  | BusyBox `[[ ]]` glob unsupported | `[[ $1 == https:* ]]` in busybox sh | `case "$1" in https:*) ... esac` |
+|  [05]   | **SC2331** | warn  | `-a` file test ambiguous         | `[ -a ~/.bashrc ]` (`-a` also AND)  | `[ -e ~/.bashrc ]` — unambiguous |
+
+- SC2327 fix: or split into separate ops. SC2328 fix: or redirect only. SC2329 fix: disable via dispatch-table.
+  | [06] | **SC2332** | error | `[ ! -o opt ]` always true | OR precedence: `[ "!" ] -o [ "opt" ]` | `[[ ! -o opt ]]` or `! [ -o opt ]` |
 
 SC2329 false-positives: dispatch-table functions called via `"${_DISPATCH[$cmd]}"` — ShellCheck cannot trace associative-array indirection. Suppress with `# shellcheck disable=SC2329` and justification comment.
 
-## [RULES]
+## [10]-[RULES]
 
-- bats-core 1.13+ exclusively — NEVER shunit2 or shellspec.
+- bats-core `1.13+` exclusively — NEVER shunit2 or shellspec.
 - `bats_require_minimum_version 1.13.0` at top of every `.bats` file.
 - `# bats file_tags=` for component classification; `# bats test_tags=` per-test. `bats:focus` for local debugging only.
-- `bats::on_failure` (v1.12+) for diagnostic capture — runs only on failure, before teardown.
-- `run` (v1.13+) unsets `output`/`stderr`/`lines`/`stderr_lines` at invocation — no variable crosstalk between assertions.
+- `bats::on_failure` (`v1.12+`) for diagnostic capture — runs only on failure, before teardown.
+- `run` (`v1.13+`) unsets `output`/`stderr`/`lines`/`stderr_lines` at invocation — no variable crosstalk between assertions.
 - `BATS_TEST_TMPDIR` for per-test filesystem isolation — NEVER write to fixed paths.
 - `bats_load_library` for helper resolution — NEVER `source` with hardcoded paths.
 - Function override as primary mock strategy; PATH mocks for `command`/`env`/absolute-path invocations.
 - kcov 43+ with `--include-path` restricting to production code — NEVER instrument test helpers. `--dump-summary` (v43+) for CI gating.
 - 80% line coverage threshold as CI gate. `kcov --merge` for multi-suite aggregation.
 - `bats-core/bats-action@4.0.0` for CI setup. `--jobs N` for file-level parallelism.
-- `--filter-tags` for selective execution; `--negative-filter` (v1.13+) for name-based exclusion; `--abort` (v1.13+) for fail-fast.
+- `--filter-tags` for selective execution; `--negative-filter` (`v1.13+`) for name-based exclusion; `--abort` (`v1.13+`) for fail-fast.
 - `bats/bats` Docker image for containerized testing — `bats_load_library` resolves bundled `bats-support`/`bats-assert`.
 - Property tests via `_prop_test` with SRANDOM generators — seed is triage marker only, not deterministic replay.
 - Hypothesis PBT (Python) for structured shrinking and algebraic property verification — pass data via stdin, timeout on subprocess.
 - Embedded `--self-test`: assertion primitives owned by script-patterns.md S10 — cross-reference, do not duplicate.
-- ShellCheck 0.11.0: SC2327-SC2332 codes — validation.md S3 for full reference, S9 above for test-relevant subset.
+- ShellCheck `0.11.0`: SC2327-SC2332 codes — validation.md S3 for full reference, S9 above for test-relevant subset.
 - CI pipeline owned by bash-testing.md S5 — validation.md cross-references for ShellCheck diagnostic codes.
 - Container test matrix references bash-portability.md S5.1 image selection (Alpine ash, Wolfi bash, native).
 - Multi-shell validation: probe `_has_pipefail` (bash-portability.md S2.1) when testing POSIX compatibility.

@@ -1,25 +1,25 @@
 # [H1][SCRIPT-PATTERNS]
 
-| [IDX] | [PATTERN]              |  [S]  | [USE_WHEN]                                      |
-| :---: | :--------------------- | :---: | :---------------------------------------------- |
-| [01]  | Polymorphic arg parser |  S1   | Multi-axis dispatch, short/long flags           |
-| [02]  | Metadata-driven help   |  S2   | Auto-generated, grouped, colorized usage        |
-| [03]  | Configuration loader   |  S3   | Key-value config files with validation          |
-| [04]  | Structured logging     |  S4   | Caller context, JSON-ND/text polymorphic output |
-| [05]  | Trap chain + cleanup   |  S5   | ERR trap, signal internals, EXIT interaction    |
-| [06]  | Parallel processing    |  S6   | Bounded concurrency with PID tracking           |
-| [07]  | Locks and signals      |  S7   | Single-instance, graceful shutdown              |
-| [08]  | Retry with backoff     |  S8   | Network calls, flaky ops, SRANDOM jitter        |
-| [09]  | Atomic I/O             |  S9   | File output, state persistence, config writes   |
-| [10]  | Coprocess              |  S10  | Persistent subprocess, sentinel-framed I/O      |
-| [11]  | Testing                |  S11  | Inline assertions, self-test mode               |
+| [INDEX] | [PATTERN]              | [S] | [USE_WHEN]                                      |
+| :-----: | :--------------------- | :-: | :---------------------------------------------- |
+|  [01]   | Polymorphic arg parser | S1  | Multi-axis dispatch, short/long flags           |
+|  [02]   | Metadata-driven help   | S2  | Auto-generated, grouped, colorized usage        |
+|  [03]   | Configuration loader   | S3  | Key-value config files with validation          |
+|  [04]   | Structured logging     | S4  | Caller context, JSON-ND/text polymorphic output |
+|  [05]   | Trap chain + cleanup   | S5  | ERR trap, signal internals, EXIT interaction    |
+|  [06]   | Parallel processing    | S6  | Bounded concurrency with PID tracking           |
+|  [07]   | Locks and signals      | S7  | Single-instance, graceful shutdown              |
+|  [08]   | Retry with backoff     | S8  | Network calls, flaky ops, SRANDOM jitter        |
+|  [09]   | Atomic I/O             | S9  | File output, state persistence, config writes   |
+|  [10]   | Coprocess              | S10 | Persistent subprocess, sentinel-framed I/O      |
+|  [11]   | Testing                | S11 | Inline assertions, self-test mode               |
 
 ## [01]-[ARGUMENT_PARSING]
 
 Three-phase pipeline: subcommand dispatch (O(1) via `declare -Ar`), flag parsing (`case/esac`),
 positional collection (remainder after `--`). Flags consumed exhaustively before positionals.
 
-```bash
+```bash conceptual
 declare -Ar _SUBCMDS=([start]=_cmd_start [stop]=_cmd_stop [status]=_cmd_status)
 declare -a POSITIONAL_ARGS=()
 declare -i LOG_LEVEL=2
@@ -60,12 +60,12 @@ _parse_flags() {
 Remove `_SUBCMDS` (or leave empty) for flag-only scripts. Handlers receive only positional
 args — flags frozen via `readonly` before invocation.
 
-### [1.1]-[MULTI_AXIS_DISPATCH]
+### [01.1]-[MULTI_AXIS_DISPATCH]
 
 Two-dimensional `verb:resource` keyed dispatch with parallel metadata arrays. Subsumes
 nested subcommands — the composite key encodes the full route:
 
-```bash
+```bash conceptual
 declare -Ar _DISPATCH=(
     [get:user]=_handle_get_user       [get:project]=_handle_get_project
     [create:user]=_handle_create_user [create:project]=_handle_create_project
@@ -105,12 +105,12 @@ _dispatch_help() {
 }
 ```
 
-### [1.2]-[MIDDLEWARE]
+### [01.2]-[MIDDLEWARE]
 
 Pre/post hooks wrapping handlers via chainable dispatch. Each middleware receives a nameref to
 context — rejection short-circuits the chain without coupling to business logic:
 
-```bash
+```bash conceptual
 declare -a _MIDDLEWARE=()
 _use() { _MIDDLEWARE+=("$1"); }
 _run_with_middleware() {
@@ -138,7 +138,7 @@ _use _mw_version
 `_OPT_META` encodes all option data — adding an option = one table entry + one `case` branch.
 Explicit key list controls iteration order (associative arrays have no insertion order).
 
-```bash
+```bash conceptual
 # Terminal colors — NO_COLOR compliant (https://no-color.org), CI-aware
 _BOLD="" _DIM="" _RESET=""
 [[ -z "${NO_COLOR+set}" ]] && [[ -t 2 ]] \
@@ -176,7 +176,7 @@ _usage() {
 
 No `eval`/`source` — `declare -g` with regex-validated key names, comment skip, extglob trimming:
 
-```bash
+```bash conceptual
 load_config() {
     local -a raw_lines; mapfile -t raw_lines < "$1"
     # Paradigm exception: bash lacks higher-order array iteration primitives
@@ -194,9 +194,9 @@ load_config() {
 
 ## [04]-[STRUCTURED_LOGGING]
 
-Canonical reference: [bash-logging.md](./bash-logging.md). API signatures:
+Canonical reference: `bash-logging.md`. API signatures:
 
-```bash
+```bash conceptual
 _debug() _info() _warn() _err()     # Level-gated, caller-context injection via FUNCNAME[2]
 _die()                              # _err + exit ${EX_ERR}
 # W3C trace context propagation (service-wrapper pattern)
@@ -215,12 +215,12 @@ _init_trace() {
 ERR fires on command failure (diagnostic only), EXIT fires unconditionally and invokes the
 cleanup registry. Cleanup is LIFO — later-acquired resources depend on earlier ones.
 
-### [5.1]-[ERR_TRAP]
+### [05.1]-[ERR_TRAP]
 
 Full stack trace via `FUNCNAME`/`BASH_LINENO`/`BASH_SOURCE`. Requires `set -E` (errtrace)
 so the trap inherits into functions and subshells:
 
-```bash
+```bash conceptual
 _on_err() {
     local -r rc=$? cmd="${BASH_COMMAND}" depth="${#FUNCNAME[@]}"
     printf '\n[ERROR] exit %d: %s\n[STACK]\n' "${rc}" "${cmd}" >&2
@@ -232,12 +232,12 @@ _on_err() {
 trap '_on_err' ERR
 ```
 
-### [5.2]-[CLEANUP_REGISTRY]
+### [05.2]-[CLEANUP_REGISTRY]
 
 LIFO stack — `eval` acceptable here because all registered commands are script-controlled
 string literals, never user input:
 
-```bash
+```bash conceptual
 declare -a _CLEANUP_STACK=()
 declare -i _CLEANING=0
 _register_cleanup() { _CLEANUP_STACK+=("$1"); }
@@ -255,48 +255,48 @@ exec {lock_fd}>/var/lock/myscript.lock
 _register_cleanup "exec ${lock_fd}>&-"
 ```
 
-### [5.3]-[SIGNAL_INTERNALS]
+### [05.3]-[SIGNAL_INTERNALS]
 
-| [IDX] | [BEHAVIOR]          | [DETAIL]                                                               |
-| :---: | :------------------ | :--------------------------------------------------------------------- |
-| [01]  | Deferred execution  | Trap runs after current foreground command completes, not during       |
-| [02]  | `wait` interruption | `wait` returns immediately (rc >128); trap fires after `wait` returns  |
-| [03]  | Signal coalescing   | POSIX signals not queued — N deliveries while masked yield one pending |
-| [04]  | `trap ''` (ignore)  | Signal discarded; inherited across `exec` and into subshells           |
-| [05]  | `trap -` (reset)    | Restores default disposition; trapped handlers reset in subshells      |
-| [06]  | EXIT + signal       | Signal handler runs first, then EXIT trap fires (two-phase teardown)   |
-| [07]  | SIGKILL             | Cannot be trapped — EXIT trap does NOT fire on `kill -9`               |
+| [INDEX] | [BEHAVIOR]          | [DETAIL]                                                               |
+| :-----: | :------------------ | :--------------------------------------------------------------------- |
+|  [01]   | Deferred execution  | Trap runs after current foreground command completes, not during       |
+|  [02]   | `wait` interruption | `wait` returns immediately (rc >128); trap fires after `wait` returns  |
+|  [03]   | Signal coalescing   | POSIX signals not queued — N deliveries while masked yield one pending |
+|  [04]   | `trap ''` (ignore)  | Signal discarded; inherited across `exec` and into subshells           |
+|  [05]   | `trap -` (reset)    | Restores default disposition; trapped handlers reset in subshells      |
+|  [06]   | EXIT + signal       | Signal handler runs first, then EXIT trap fires (two-phase teardown)   |
+|  [07]   | SIGKILL             | Cannot be trapped — EXIT trap does NOT fire on `kill -9`               |
 
 Coalescing matters for `SIGCHLD` — multiple children exiting may deliver one signal:
 
-```bash
+```bash conceptual
 # Wrong: single wait loses child exits due to coalescing
 # Right: drain all completed children per signal delivery
 trap 'while wait -n 2>/dev/null; do :; done' CHLD
 ```
 
-### [5.4]-[EXIT_CODES]
+### [05.4]-[EXIT_CODES]
 
-| [IDX] | [CODE]  | [MEANING]      | [USAGE]                        |
-| :---: | :-----: | :------------- | :----------------------------- |
-| [01]  |   `0`   | Success        | Normal completion              |
-| [02]  |   `1`   | General error  | Unrecoverable runtime failure  |
-| [03]  |   `2`   | Usage error    | Invalid args, missing required |
-| [04]  |  `126`  | Not executable | Permission denied              |
-| [05]  |  `127`  | Not found      | Command not in PATH            |
-| [06]  | `128+N` | Signal N       | Killed by signal (130=Ctrl-C)  |
+| [INDEX] | [CODE]  | [MEANING]      | [USAGE]                        |
+| :-----: | :-----: | :------------- | :----------------------------- |
+|  [01]   |   `0`   | Success        | Normal completion              |
+|  [02]   |   `1`   | General error  | Unrecoverable runtime failure  |
+|  [03]   |   `2`   | Usage error    | Invalid args, missing required |
+|  [04]   |  `126`  | Not executable | Permission denied              |
+|  [05]   |  `127`  | Not found      | Command not in PATH            |
+|  [06]   | `128+N` | Signal N       | Killed by signal (130=Ctrl-C)  |
 
-```bash
+```bash conceptual
 readonly EX_OK=0 EX_ERR=1 EX_USAGE=2
 _die_usage() { _err "$@"; _err "See --help"; exit "${EX_USAGE}"; }
 ```
 
 ## [06]-[PARALLEL_PROCESSING]
 
-`wait -n -p VARNAME` (Bash 5.1+) captures the finished PID — required for mapping results
+`wait -n -p VARNAME` (Bash `5.1+`) captures the finished PID — required for mapping results
 back to inputs. Without `-p`, a failed job is unidentifiable in the batch.
 
-```bash
+```bash conceptual
 declare -A _job_pids=()
 readonly MAX_JOBS="${MAX_JOBS:-4}"
 readarray -d '' -t files < <(fd -e txt --print0)
@@ -324,7 +324,7 @@ fd -e txt -x process_file {}
 
 Lock FDs register with `_CLEANUP_STACK` so they release even on ERR paths.
 
-```bash
+```bash conceptual
 # Atomic lock via flock with dynamic FD allocation (no hardcoded FD numbers)
 exec {lock_fd}>/var/lock/myscript.lock
 flock -n "${lock_fd}" || { printf 'Already running\n' >&2; exit 1; }
@@ -350,7 +350,7 @@ trap - INT TERM           # Reset: default disposition restored
 across near-simultaneously seeded processes). Parameters: `max` ($1, default 3), `delay` ($2,
 default 1s), `max_delay` ($3, default 60s), command ($4+).
 
-```bash
+```bash conceptual
 retry() {
     local -r max="${1:-3}" max_delay="${3:-60}"; local delay="${2:-1}"; shift 3 || shift $#
     # Paradigm exception: retry is inherently stateful (mutable delay, attempt counter)
@@ -373,7 +373,7 @@ retry() {
 
 Write to temporary file, then atomic `mv` (same filesystem). `umask 077` before `mktemp` for sensitive data:
 
-```bash
+```bash conceptual
 write_atomic() {
     local -r dest="$1"; shift
     local tmp
@@ -390,11 +390,11 @@ _register_cleanup "rm -rf '${WORK_DIR}'"
 
 ## [10]-[COPROCESS]
 
-`coproc` (Bash 4.0+) creates a bidirectional pipe — `${COPROC[0]}` reads stdout,
+`coproc` (Bash `4.0+`) creates a bidirectional pipe — `${COPROC[0]}` reads stdout,
 `${COPROC[1]}` writes stdin. Sentinel-based framing solves the result boundary problem
 (knowing when a multi-line response ends):
 
-```bash
+```bash conceptual
 # Persistent database session — sentinel marks end of each result set
 coproc DB {
     PGOPTIONS='--client-min-messages=warning' \
@@ -414,19 +414,19 @@ db_close() {
 }
 ```
 
-| [IDX] | [CONSTRAINT]            | [COPROC]                                 | [NAMED_PIPES]             |
-| :---: | :---------------------- | :--------------------------------------- | :------------------------ |
-| [01]  | Concurrent subprocesses | One unnamed coproc at a time             | Unlimited                 |
-| [02]  | Cleanup                 | Automatic FD cleanup on exit             | Manual `rm` of FIFO files |
-| [03]  | Buffering               | Pipe-buffered; use `stdbuf -oL` for line | Same buffering rules      |
-| [04]  | Portability             | Bash 4.0+ only                           | POSIX-portable            |
-| [05]  | Directionality          | Built-in bidirectional                   | Requires two FIFOs        |
+| [INDEX] | [CONSTRAINT]            | [COPROC]                                 | [NAMED_PIPES]             |
+| :-----: | :---------------------- | :--------------------------------------- | :------------------------ |
+|  [01]   | Concurrent subprocesses | One unnamed coproc at a time             | Unlimited                 |
+|  [02]   | Cleanup                 | Automatic FD cleanup on exit             | Manual `rm` of FIFO files |
+|  [03]   | Buffering               | Pipe-buffered; use `stdbuf -oL` for line | Same buffering rules      |
+|  [04]   | Portability             | Bash 4.0+ only                           | POSIX-portable            |
+|  [05]   | Directionality          | Built-in bidirectional                   | Requires two FIFOs        |
 
 Use named pipes when multiple concurrent workers or POSIX portability is required.
 
 ## [11]-[TESTING]
 
-```bash
+```bash conceptual
 assert_eq()        { [[ "$1" == "$2" ]] || _die "ASSERT ${FUNCNAME[1]}:${BASH_LINENO[0]}: '${2}' != '${1}'"; }
 assert_not_empty() { [[ -n "$1" ]]     || _die "ASSERT ${FUNCNAME[1]}:${BASH_LINENO[0]}: empty value"; }
 assert_file()      { [[ -f "$1" ]]     || _die "ASSERT ${FUNCNAME[1]}:${BASH_LINENO[0]}: not a file: ${1}"; }

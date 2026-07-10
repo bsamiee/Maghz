@@ -40,12 +40,12 @@ This table is a lookup by repeated local smell; the owning card states the place
 [PATH_ALGEBRA]:
 - Owner: `pathlib.Path`/`PurePath` — `Path.walk`, `Path.copy`/`copy_into`, `Path.move`/`move_into`, `Path.info`, `Path.from_uri`, `PurePath.full_match`, `PurePath.with_segments`, `os.path.splitroot`, and `os.path.realpath(strict=os.path.ALLOW_MISSING)`.
 - Gate: `Path.info` caches one `stat` on a single `_Info` accessor, so `exists`/`is_dir`/`is_file`/`is_symlink` share one syscall instead of one probe each; the copy verb's symlink and metadata behavior enters as POLICY_VALUES — `follow_symlinks=` and `preserve_metadata=` on `copy_into` — never a `copy: bool` knob the body re-derives.
-- Rule: `Path.copy_into`/`move_into` target a directory and keep the source name — the spelling a rooted right segment would corrupt — so the transfer verb is a `frozendict` row binding the bound method to its policy map and projected to `**kwargs` at the call, never a `shutil` wrapper branching on a flag; `Path.walk` yields `(dirpath, dirnames, filenames)` under `follow_symlinks=` and replaces the `os.walk` string idiom end to end, while `Path.glob`/`rglob` carry the distinct `recurse_symlinks=` descent policy a copy never takes; `Path.from_uri` admits a `file:` URI to a path where a `urllib.parse` strip-and-unquote reconstructs it, and `PurePath.full_match(pattern)` matches the whole path with `**` recursion where `PurePath.match` anchors only the right tail.
+- Rule: `Path.copy_into`/`move_into` target a directory and keep the source name — the spelling a rooted right segment corrupts — so the transfer verb is a `frozendict` row binding the bound method to its policy map and projected to `**kwargs` at the call, never a `shutil` wrapper branching on a flag; `Path.walk` yields `(dirpath, dirnames, filenames)` under `follow_symlinks=` and replaces the `os.walk` string idiom end to end, while `Path.glob`/`rglob` carry the distinct `recurse_symlinks=` descent policy a copy never takes; `Path.from_uri` admits a `file:` URI to a path where a `urllib.parse` strip-and-unquote reconstructs it, and `PurePath.full_match(pattern)` matches the whole path with `**` recursion where `PurePath.match` anchors only the right tail.
 - Boundary: the transfer verb is a provider call, so its residual `OSError` — the permission, cross-device, or TOCTOU failure the `info` pre-checks cannot preclude — crosses through the single-exception `catch` trap `rails-and-effects.md` owns, never an untrapped raise past the seam.
 - Reject: a stringly `os.walk` flow; a `shutil.copy`/`move` wrapper; one `stat()` per `exists`/`is_dir` check; drive/root string slicing for `os.path.splitroot`; a symlink-prefix resolution loop for `realpath(strict=ALLOW_MISSING)`; a `urllib` strip-and-unquote where `Path.from_uri` admits a `file:` URI; a right-anchored `match` where `full_match` spans the whole path; a `copy: bool` knob where a policy row carries `follow_symlinks`/`preserve_metadata`.
 
 [FILE_IO]:
-- Owner: `NamedTemporaryFile(delete_on_close=...)`, `shutil.rmtree(onexc=...)`, `importlib.resources.files`/`as_file`, `tomllib` (TOML 1.1.0), and `mimetypes.guess_file_type`.
+- Owner: `NamedTemporaryFile(delete_on_close=...)`, `shutil.rmtree(onexc=...)`, `importlib.resources.files`/`as_file`, `tomllib` (TOML `1.1.0`), and `mimetypes.guess_file_type`.
 - Gate: persisted text I/O states `encoding="utf-8"` (or `encoding="locale"` only at a genuine locale boundary), never an implicit default at a durable seam.
 - Rule: `importlib.resources.as_file(files(anchor) / name)` materializes a packaged resource to a real path inside a `with` scope and reclaims it on exit — the `__file__`-relative computation it retires; a config payload parses through `tomllib.load`/`loads`, never a `tomli` backport the active interpreter subsumes; `mimetypes.guess_file_type` takes the path directly where `guess_type` re-parses a URL.
 - Reject: `mkstemp` unlink ladders; an `onerror` tuple handler for `rmtree(onexc=...)`; a `__file__` extraction loop; a `tomli` shim; path use of `mimetypes.guess_type`.
@@ -138,19 +138,14 @@ class Record:
 @effect.result[Record, TextFault]()
 def recorded(line: str, render: Template, *, refine: str | None = None):
     pattern = yield from (
-        Ok(STAMPED)
-        if refine is None
-        else catch(exception=re.PatternError)(re.compile)(refine, STAMPED.flags).map_error(lambda _bad: "<bad-grammar>")
+        Ok(STAMPED) if refine is None else catch(exception=re.PatternError)(re.compile)(refine, STAMPED.flags).map_error(lambda _bad: "<bad-grammar>")
     )
     found = yield from (Ok(matched) if (matched := pattern.match(line)) is not None else Error("<no-match>"))
     day = yield from catch(exception=ValueError)(datetime.date.strptime)(found["at"], "%Y-%m-%d").map_error(lambda _bad: "<bad-stamp>")
     return Record(
         at=datetime.datetime.combine(day, datetime.time.min, datetime.UTC),
         body=found["body"],
-        rendered="".join(
-            part if isinstance(part, str) else format(CONVERT[part.conversion](part.value), part.format_spec)
-            for part in render
-        ),
+        rendered="".join(part if isinstance(part, str) else format(CONVERT[part.conversion](part.value), part.format_spec) for part in render),
     )
 ```
 
@@ -223,7 +218,7 @@ def receipted(weights: tuple[Fraction, ...], values: tuple[Fraction, ...], prior
 [CODECS]:
 - Owner: `compression.zstd` (with `ZstdDict`, `train_dict`, `CompressionParameter`), `base64.z85encode`/`z85decode`, the base-N decode controls (`canonical=`/`padded=`/`ignorechars=` on `b32decode`/`b64decode`), and the base-N `wrapcol=` encode control.
 - Gate: a repeated-corpus payload trains one `ZstdDict` via `train_dict(samples, dict_size)` rather than recompressing a shared prefix per message, and compression tuning enters as a `frozendict[CompressionParameter, int]` policy projected to the `options=` map at the boundary, never a bare `level=` knob the body re-derives.
-- Rule: `canonical=True` rejects non-canonical base-N input at decode instead of a post-decode padding-bit check, `wrapcol=` is an encode-side line-width control that never appears on a decode call, and the inverse decode reads that wrapped span directly — `ignorechars=` skips the inserted newlines where a pre-strip pass would precede decode, and `padded=False` admits an unpadded span where a manual re-pad would otherwise restore the `=` tail.
+- Rule: `canonical=True` rejects non-canonical base-N input at decode instead of a post-decode padding-bit check, `wrapcol=` is an encode-side line-width control that never appears on a decode call, and the inverse decode reads that wrapped span directly — `ignorechars=` skips the inserted newlines where a pre-strip pass otherwise precedes decode, and `padded=False` admits an unpadded span where a manual re-pad otherwise restores the `=` tail.
 - Reject: a subprocess or bespoke zstd adapter; a local Z85 codec; a padding-bit postcheck; manual line-wrap formatting; a newline pre-strip or manual re-pad before a decode `ignorechars=`/`padded=` carries; a bare `level=` knob where a `CompressionParameter` policy carries the tuning.
 
 [DIGEST_AND_AUTH]:
@@ -276,7 +271,9 @@ class Carrier:
 
 
 @beartype
-def framed(fd: int, span: int, key: bytes, *, shared: zstd.ZstdDict | None = None, tuning: frozendict[zstd.CompressionParameter, int] = _TUNING) -> Result[Frame, FrameFault]:
+def framed(
+    fd: int, span: int, key: bytes, *, shared: zstd.ZstdDict | None = None, tuning: frozendict[zstd.CompressionParameter, int] = _TUNING
+) -> Result[Frame, FrameFault]:
     if span == 0:
         return Error("<empty-span>")
     sink = bytearray(span)
@@ -286,7 +283,9 @@ def framed(fd: int, span: int, key: bytes, *, shared: zstd.ZstdDict | None = Non
     stream = pickle.dumps(Carrier(sink.take_bytes()), protocol=5, buffer_callback=blocks.append)
     body = zstd.compress(stream, options=dict(tuning), zstd_dict=shared)
     nonce = secrets.token_bytes(16)
-    return Ok(Frame(body=body, blocks=tuple(blocks), digest=hashlib.sha256(stream).hexdigest(), nonce=nonce, mac=hmac.digest(key, nonce + body, "sha256")))
+    return Ok(
+        Frame(body=body, blocks=tuple(blocks), digest=hashlib.sha256(stream).hexdigest(), nonce=nonce, mac=hmac.digest(key, nonce + body, "sha256"))
+    )
 
 
 @beartype
@@ -331,7 +330,9 @@ def _floored(scored: int, /) -> int:
 
 
 @beartype
-def tallied[T](stream: Iterable[T], width: int, weigh: Callable[[tuple[T, ...], int], int], scale: int, floor: int, /) -> Result[tuple[frozendict[int, int], int], WindowFault]:
+def tallied[T](
+    stream: Iterable[T], width: int, weigh: Callable[[tuple[T, ...], int], int], scale: int, floor: int, /
+) -> Result[tuple[frozendict[int, int], int], WindowFault]:
     with _FLOOR.set(floor):
         score = partial(weigh, Placeholder, scale)
         return (

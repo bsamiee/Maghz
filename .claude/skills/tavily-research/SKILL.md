@@ -1,12 +1,12 @@
 ---
 name: tavily-research
 description: >-
-  Comprehensive AI-powered research with citations via the Tavily CLI: a structured report
-  grounded in web sources, taking 30-120 seconds. Use for deep research, detailed reports,
-  comparisons, market analysis, or literature review — "research", "investigate", "analyze
-  in depth", "compare X vs Y", "what does the market look like for" — whenever multi-source
-  synthesis with explicit citations is the deliverable. Quick fact-finding and filtered
-  lookups belong to tavily-dynamic-search.
+    Comprehensive AI-powered research with citations via the Tavily CLI: a structured report
+    grounded in web sources, taking 30-120 seconds. Use for deep research, detailed reports,
+    comparisons, market analysis, or literature review — "research", "investigate", "analyze
+    in depth", "compare X vs Y", "what does the market look like for" — whenever multi-source
+    synthesis with explicit citations is the deliverable. Quick fact-finding and filtered
+    lookups belong to tavily-dynamic-search.
 allowed-tools: Bash(uvx *)
 ---
 
@@ -16,7 +16,7 @@ AI-powered deep research that gathers sources, analyzes them, and returns a cite
 
 ## [01]-[USAGE]
 
-```bash
+```bash template
 # Basic research (waits for completion)
 uvx --from tavily-cli tvly research "competitive landscape of AI code assistants"
 
@@ -36,25 +36,25 @@ echo "query" | uvx --from tavily-cli tvly research - --json
 
 ## [02]-[OPTIONS]
 
-| [INDEX] | [OPTION]            | [EFFECT]                                        |
-| :-----: | :------------------ | :----------------------------------------------- |
-|  [01]   | `--model`           | `mini`, `pro`, or `auto` (default)              |
-|  [02]   | `--stream`          | Stream results in real time                     |
-|  [03]   | `--no-wait`         | Return `request_id` immediately (async)         |
-|  [04]   | `--output-schema`   | Path to a JSON schema for structured output     |
-|  [05]   | `--citation-format` | `numbered`, `mla`, `apa`, `chicago`             |
-|  [06]   | `--poll-interval`   | Seconds between status checks (default 10)      |
-|  [07]   | `--timeout`         | Max wait seconds (default 600)                  |
-|  [08]   | `-o, --output`      | Save output to file                             |
-|  [09]   | `--json`            | Structured JSON output                          |
+| [INDEX] | [OPTION]            | [EFFECT]                                    |
+| :-----: | :------------------ | :------------------------------------------ |
+|  [01]   | `--model`           | `mini`, `pro`, or `auto` (default)          |
+|  [02]   | `--stream`          | Stream results in real time                 |
+|  [03]   | `--no-wait`         | Return `request_id` immediately (async)     |
+|  [04]   | `--output-schema`   | Path to a JSON schema for structured output |
+|  [05]   | `--citation-format` | `numbered`, `mla`, `apa`, `chicago`         |
+|  [06]   | `--poll-interval`   | Seconds between status checks (default 10)  |
+|  [07]   | `--timeout`         | Max wait seconds (default 600)              |
+|  [08]   | `-o, --output`      | Save output to file                         |
+|  [09]   | `--json`            | Structured JSON output                      |
 
-## [03]-[MODEL_SELECTION]
+## [03]-[LANE_SELECTION]
 
-| [INDEX] | [MODEL] | [OWNS]                                   | [LATENCY]  |
-| :-----: | :------ | :---------------------------------------- | :--------- |
-|  [01]   | `mini`  | Single-topic, targeted research           | ~30s       |
-|  [02]   | `pro`   | Comprehensive multi-angle analysis        | ~60-120s   |
-|  [03]   | `auto`  | API-chosen by query complexity            | Varies     |
+| [INDEX] | [MODEL] | [OWNS]                             | [LATENCY] |
+| :-----: | :------ | :--------------------------------- | :-------- |
+|  [01]   | `mini`  | Single-topic, targeted research    | ~30s      |
+|  [02]   | `pro`   | Comprehensive multi-angle analysis | ~60-120s  |
+|  [03]   | `auto`  | API-chosen by query complexity     | Varies    |
 
 A "what does X do" question rides `mini`; an "X vs Y vs Z" or "best way to" question rides `pro`. `--output-schema` binds the report to a custom JSON shape when a machine consumes it.
 
@@ -62,7 +62,7 @@ A "what does X do" question rides `mini`; an "X vs Y vs Z" or "best way to" ques
 
 Long-running research starts detached and polls separately:
 
-```bash
+```bash template
 uvx --from tavily-cli tvly research "topic" --no-wait --json          # returns request_id
 uvx --from tavily-cli tvly research status <request_id> --json
 uvx --from tavily-cli tvly research poll <request_id> --json -o result.json

@@ -19,7 +19,7 @@ How to apply:
 - Bulk/mechanical work (clear-spec implementation, data analysis, migrations): gpt-5.5 - it's effectively free.
 - Heavy exploration, investigation, and research legs: dispatch to gpt-5.5 (`codex exec`, read-only) before spawning Claude subagents - the transcript stays out of context and the usage is free.
 - Anything user-facing (UI, copy, API design) needs taste ≥ 7.
-- Reviews of plans/implementations: fable-5 or opus-4.8, optionally gpt-5.5 as an extra independent perspective.
+- Reviews of plans/implementations: fable-5 or opus-4.8, optionally gpt-5.5 as an extra independent perspective. A fable agent never delegates to another fable: inline work first, and unavoidable delegation dispatches a single bounded opus (or below) sub-task, never a chain.
 - Mechanics: gpt-5.5 is only reachable through the Codex CLI - `codex exec` / `codex review` (`~/.codex/config.toml` defaults to gpt-5.5 at medium reasoning).
 - Load the codex skill `.claude/skills/codex/SKILL.md` whenever dispatching work to codex - delegation triggers, invocation mechanics, sandboxing, effort tiers, sessions, and review modes live there.
 - Reasoning effort defaults to medium; escalate a single run with `codex exec -c model_reasoning_effort="high"` (or `--profile xhigh`) for the hardest research, review, and design legs - multi-minute latency, reserve for depth over throughput.

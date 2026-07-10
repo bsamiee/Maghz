@@ -2,7 +2,7 @@
 
 Read property definitions and current values before writing:
 
-```bash
+```bash template
 heptabase tag properties <tagId>
 heptabase card properties <cardIdOrDate>
 heptabase tag cards <tagId> --include-properties
@@ -10,73 +10,78 @@ heptabase tag cards <tagId> --include-properties
 
 Use `card set-property` to replace one property value on one card:
 
-```bash
+```bash template
 heptabase card set-property <cardIdOrDate> --property-id <propertyId> (--value <value> | --json-value <json>)
 ```
 
 Pass exactly one of `--value` or `--json-value`.
 
-- Use `--value` when the CLI should send the argument as a literal string, such as text content or a select option name.
+- Use `--value` when the CLI sends the argument as a literal string, such as text content or a select option name.
 - Use `--json-value` when the value's JSON type matters, such as numbers, booleans, arrays, objects, relation values, and `null`.
 - Use `--json-value null` to clear a property.
 
 Read commands return property values as:
 
-```json
+```json output-only
 {
-  "id": "property-id",
-  "name": "Status",
-  "type": "select",
-  "value": "Published"
+    "id": "property-id",
+    "name": "Status",
+    "type": "select",
+    "value": "Published"
 }
 ```
 
 Relation property reads return an array of populated relation objects, not a plain ID array:
 
-```json
+```json output-only
 {
-  "id": "property-id",
-  "name": "Related",
-  "type": "relation",
-  "value": [{ "id": "related-card-id", "type": "note" }]
+    "id": "property-id",
+    "name": "Related",
+    "type": "relation",
+    "value": [{ "id": "related-card-id", "type": "note" }]
 }
 ```
 
-## Write Formats
+## [01]-[WRITE_FORMATS]
+
+`select` and `multiSelect` option names are case-sensitive, matching the database UI; duplicate resolved options or relation cards are rejected.
 
 <!-- prettier-ignore -->
-| Property type | Format |
-| --- | --- |
-| `text` | Plain string via `--value "Draft notes"`. Stores a plain-text paragraph. |
-| `number` | Number via `--json-value 42`, or a formatted numeric string via `--value "1,234"`. |
-| `select` | Existing option name or raw option ID via `--value "Published"`. Option names are case-sensitive, matching the database UI. |
-| `multiSelect` | JSON array of existing option names or raw option IDs via `--json-value '["Tag1","Tag2"]'`. Option names are case-sensitive, matching the database UI. Duplicate resolved options are rejected. |
-| `date` | JSON object via `--json-value '{"start":"2026-05-05T00:00:00.000Z"}'`. The CLI normalizes `start` to an ISO UTC string with milliseconds and stores `end: null` because the UI does not display date ranges. |
-| `checkbox` | Boolean via `--json-value true` or `--json-value false`. |
-| `url` | Literal string via `--value "https://example.com"`. |
-| `phone` | Literal string via `--value "+1 555 123 4567"`. |
-| `email` | Literal string via `--value "person@example.com"`. |
-| `relation` | JSON array of related card IDs or journal dates via `--json-value '["card-id","2026-05-05"]'`. Replaces the full relation value. Related cards must belong to the relation property's target tag database, source-type cards are rejected, and duplicate resolved cards are rejected. |
+| [INDEX] | [PROPERTY_TYPE] | [FORMAT]                                                                                       |
+| :-----: | :-------------- | :--------------------------------------------------------------------------------------------- |
+|  [01]   | `text`          | Plain string via `--value "Draft notes"`. Stores a plain-text paragraph.                       |
+|  [02]   | `number`        | Number via `--json-value 42`, or a formatted numeric string via `--value "1,234"`.             |
+|  [03]   | `select`        | Existing option name or raw option ID via `--value "Published"`.                               |
+|  [04]   | `multiSelect`   | JSON array of existing option names or raw option IDs via `--json-value '["Tag1","Tag2"]'`.    |
+|  [05]   | `date`          | JSON object via `--json-value '{"start":"2026-05-05T00:00:00.000Z"}'`.                         |
+|  [06]   | `checkbox`      | Boolean via `--json-value true` or `--json-value false`.                                       |
+|  [07]   | `url`           | Literal string via `--value "https://example.com"`.                                            |
+|  [08]   | `phone`         | Literal string via `--value "+1 555 123 4567"`.                                                |
+|  [09]   | `email`         | Literal string via `--value "person@example.com"`.                                             |
+|  [10]   | `relation`      | JSON array of related card IDs or journal dates via `--json-value '["card-id","2026-05-05"]'`. |
 
-## Relation Properties
+- `date`: The CLI normalizes `start` to an ISO UTC string with milliseconds and stores `end: null` because the UI does not display date ranges.
+- `relation`: Replaces the full relation value; related cards must belong to the relation property's target tag database, and source-type cards are rejected.
 
-Relation writes are not self-contained. You must first discover the relation property's target tag database, then list cards in that database.
+## [02]-[RELATION_PROPERTIES]
 
-1. If you only have a card ID/date, run `heptabase card properties <cardIdOrDate>` to find the source tag containing the relation property.
+Relation writes are not self-contained: first discover the relation property's target tag database, then list cards in that database.
+
+1. Given only a card ID/date, run `heptabase card properties <cardIdOrDate>` to find the source tag containing the relation property.
 2. Run `heptabase tag properties <sourceTagId>`.
 3. Find the relation property. Its definition includes `relationTargetTagId`.
 4. Run `heptabase tag cards <relationTargetTagId>` to list related-card candidates. Do not use source-type cards as relation values; relation writes reject them even when they belong to the target tag database.
 5. Set the relation with the selected card IDs or journal dates:
 
-```bash
+```bash template
 heptabase card set-property <cardIdOrDate> --property-id <relationPropertyId> --json-value '["related-card-id"]'
 ```
 
 Do not guess related card IDs from unrelated searches. If a card is not under `relationTargetTagId`, or it is a source-type card, the write is rejected.
 
-## Examples
+## [03]-[EXAMPLES]
 
-```bash
+```bash template
 # Set select by option name
 heptabase card set-property <cardIdOrDate> --property-id <propertyId> --value "Published"
 

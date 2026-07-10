@@ -1,113 +1,85 @@
 {
-  "strictness": 2,
-  "commentTypes": [
-    "logic",
-    "syntax"
-  ],
-  "triggerOnUpdates": true,
-  "triggerOnDrafts": true,
-  "statusCheck": true,
-  "statusCommentsEnabled": true,
-  "fixWithAI": true,
-  "shouldUpdateDescription": false,
-  "updateSummaryOnly": false,
-  "hideFooter": false,
-  "labels": [],
-  "disabledLabels": [],
-  "includeAuthors": [],
-  "excludeAuthors": [],
-  "includeBranches": [],
-  "excludeBranches": [],
-  "includeKeywords": "",
-  "ignoreKeywords": "",
-  "disabledRules": [],
-  "summarySection": {
-    "included": true,
-    "collapsible": true,
-    "defaultOpen": true
-  },
-  "issuesTableSection": {
-    "included": true,
-    "collapsible": true,
-    "defaultOpen": true
-  },
-  "confidenceScoreSection": {
-    "included": true,
-    "collapsible": true,
-    "defaultOpen": true
-  },
-  "sequenceDiagramSection": {
-    "included": true,
-    "collapsible": true,
-    "defaultOpen": false
-  },
-  "ignorePatterns": "uv.lock",
-  "context": {
-    "repos": [
-      "bsamiee/Parametric_Forge",
-      "bsamiee/Rasm"
+    "strictness": 2,
+    "commentTypes": ["logic", "syntax"],
+    "triggerOnUpdates": true,
+    "triggerOnDrafts": true,
+    "statusCheck": true,
+    "statusCommentsEnabled": true,
+    "fixWithAI": true,
+    "shouldUpdateDescription": false,
+    "updateSummaryOnly": false,
+    "hideFooter": false,
+    "summarySection": {
+        "included": true,
+        "collapsible": true,
+        "defaultOpen": true
+    },
+    "issuesTableSection": {
+        "included": true,
+        "collapsible": true,
+        "defaultOpen": true
+    },
+    "confidenceScoreSection": {
+        "included": true,
+        "collapsible": true,
+        "defaultOpen": true
+    },
+    "sequenceDiagramSection": {
+        "included": true,
+        "collapsible": true,
+        "defaultOpen": false
+    },
+    "ignorePatterns": "uv.lock",
+    "context": {
+        "repos": ["bsamiee/Parametric_Forge", "bsamiee/Rasm"]
+    },
+    "rules": [
+        {
+            "id": "greenfield-only",
+            "rule": "No compat shims, aliases for retired names, or migration helpers. A rename replaces every call site in the same change.",
+            "severity": "high",
+            "enabled": true
+        },
+        {
+            "id": "python-doctrine",
+            "rule": "Python follows docs/stacks/python law in this repo: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody, version floor per pyproject.toml. Version movement is forward-only: a downgrade or stale pin without a recorded reason is a defect.",
+            "severity": "high",
+            "scope": ["**/*.py", "pyproject.toml"],
+            "enabled": true
+        },
+        {
+            "id": "secret-custody",
+            "rule": "Doppler owns all secret custody. Credential values, tokens, or DSNs inlined in code, compose files, generated projections, or docs are defects; the repo carries references only.",
+            "severity": "high",
+            "enabled": true
+        },
+        {
+            "id": "ops-receipts",
+            "rule": "Ops rails per docs/standards/ops-doctrine.md: CLI handlers are thin lowerers, one settings owner feeds adapters, and every operation emits a typed receipt with route, resource changes, diagnostics, counts, and timings. Domain logic in handlers, direct os.environ reads, and generic envelope abstractions replacing operation-specific receipts are defects.",
+            "severity": "high",
+            "scope": ["admin/**"],
+            "enabled": true
+        },
+        {
+            "id": "sql-declarative",
+            "rule": "SQL is declarative and idempotent: canonical schema files replay to no-op; numbered migrations and up/down pairs are defects. Search and ranking logic lives in database-owned routines, never application loops.",
+            "severity": "high",
+            "scope": ["db/**"],
+            "enabled": true
+        },
+        {
+            "id": "infra-topology-owner",
+            "rule": "The Pulumi stack in admin/infra.py is the sole VPS topology owner — the image build and the db/ollama/n8n service rows behind StackOp, driven by the settings owner. Imperative provider calls or one-off scripts mutating the VPS outside its verbs, an inline credential, or a resolved DSN are defects.",
+            "severity": "high",
+            "scope": ["admin/**"],
+            "enabled": true
+        },
+        {
+            "id": "generated-projections",
+            "rule": ".mcp.json and .codex/ are generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders.",
+            "severity": "medium",
+            "scope": [".mcp.json", ".codex/**"],
+            "enabled": true
+        }
     ]
-  },
-  "rules": [
-    {
-      "id": "greenfield-only",
-      "rule": "No compat shims, aliases for retired names, or migration helpers. A rename replaces every call site in the same change.",
-      "severity": "high",
-      "enabled": true
-    },
-    {
-      "id": "python-doctrine",
-      "rule": "Python follows docs/stacks/python law in this repo: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody, version floor per pyproject.toml. Version movement is forward-only: a downgrade or stale pin without a recorded reason is a defect.",
-      "severity": "high",
-      "scope": [
-        "**/*.py",
-        "pyproject.toml"
-      ],
-      "enabled": true
-    },
-    {
-      "id": "secret-custody",
-      "rule": "Doppler owns all secret custody. Credential values, tokens, or DSNs inlined in code, compose files, generated projections, or docs are defects; the repo carries references only.",
-      "severity": "high",
-      "enabled": true
-    },
-    {
-      "id": "ops-receipts",
-      "rule": "Ops rails per docs/standards/ops-doctrine.md: CLI handlers are thin lowerers, one settings owner feeds adapters, and every operation emits a typed receipt with route, resource changes, diagnostics, counts, and timings. Domain logic in handlers, direct os.environ reads, and generic envelope abstractions replacing operation-specific receipts are defects.",
-      "severity": "high",
-      "scope": [
-        "admin/**"
-      ],
-      "enabled": true
-    },
-    {
-      "id": "sql-declarative",
-      "rule": "SQL is declarative and idempotent: canonical schema files replay to no-op; numbered migrations and up/down pairs are defects. Search and ranking logic lives in database-owned routines, never application loops.",
-      "severity": "high",
-      "scope": [
-        "db/**"
-      ],
-      "enabled": true
-    },
-    {
-      "id": "compose-infra-drift",
-      "rule": "compose.yaml is transitional; the Pulumi stack in admin/infra.py is the end-state topology owner. Drift between a compose service row and its admin/infra.py counterpart, an inline credential, or a resolved DSN is a defect.",
-      "severity": "high",
-      "scope": [
-        "compose.yaml",
-        "admin/infra.py"
-      ],
-      "enabled": true
-    },
-    {
-      "id": "generated-projections",
-      "rule": ".mcp.json and .codex/ are generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders.",
-      "severity": "medium",
-      "scope": [
-        ".mcp.json",
-        ".codex/**"
-      ],
-      "enabled": true
-    }
-  ]
 }

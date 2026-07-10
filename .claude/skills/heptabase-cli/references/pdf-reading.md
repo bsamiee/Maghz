@@ -1,27 +1,27 @@
 # PDF Reading
 
-## Common Usage Pattern
+## [01]-[COMMON_USAGE_PATTERN]
 
 1. Find PDF card IDs:
 
-```bash
+```bash template
 heptabase card list --card-types pdf --limit 20
 heptabase card list -q "<keyword>" --card-types pdf --limit 20
 ```
 
 2. Read metadata before content:
 
-```bash
+```bash template
 heptabase pdf metadata <pdfCardId>
 ```
 
 3. Read small page ranges:
 
-```bash
+```bash template
 heptabase pdf read <pdfCardId> --start-page 1 --end-page 5
 ```
 
-## Pagination Guidance
+## [02]-[PAGINATION_GUIDANCE]
 
 - Always call `pdf metadata` first.
 - Page numbers are 1-indexed and inclusive.
@@ -29,13 +29,13 @@ heptabase pdf read <pdfCardId> --start-page 1 --end-page 5
 - Read 5-10 pages by default to avoid burning through tokens.
 - Ask the user before requesting significantly more than 100 pages.
 
-## When To Use `pdf read` Vs `file export`
+## [03]-[WHEN_TO_USE_PDF_READ_VS_FILE_EXPORT]
 
 - Use `pdf read` for textual analysis. It returns Heptabase's parsed Markdown, ready for the LLM.
 - Use `file export` for visual or structural inspection. It returns the raw `.pdf` binary path for native PDF tools. This is rarely needed.
 
-## Troubleshooting
+## [04]-[TROUBLESHOOTING]
 
 - `parsedStatus: "processing"`: wait and retry later.
 - `parsedStatus: "failed"` or `"notSupported"`: parsed Markdown is not available for this PDF.
-- `parsedStatus: null`: this PDF card is not parsed yet. Ask the user to open the PDF in Heptabase and click the **Parse** button.
+- `parsedStatus: null`: this PDF card is not parsed yet. Ask the user to open the PDF in Heptabase and click the Parse button.

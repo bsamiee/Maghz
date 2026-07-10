@@ -7,7 +7,7 @@ set -Eeuo pipefail
 shopt -s inherit_errexit nullglob extglob
 IFS=$'\n\t'
 
-# --- [CONSTANTS] --------------------------------------------------------------
+# --- [CONSTANTS] ------------------------------------------------------------------------
 
 # shellcheck disable=SC2034
 readonly VERSION="2.0.0" EX_OK=0 EX_ERR=1 EX_USAGE=2
@@ -28,7 +28,7 @@ declare -a _CLEANUP_STACK=()
 declare -i _CLEANING=0 _DRAINING=0
 TRACE_ID="" SPAN_ID="" TRACE_FLAGS=""
 
-# --- [LOGGING] ----------------------------------------------------------------
+# --- [LOGGING] --------------------------------------------------------------------------
 
 # shellcheck disable=SC2083
 _ts() { REPLY=${ printf '%(%FT%T%z)T' -1;}; }
@@ -71,7 +71,7 @@ _die() {
     exit "${EX_ERR}"
 }
 
-# --- [FUNCTIONS] --------------------------------------------------------------
+# --- [FUNCTIONS] ------------------------------------------------------------------------
 
 _register_cleanup() { _CLEANUP_STACK+=("$1"); }
 _run_cleanups() {
@@ -205,7 +205,7 @@ _run_service() {
     return "${rc}"
 }
 
-# --- [PARSER] -----------------------------------------------------------------
+# --- [PARSER] ---------------------------------------------------------------------------
 
 _usage() {
     printf '%s v%s — Container entrypoint: BASH_TRAPSIG dispatch + monotonic health\n' \
@@ -252,7 +252,7 @@ _parse_args() {
     SERVICE_ARGS=("$@")
 }
 
-# --- [TESTING] ----------------------------------------------------------------
+# --- [TESTING] --------------------------------------------------------------------------
 
 _assert_eq() { [[ "$1" == "$2" ]] || _die "ASSERT ${FUNCNAME[1]}:${BASH_LINENO[0]}: '${1}' != '${2}'"; }
 _assert_match() { [[ "$1" =~ $2 ]] || _die "ASSERT ${FUNCNAME[1]}:${BASH_LINENO[0]}: '${1}' !~ '${2}'"; }
@@ -285,7 +285,7 @@ _self_test() {
     _info "All self-tests passed ($((BASH_MONOSECONDS - t0))s monotonic)"
 }
 
-# --- [EXPORT] -----------------------------------------------------------------
+# --- [EXPORT] ---------------------------------------------------------------------------
 
 _main() {
     _init_trace

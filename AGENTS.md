@@ -59,7 +59,7 @@ Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth rem
 
 ## [06]-[TOOLING]
 
-`Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python.
+`Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python. `fmt [--check] [target...]` is the universal formatter front door — every file type routes to its owning formatter, and project law (pyproject.toml, [tool.sqlfluff], .editorconfig) always outranks the machine defaults.
 
 | [INDEX] | [GROUP]          | [TOOLS]                                                                                                                                        |
 | :-----: | :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |

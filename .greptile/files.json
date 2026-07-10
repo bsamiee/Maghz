@@ -1,68 +1,50 @@
 {
-  "files": [
-    {
-      "path": "CLAUDE.md",
-      "description": "Repo execution standards and agent instructions"
-    },
-    {
-      "path": "AGENTS.md",
-      "description": "Repo role and ownership boundaries for agents"
-    },
-    {
-      "path": "README.md",
-      "description": "Repo structure register"
-    },
-    {
-      "path": "docs/standards/design-doctrine.md",
-      "description": "Universal design law binding every executable surface: rails, dispatch, admitted substrate, parameterization, boundaries, density, vocabularies"
-    },
-    {
-      "path": "docs/standards/ops-doctrine.md",
-      "description": "Operative review law for admin rails, SQL and schema, container topology, and automation: typed receipts, settings ingress, secret mounting",
-      "scope": [
-        "admin/**",
-        "db/**",
-        "compose.yaml",
-        "image/**",
-        "workflows/**"
-      ]
-    },
-    {
-      "path": "admin/README.md",
-      "description": "Module owner map for admin/ and SQL object ownership",
-      "scope": [
-        "admin/**",
-        "db/**"
-      ]
-    },
-    {
-      "path": "docs/stacks/python/README.md",
-      "description": "Python doctrine entry: typed rails, uv custody, expression spine",
-      "scope": [
-        "**/*.py",
-        "pyproject.toml"
-      ]
-    },
-    {
-      "path": "docs/standards/style-guide.md",
-      "description": "Prose law: sentence altitude, register, banned patterns",
-      "scope": [
-        "**/*.md"
-      ]
-    },
-    {
-      "path": "docs/standards/formatting.md",
-      "description": "Formatting law for durable artifacts",
-      "scope": [
-        "**/*.md"
-      ]
-    },
-    {
-      "path": "docs/standards/information-structure.md",
-      "description": "Information architecture law: structure, density, tables vs prose",
-      "scope": [
-        "**/*.md"
-      ]
-    }
-  ]
+    "files": [
+        {
+            "path": "CLAUDE.md",
+            "description": "Repo execution standards and agent instructions"
+        },
+        {
+            "path": "AGENTS.md",
+            "description": "Repo role and ownership boundaries for agents"
+        },
+        {
+            "path": "README.md",
+            "description": "Repo structure register"
+        },
+        {
+            "path": "docs/standards/design-doctrine.md",
+            "description": "Universal design law binding every executable surface: rails, dispatch, admitted substrate, parameterization, boundaries, density, vocabularies"
+        },
+        {
+            "path": "docs/standards/ops-doctrine.md",
+            "description": "Operative review law for admin rails, SQL and schema, container topology, and automation: typed receipts, settings ingress, secret mounting",
+            "scope": ["admin/**", "db/**", "image/**", "workflows/**"]
+        },
+        {
+            "path": "admin/README.md",
+            "description": "Module owner map for admin/ and SQL object ownership",
+            "scope": ["admin/**", "db/**"]
+        },
+        {
+            "path": "docs/stacks/python/README.md",
+            "description": "Python doctrine entry: typed rails, uv custody, expression spine",
+            "scope": ["**/*.py", "pyproject.toml"]
+        },
+        {
+            "path": "docs/standards/style-guide.md",
+            "description": "Prose law: sentence altitude, register, banned patterns",
+            "scope": ["**/*.md"]
+        },
+        {
+            "path": "docs/standards/formatting.md",
+            "description": "Formatting law for durable artifacts",
+            "scope": ["**/*.md"]
+        },
+        {
+            "path": "docs/standards/information-structure.md",
+            "description": "Information architecture law: structure, density, tables vs prose",
+            "scope": ["**/*.md"]
+        }
+    ]
 }

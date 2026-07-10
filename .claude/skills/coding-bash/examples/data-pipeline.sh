@@ -7,7 +7,7 @@ set -Eeuo pipefail
 shopt -s inherit_errexit nullglob extglob
 IFS=$'\n\t'
 
-# --- [CONSTANTS] --------------------------------------------------------------
+# --- [CONSTANTS] ------------------------------------------------------------------------
 
 # shellcheck disable=SC2034  # EX_OK exported for caller scripts
 readonly VERSION="2.0.0" EX_OK=0 EX_ERR=1 EX_USAGE=2
@@ -24,7 +24,7 @@ declare -a _CLEANUP_STACK=() POSITIONAL_ARGS=()
 declare -i _CLEANING=0 LOG_LEVEL=2 PAGE_SIZE=50 PAGE_OFFSET=0
 LOG_FORMAT="${LOG_FORMAT:-text}"
 
-# --- [LOGGING] ----------------------------------------------------------------
+# --- [LOGGING] --------------------------------------------------------------------------
 
 # shellcheck disable=SC2083,SC2084
 # shellcheck disable=SC2015
@@ -96,7 +96,7 @@ _die_usage() {
     exit "${EX_USAGE}"
 }
 
-# --- [FUNCTIONS] --------------------------------------------------------------
+# --- [FUNCTIONS] ------------------------------------------------------------------------
 
 _on_err() {
     local -r rc=$? cmd="${BASH_COMMAND}" depth="${#FUNCNAME[@]}"
@@ -225,7 +225,7 @@ _assemble_output() {
     }'
 }
 
-# --- [OPTIONS] ----------------------------------------------------------------
+# --- [OPTIONS] --------------------------------------------------------------------------
 
 declare -Ar _OPT_META=(
     [h]="-h|--help|Show help||"
@@ -255,7 +255,7 @@ _usage() {
     printf '  LOG_FORMAT=json %s -p 100 ./logs out.json 2>structured.jsonl\n' "${SCRIPT_NAME}"
 }
 
-# --- [PARSER] -----------------------------------------------------------------
+# --- [PARSER] ---------------------------------------------------------------------------
 
 _parse_args() {
     while (($# > 0)); do
@@ -297,7 +297,7 @@ _parse_args() {
     POSITIONAL_ARGS=("$@")
 }
 
-# --- [TESTING] ----------------------------------------------------------------
+# --- [TESTING] --------------------------------------------------------------------------
 
 _self_test() {
     _info "Running self-tests..."
@@ -313,7 +313,7 @@ _self_test() {
     _info "All tests passed"
 }
 
-# --- [EXPORT] -----------------------------------------------------------------
+# --- [EXPORT] ---------------------------------------------------------------------------
 
 trap '_on_err' ERR
 trap '_run_cleanups' EXIT

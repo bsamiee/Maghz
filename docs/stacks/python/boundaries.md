@@ -6,7 +6,7 @@ Foreign material crosses once: a boundary owner projects native handles, sentine
 
 This table selects the owner for a foreign signal; when a signal matches several rows, the most specific wins, and lifetime rows are read before transport rows.
 
-| [INDEX] | [FOREIGN_SIGNAL]        | [SEAM_OWNER]        | [INTERIOR_FORM]                         | [REJECT]                   |
+| [INDEX] | [FOREIGN_SIGNAL]        | [SEAM_OWNER]        | [INTERIOR_FORM]                         | [REJECTED_FORM]            |
 | :-----: | :---------------------- | :------------------ | :-------------------------------------- | :------------------------- |
 |  [01]   | native handle or FFI    | capsule owner       | `Result[T, Fault]` value projection     | raw `ctypes` handle field  |
 |  [02]   | borrowed live memory    | scoped view         | detached `bytes`/value copy             | escaping `memoryview`      |
@@ -97,9 +97,7 @@ def admitted(probe: Callable[[Endpoint], Result[None, str]], disposition: Sweep,
 
 
 def discovered(group: str, disposition: Sweep, /) -> Result[Block[tuple[str, object]], AdmitFault]:
-    probed = Block.of_seq(entry_points(group=group)).map(
-        lambda ep: catch(exception=Exception)(ep.load)().map(lambda loaded: (ep.name, loaded))
-    )
+    probed = Block.of_seq(entry_points(group=group)).map(lambda ep: catch(exception=Exception)(ep.load)().map(lambda loaded: (ep.name, loaded)))
     match disposition:
         case Sweep.STRICT:
             return sequence(probed).map_error(lambda _exc: "<malformed>")
@@ -163,7 +161,11 @@ class Capsule:
 
     def use[T](self, copy: Callable[[memoryview], T], /) -> Result[T, CapsuleFault]:
         match self:
-            case Capsule(tag="owned", owned=(address, size)) | Capsule(tag="borrowed", borrowed=(address, size)) | Capsule(tag="measured", measured=(address, size)):
+            case (
+                Capsule(tag="owned", owned=(address, size))
+                | Capsule(tag="borrowed", borrowed=(address, size))
+                | Capsule(tag="measured", measured=(address, size))
+            ):
                 try:
                     view = ctypes.memoryview_at(address, size, readonly=True)
                     try:
@@ -186,7 +188,10 @@ class Capsule:
                     window = ctypes.memoryview_at(address, size, readonly=False)
                     try:
                         written = 0
-                        for offset, patch in patches:  # Exemption: imperative measured kernel mutates one owned window in place; the per-edit buffer rebind is the rejected O(N*size) recopy
+                        for (
+                            offset,
+                            patch,
+                        ) in patches:  # Exemption: imperative measured kernel mutates one owned window in place; the per-edit buffer rebind is the rejected O(N*size) recopy
                             window[offset : offset + len(patch)] = patch
                             written += len(patch)
                         return Ok(written)
@@ -256,9 +261,7 @@ class CrossFault:
     worker: str = case()
 
 
-_RECOVERY: frozendict[str, Recovery] = frozendict(
-    {"worker": Recovery.RETRY, "handshake": Recovery.REOPEN, "loop_closed": Recovery.REOPEN}
-)
+_RECOVERY: frozendict[str, Recovery] = frozendict({"worker": Recovery.RETRY, "handshake": Recovery.REOPEN, "loop_closed": Recovery.REOPEN})
 
 
 def re_entered[T](provider: BlockingPortalProvider, cross: Callable[[], Awaitable[T]], /) -> Result[T, CrossFault]:
@@ -436,7 +439,9 @@ async def commanded[T](outbox: MemoryObjectSendStream[Command], build: Callable[
     return reply.slot[0]
 
 
-def keyed(session: "Session", path: tuple[int, ...], content: bytes, policy: frozendict[str, str], /) -> tuple[int, tuple[int, ...], bytes, frozendict[str, str]]:
+def keyed(
+    session: "Session", path: tuple[int, ...], content: bytes, policy: frozendict[str, str], /
+) -> tuple[int, tuple[int, ...], bytes, frozendict[str, str]]:
     return (id(session), path, content, policy)
 ```
 

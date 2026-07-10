@@ -45,37 +45,40 @@ Runtime posture knobs, all advisory or off-switches — none change script seman
 
 Two parts, in this order; the parser is strict about both.
 
-### `meta` — mandatory, first statement, pure literal
+### [03.1]-[META_MANDATORY_FIRST_STATEMENT_PURE_LITERAL]
 
 The very first statement must be `export const meta = {…}`, and the object must be a pure literal: no variables, no function calls, no spreads, no template interpolation. The parser walks the syntax tree and rejects anything else, along with reserved keys (`__proto__`, `constructor`, `prototype`). A backtick anywhere in the literal is rejected — the parser reads any backtick as a template literal, even inside a single-quoted string — so `name`, `description`, and `phases` stay free of code-fenced spans.
 
-```js
+```js conceptual
 export const meta = {
-  name: 'find-flaky-tests',                          // required — non-empty string
-  description: 'Find flaky tests and propose fixes', // required — shown in the permission dialog
-  whenToUse: 'CI is intermittently red',             // optional — shown in the workflow list
-  phases: [                                          // optional — one entry per phase() call
-    { title: 'Scan', detail: 'grep test logs for retries' },
-    { title: 'Fix',  detail: 'one agent per flaky test', model: 'sonnet' },
-  ],
-}
+    name: "find-flaky-tests", // required — non-empty string
+    description: "Find flaky tests and propose fixes", // required — shown in the permission dialog
+    whenToUse: "CI is intermittently red", // optional — shown in the workflow list
+    phases: [
+        // optional — one entry per phase() call
+        { title: "Scan", detail: "grep test logs for retries" },
+        { title: "Fix", detail: "one agent per flaky test", model: "sonnet" },
+    ],
+};
 ```
 
 `phases[].title` is matched exactly against `phase()` calls. `phases[].model` is a label, not a setting: the binary shows it in the permission dialog, but no code reads it to pick a model. The model is set only by the `model` option on each `agent()` call — a re-tiered phase sets both, or the dialog lies.
 
-### The body
+### [03.2]-[THE_BODY]
 
 Everything after `meta` is the body. It runs inside an `async` function, so `await` works at the top level. The orchestration globals are injected — nothing is imported. The body's `return` value becomes the tool result. Standard JS built-ins (`JSON`, `Math`, `Array`, `Map`, `Set`, …) are available; section [10] lists what is removed. The body is JavaScript only — TypeScript syntax (type annotations, `interface`, `as` casts) is a parse error.
 
-### Long prompt strings
+### [03.3]-[LONG_PROMPT_STRINGS]
 
 Prompts are the bulk of a workflow. Keep source lines near 150 columns by splitting one string across lines with adjacent `+` concatenation — JavaScript folds adjacent string operands into one value:
 
-```js
+```js conceptual
 const PROMPT =
-  'TASK: realize the open cards of `' + folder + '` into design fences ' +
-  'at the doctrine bar. Read each card body, the pages it seams to, and ' +
-  'verify every novel member before writing.'
+    "TASK: realize the open cards of `" +
+    folder +
+    "` into design fences " +
+    "at the doctrine bar. Read each card body, the pages it seams to, and " +
+    "verify every novel member before writing.";
 ```
 
 - Break at a space and keep that space on the left segment; dropping it fuses two words — a silent prompt change.
@@ -83,11 +86,11 @@ const PROMPT =
 - Receipts and rosters interpolate live at author time — `+ JSON.stringify(x) +` or a single-line `${JSON.stringify(x)}`. A `__TOKEN__` placeholder patched later and a `${'$'}{…}` escape both ship literal text — the script parses, the run launches, and the stage fires with no data — so the linter flags both shapes. When patching a persisted script with `sd`, `$` is a capture reference — patch with `sd -F` or Edit, then re-run the linter before resuming.
 - Body prompts only; never wrap inside `meta` — a long `meta.description` stays one line.
 
-### File organization
+### [03.4]-[FILE_ORGANIZATION]
 
 A workflow reads top-to-bottom as the `meta` manifest, then the body in this fixed section order (omit any a file does not need). Mark each with a divider `// --- [LABEL]` plus dash-fill:
 
-```js
+```js conceptual
 // --- [CONSTANTS] ---------------------------------------------------------------------
 // dependency-free knobs: CAP, BATCH, STALL, static tier/config tables (group the concurrency knobs)
 
@@ -118,54 +121,56 @@ Inside a long `[COMPOSITION]`, mark each phase with a bare subsection divider wh
 
 ## [04]-[GLOBALS]
 
-| [INDEX] | [GLOBAL]                      | [SIGNATURE]                                      | [PURPOSE]                                                           |
-| :-----: | :---------------------------- | :----------------------------------------------- | :------------------------------------------------------------------ |
-|  [01]   | `agent`                       | `agent(prompt, opts?) → Promise<string\|object>` | Spawn one fresh-context subagent                                    |
-|  [02]   | `pipeline`                    | `pipeline(items, ...stages) → Promise<any[]>`    | Stream items through stages, no barrier                             |
-|  [03]   | `parallel`                    | `parallel(thunks) → Promise<any[]>`              | Run thunks concurrently; a barrier                                  |
-|  [04]   | `phase`                       | `phase(title) → void`                            | Start a progress group; later agents join it                        |
-|  [05]   | `log`                         | `log(message) → void`                            | Emit a narrator line above the progress tree                        |
-|  [06]   | `console`                     | `console.log(…)`, `.error(…)`, …                 | Output routed into the workflow log                                 |
-|  [07]   | `setTimeout` / `clearTimeout` | the standard timer pair                          | Injected and abort-aware; the one legal clock — there is no `sleep` |
-|  [08]   | `budget`                      | `{ total, spent(), remaining() }`                | The turn's token target                                             |
-|  [09]   | `args`                        | any                                              | The tool's `args` input as structured data; `undefined` if none     |
-|  [10]   | `workflow`                    | `workflow(nameOrRef, args?) → Promise<any>`      | Run another workflow inline; one nesting level                      |
+| [INDEX] | [GLOBAL]                      | [SIGNATURE]                                      | [PURPOSE]                                      |
+| :-----: | :---------------------------- | :----------------------------------------------- | :--------------------------------------------- |
+|  [01]   | `agent`                       | `agent(prompt, opts?) → Promise<string\|object>` | Spawn one fresh-context subagent               |
+|  [02]   | `pipeline`                    | `pipeline(items, ...stages) → Promise<any[]>`    | Stream items through stages, no barrier        |
+|  [03]   | `parallel`                    | `parallel(thunks) → Promise<any[]>`              | Run thunks concurrently; a barrier             |
+|  [04]   | `phase`                       | `phase(title) → void`                            | Start a progress group; later agents join it   |
+|  [05]   | `log`                         | `log(message) → void`                            | Emit a narrator line above the progress tree   |
+|  [06]   | `console`                     | `console.log(…)`, `.error(…)`, …                 | Output routed into the workflow log            |
+|  [07]   | `setTimeout` / `clearTimeout` | the standard timer pair                          | Injected, abort-aware; no `sleep` exists       |
+|  [08]   | `budget`                      | `{ total, spent(), remaining() }`                | The turn's token target                        |
+|  [09]   | `args`                        | any                                              | `args` as structured data; `undefined` if none |
+|  [10]   | `workflow`                    | `workflow(nameOrRef, args?) → Promise<any>`      | Run another workflow inline; one nesting level |
 
-### Reading `args`
+- `setTimeout` / `clearTimeout`: the one legal clock — no `sleep` exists.
+
+### [04.1]-[READING_ARGS]
 
 `args` arrives as structured data, exactly as the caller supplied it — no serialization to undo. `Workflow({ args: { minUsers: 5 } })` yields the object; an array stays an array; a string stays a string; nothing passed yields `undefined`. The only handling a script needs is a default for the omitted case plus a shape check when one workflow accepts both a config object and a free-text task:
 
-```js
-const threshold = args?.minUsers ?? 20            // object input
-const scope = Array.isArray(args) ? args : []     // array input
-const task = typeof args === 'string' ? args : 'the change described in TASK.md'
+```js conceptual
+const threshold = args?.minUsers ?? 20; // object input
+const scope = Array.isArray(args) ? args : []; // array input
+const task = typeof args === "string" ? args : "the change described in TASK.md";
 ```
 
 Never `JSON.parse(args)` — it is already a live value, and parsing an object throws. Default the no-args run to a safe no-op, never a silent full-corpus sweep. ONE narrow carve-out exists for saved-command invocations that hand a JSON-looking string — a single guarded normalizer at `[INPUTS]` only: `(typeof args === 'string' && /^\s*[\[{]/.test(args)) ? JSON.parse(args) : args`. A bare `JSON.parse(args)` anywhere else stays forbidden. A saved workflow receives `args` via `Workflow({ scriptPath, args })`; if a harness build ever drops it for a `scriptPath` launch, relaunch with an inline `script` or encode the scope in the file.
 
 ## [05]-[AGENT]
 
-```js
-const text = await agent('Summarize the README.')                   // → string
-const data = await agent('List the deps.', { schema: DEPS_SCHEMA }) // → validated object
+```js conceptual
+const text = await agent("Summarize the README."); // → string
+const data = await agent("List the deps.", { schema: DEPS_SCHEMA }); // → validated object
 ```
 
 Without `schema`, `agent()` returns the subagent's final text verbatim. With `schema`, it returns a validated object. If the user skips the agent from `/workflows`, `agent()` returns `null` — the reason results get `.filter(Boolean)`.
 
-| [INDEX] | [OPTION]    | [TYPE]       | [EFFECT]                                                                                                      |
-| :-----: | :---------- | :----------- | :------------------------------------------------------------------------------------------------------------ |
-|  [01]   | `label`     | string       | Display name in `/workflows`; defaults to the prompt's first 60 chars; not in the resume cache key            |
-|  [02]   | `phase`     | string       | Assign this agent to a named progress group; set it inside `pipeline`/`parallel` stages; not in the cache key |
-|  [03]   | `schema`    | object       | JSON Schema forcing structured output; `agent()` returns the validated object                                 |
-|  [04]   | `model`     | string       | Per-agent model: `'sonnet'`/`'opus'`/`'fable'`/`'inherit'` or a full ID; `'sonnet'` is the floor              |
-|  [05]   | `effort`    | string       | Reasoning tier `'low'`…`'max'`, independent of `model`; not in the cache key                                  |
-|  [06]   | `isolation` | `'worktree'` | Fresh git worktree per agent; expensive — only when parallel agents mutate the same files                     |
-|  [07]   | `agentType` | string       | Run as a registered subagent type; validated against the live registry                                        |
-|  [08]   | `stallMs`   | number       | Per-agent stall override (default 180000 ms); raise for a legitimately slow agent; not in the cache key       |
+| [INDEX] | [OPTION]    | [TYPE]       | [EFFECT]                                                                                           |
+| :-----: | :---------- | :----------- | :------------------------------------------------------------------------------------------------- |
+|  [01]   | `label`     | string       | Display name in `/workflows`; defaults to the prompt's first 60 chars; not in the resume cache key |
+|  [02]   | `phase`     | string       | Assign to a named progress group; set inside `pipeline`/`parallel`; not in the cache key           |
+|  [03]   | `schema`    | object       | JSON Schema forcing structured output; `agent()` returns the validated object                      |
+|  [04]   | `model`     | string       | Per-agent model: `'sonnet'`/`'opus'`/`'fable'`/`'inherit'` or a full ID; `'sonnet'` is the floor   |
+|  [05]   | `effort`    | string       | Reasoning tier `'low'`…`'max'`, independent of `model`; not in the cache key                       |
+|  [06]   | `isolation` | `'worktree'` | Fresh git worktree per agent; expensive — only when parallel agents mutate the same files          |
+|  [07]   | `agentType` | string       | Run as a registered subagent type; validated against the live registry                             |
+|  [08]   | `stallMs`   | number       | Per-agent stall override (default 180000 ms); raise for a slow agent; not in the cache key         |
 
 `schema`, `model`, `isolation`, and `agentType` are the four options baked into the resume cache key, and the prompt text is hashed into it too — change any and that call re-runs. `label`, `phase`, `effort`, and `stallMs` never invalidate a cached result.
 
-### Setting the model
+### [05.1]-[SETTING_THE_MODEL]
 
 | [INDEX] | [PASSED]        | [RESOLVES_TO]                                    |
 | :-----: | :-------------- | :----------------------------------------------- |
@@ -180,20 +185,22 @@ There is no validation: a typo like `'sonet'` passes through verbatim and the ag
 
 Not how the model gets set: `meta.phases[].model` (display-only), and the `CLAUDE_CODE_SUBAGENT_MODEL` env var — when set it silently overrides every per-call `model` for the whole session (a user/CI knob the validation section exploits).
 
-### Structured output with `schema`
+### [05.2]-[STRUCTURED_OUTPUT_WITH_SCHEMA]
 
 The runtime compiles the schema with AJV, synthesizes a hidden `StructuredOutput` tool whose input is that schema, and tells the subagent it must call it exactly once. The call is AJV-validated; on a mismatch the agent is handed the error and retries; a subagent that finishes without calling it is nudged up to twice more before failing. The value `agent()` returns is the validated tool input.
 
 Two validators sit behind the two schema surfaces a workflow touches — author every schema to the STRICTER profile so one shape serves both without edits:
 
-| [INDEX] | [PRODUCER]                   | [VALIDATOR]           | [REQUIREMENT]                                                                                            |
-| :-----: | :--------------------------- | :-------------------- | :------------------------------------------------------------------------------------------------------- |
-|  [01]   | `agent(…, { schema })`       | AJV in the runtime    | Tolerates optional properties and open objects — strict is convention, not enforcement                   |
-|  [02]   | `codex exec --output-schema` | OpenAI strict profile | `additionalProperties: false` everywhere, every key in `required`, conditional fields required-but-empty |
+| [INDEX] | [PRODUCER]                   | [VALIDATOR]           | [REQUIREMENT]                                                                 |
+| :-----: | :--------------------------- | :-------------------- | :---------------------------------------------------------------------------- |
+|  [01]   | `agent(…, { schema })`       | AJV in the runtime    | Tolerates optional props and open objects; strict is convention, not enforced |
+|  [02]   | `codex exec --output-schema` | OpenAI strict profile | `additionalProperties: false` everywhere; every key in `required`             |
+
+- `codex exec --output-schema`: conditional fields are required-but-empty
 
 Rules for computing data properly: use `schema` for anything a later line reads a field off of — free text only when the result passes whole into another prompt; keep schemas small, strict, and `required`-tight, defined as `const`s in the body (never inside `meta`); hand data between stages by stringifying into the next prompt (the orchestrator shares no memory with the subagent); a skipped or failed agent returns `null` even with a `schema`.
 
-### Custom agent types
+### [05.3]-[CUSTOM_AGENT_TYPES]
 
 `agentType` runs the call as a registered subagent type — the built-ins `'workflow-subagent'` and `'workflow-remote-agent'`, plus anything from `.claude/agents/` or a plugin (e.g. `'Explore'`). An unknown `agentType` throws with the list of available agents. It composes with `schema`. A workflow subagent is told its final text IS the return value — prompt for the data wanted, not a human-facing message.
 
@@ -223,14 +230,18 @@ The target is a hard ceiling: once `spent()` reaches `total`, further `agent()` 
 
 ## [09]-[LIMITS]
 
-| [INDEX] | [LIMIT]                  | [VALUE]                           | [BEHAVIOR_AT_LIMIT]                                                                        |
-| :-----: | :----------------------- | :-------------------------------- | :----------------------------------------------------------------------------------------- |
-|  [01]   | Lifetime `agent()` calls | 1000 per run                      | Throws `WorkflowAgentCapError`; a runaway-loop backstop — every loop carries its own guard |
-|  [02]   | Concurrent agents        | up to 16, fewer on small machines | Not an error — excess calls queue and run as slots free                                    |
-|  [03]   | Script size              | 524288 bytes                      | Rejected before parsing                                                                    |
-|  [04]   | Token budget             | user-set                          | Throws `WorkflowBudgetExceededError`; in-flight agents finish, no new agents start         |
-|  [05]   | Per-agent stall          | 180000 ms, `stallMs` overrides    | A no-progress agent is aborted and retried up to 5×, then abandoned — its call resolves    |
-|  [06]   | VM synchronous timeout   | 30000 ms                          | Bounds synchronous execution only — catches an infinite sync loop, never a wall-clock cap  |
+| [INDEX] | [LIMIT]                  | [VALUE]                           | [BEHAVIOR_AT_LIMIT]                                                |
+| :-----: | :----------------------- | :-------------------------------- | :----------------------------------------------------------------- |
+|  [01]   | Lifetime `agent()` calls | 1000 per run                      | Throws `WorkflowAgentCapError`; runaway-loop backstop              |
+|  [02]   | Concurrent agents        | up to 16, fewer on small machines | Not an error — excess calls queue and run as slots free            |
+|  [03]   | Script size              | 524288 bytes                      | Rejected before parsing                                            |
+|  [04]   | Token budget             | user-set                          | Throws `WorkflowBudgetExceededError`; in-flight finish, none start |
+|  [05]   | Per-agent stall          | 180000 ms, `stallMs` overrides    | No-progress agent aborted, retried up to 5×, then abandoned        |
+|  [06]   | VM synchronous timeout   | 30000 ms                          | Bounds sync execution only; catches an infinite sync loop          |
+
+- Lifetime `agent()` calls: every loop carries its own guard.
+- Per-agent stall: the aborted call resolves rather than rejecting.
+- VM synchronous timeout: never a wall-clock cap.
 
 ## [10]-[SANDBOX]
 
@@ -252,7 +263,7 @@ Bundled checks gate every workflow before it spends a token. Run both; reach for
 
 The linter enforces the parser's hard rules:
 
-```bash
+```bash template
 node ${CLAUDE_SKILL_DIR}/scripts/validate-workflow.mjs <file.js>
 ```
 
@@ -260,7 +271,7 @@ A missing or non-first `meta`, a non-literal `meta` (a stray backtick included),
 
 The dry-run is the syntax, control-flow, and determinism check, for zero tokens:
 
-```bash
+```bash template
 node ${CLAUDE_SKILL_DIR}/scripts/dry-run.mjs <file.js> [--args '<json>'] [--fixtures '<json>']
 ```
 

@@ -8,7 +8,7 @@ Four siblings own the surfaces this algebra composes as settled material. The ru
 
 Choose the narrowest carrier that preserves the real outcome. A wider carrier is earned only by a capability the narrower one cannot carry: a typed failure cause, or accumulated independent faults. The carrier choice is itself the sequencing algebra; the collection owner and the do-notation builder are that same algebra at traversal scale, not a sixth and seventh carrier.
 
-| [INDEX] | [SURFACE]                | [OWNS]                         | [REJECT]                          |
+| [INDEX] | [SURFACE]                | [OWNS]                         | [REJECTED_FORM]                   |
 | :-----: | :----------------------- | :----------------------------- | :-------------------------------- |
 |  [01]   | `Option[T]`              | non-failing absence            | `None`-as-hidden-failure          |
 |  [02]   | `Result[T, E]`           | typed fallibility, fail-fast   | raised control flow in domain     |
@@ -37,7 +37,7 @@ Every boundary converts once into the carrier that states the real outcome; reus
 
 [CARRIER_THREADING]:
 - Law: the instance matrix migrates a carrier exactly once at a boundary — `Option.of_optional(value)`/`Option.of_result(...)` admit, `Option.to_result(error)`/`to_result_with(thunk)` and `Result.of_option(error)`/`of_option_with(thunk)` widen by supplying the missing fault, `Result.to_option()` narrows by discarding it, and the `_with` thunk forms mint the fault lazily on the absent branch alone, so a fault whose construction is itself costly is paid only when the carrier is empty.
-- Law: reusable transforms thread the migrated carrier through `pipe(value, *fns)` over the curried module callables (`result.map`, `result.bind`, `result.or_else_with`, `result.map_error`) and `compose(*fns)` builds the reusable carrier-preserving transform once; a multi-step pipeline is point-free and a named `compose`d transform keeps the carrier with no intermediate variable that re-collapses it, while method chaining stays the short fluent form for a two-step chain.
+- Law: reusable transforms thread the migrated carrier through `pipe(value, *fns)` over the curried module callables (`result.map`, `result.bind`, `result.or_else_with`, `result.map_error`) and `compose(*fns)` builds the reusable carrier-preserving transform once; a multi-step pipeline is point-free and a named `compose`d transform keeps the carrier with no intermediate variable that re-collapses it, while method chaining stays the fluent form only for the chain no second call site reuses — reuse, never length, promotes the chain to a named `compose`d transform.
 - Law: the `Result -> Option -> Result` round trip stamps over the original fault and breaks every later `map_error` or fault-code predicate, so `option.to_result(specific_fault)` re-supplies a precise fault, and a carrier migrated to `Option` to reuse an `Option`-only transform is migrated back with a re-supplied fault, never trusted to carry the erased one.
 - Reject: a round trip where an explicit projection carries the fault through; `Option.value` access without a prior `is_some` proof; an intermediate variable for a sequential transform `pipe` threads; a wrapper renaming `pipe`/`compose`; a collapse inside a pure projection that stays railed.
 
@@ -84,17 +84,12 @@ def _keyed(shape: "Shape", /) -> Result["Shape", CaptureFault]:
 
 
 _refined: Callable[[Result["Shape", CaptureFault]], Result["Shape", CaptureFault]] = compose(
-    result.bind(_keyed),
-    result.map_error(lambda fault: "<malformed>" if fault == "<empty-key>" else fault),
+    result.bind(_keyed), result.map_error(lambda fault: "<malformed>" if fault == "<empty-key>" else fault)
 )
 
 
 def admitted(parse: Callable[[bytes], "Shape"], raw: bytes, cached: Option["Shape"], /) -> Result["Shape", CaptureFault]:
-    return pipe(
-        cached.to_result_with(lambda: "<missing>"),
-        result.or_else_with(lambda _gap: captured(parse, raw)),
-        _refined,
-    )
+    return pipe(cached.to_result_with(lambda: "<missing>"), result.or_else_with(lambda _gap: captured(parse, raw)), _refined)
 
 
 def _logged(fault: CaptureFault, /) -> str:
@@ -120,7 +115,7 @@ Traversal is carrier policy: the collection owner and the sequencing operator to
 - Law: fail-fast traversal is `expression.extra.result.traverse(step, block)` — the substrate's own applicative threader that maps each element through a `Result`-returning step, short-circuits the whole `Block` on the first `Error`, and collects every `Ok` into `Result[Block[T], E]` — and `sequence(block_of_results)` is `traverse(identity, ...)` for an already-railed `Block`; the hand-rolled seed-`bind` fold over `Ok(Block.empty())` is the rejected reimplementation of a primitive the package already ships.
 - Law: the named `threaded` reducer is reserved for a fold the substrate primitive cannot express — a non-append accumulation order, an interleaved running state beside the carrier, a heterogeneous seed — and is then explicit through `Block.fold(threaded, seed)`; a `threaded` re-spelling of plain `traverse` is the COLLAPSE_SCAN wrapper signal, dissolved into the `traverse` call.
 - Law: `traverse` aborts on the first `Error` and the accumulating disposition reports every casualty — the carrier alone switches between them — but accumulation needs the fault's own combination law and is therefore realized in `[04]`, where the `swap().to_option()` partition and the `combined` reduction close the casualty set; this card ships only the substrate's fail-fast threader and the bespoke `threaded` fold it cannot express.
-- Law: a dependent chain — each step's input the prior step's output, the ladder `traverse` cannot express — has two forms the carrier short-circuits identically: `expression.extra.result.pipeline(*arrows)` composes the `Callable[[A], Result[B, E]]` arrows kleisli (`>=>`) and threads the carrier point-free with no intermediate name, the dense form when only the terminal value survives; `@effect.result[T, E]()` is the generator do-notation where each `yield from` is a `bind` and the `return` is the final `Ok`, the readable form once an intermediate must be combined with a later one or the chain exceeds three steps.
+- Law: a dependent chain — each step's input the prior step's output, the ladder `traverse` cannot express — has two forms the carrier short-circuits identically: `expression.extra.result.pipeline(*arrows)` composes the `Callable[[A], Result[B, E]]` arrows kleisli (`>=>`) and threads the carrier point-free with no intermediate name, the dense form when only the terminal value survives; `@effect.result[T, E]()` is the generator do-notation where each `yield from` is a `bind` and the `return` is the final `Ok`, earned exactly when an earlier intermediate must be re-used by a later step — value reuse is the discriminant, never chain length, and a chain whose every intermediate feeds only its successor stays `pipeline`.
 - Boundary: the dispatch over a modality (`T | Iterable[T]`) and the head-normalization that drives it are the surfaces page's; this page composes `traverse` to state the failure semantics that dispatch carries, never to re-teach the arity normalization.
 - Reject: a hand-rolled seed-`bind` fold where `traverse`/`sequence` states it; `map` then a manual carrier unwrap; an index-threaded fold unless the fold genuinely carries algorithm state; a `match` on the carrier tag where `bind`/`choose` already routes both arms.
 
@@ -156,9 +151,7 @@ def piped(ceiling: int, raw: str, /) -> Result[int, TraverseFault]:
 
 
 def stitched(raws: Block[str], budget: int, /) -> Result[Block[int], TraverseFault]:
-    def threaded(
-        acc: Result[tuple[int, Block[int]], TraverseFault], raw: str, /
-    ) -> Result[tuple[int, Block[int]], TraverseFault]:
+    def threaded(acc: Result[tuple[int, Block[int]], TraverseFault], raw: str, /) -> Result[tuple[int, Block[int]], TraverseFault]:
         return acc.bind(lambda state: gauged(state[0], raw).map(lambda n: (state[0] - n, state[1].cons(n))))
 
     return raws.fold(threaded, Ok((budget, Block.empty()))).map(lambda state: state[1])

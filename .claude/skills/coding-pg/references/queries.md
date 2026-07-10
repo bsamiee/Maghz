@@ -1,12 +1,12 @@
 # Queries
 
-## CTE algebra
+## [01]-[CTE_ALGEBRA]
 
 PG 12+ CTEs are inlined by default unless side-effecting or referenced multiple times.
 
 Recursive CTE with SEARCH BREADTH FIRST + CYCLE in single query:
 
-```sql
+```sql conceptual
 WITH RECURSIVE org_tree AS (
     SELECT id, parent_id, name, 1 AS depth
     FROM departments
@@ -28,7 +28,7 @@ ORDER BY ordercol;
 
 Data-modifying CTE -- archive-and-delete in single statement:
 
-```sql
+```sql conceptual
 WITH deleted AS (
     DELETE FROM events
     WHERE created_at < NOW() - INTERVAL '90 days'
@@ -39,6 +39,7 @@ SELECT * FROM deleted;
 ```
 
 CTE contracts:
+
 - `AS MATERIALIZED` forces single evaluation; `AS NOT MATERIALIZED` forces inlining even with multiple references
 - Side-effecting CTEs (INSERT/UPDATE/DELETE) are always materialized -- execute exactly once
 - SEARCH BREADTH FIRST produces an `ordercol` (or custom name) for deterministic BFS ordering
@@ -47,10 +48,9 @@ CTE contracts:
 - There is no `max_recursion_depth` GUC in PostgreSQL -- use LIMIT in outer query for explicit row caps
 - Queue drain pattern: `DELETE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING *` atomically claims and removes rows
 
+## [02]-[MERGE]
 
-## MERGE
-
-```sql
+```sql conceptual
 MERGE INTO inventory AS tgt
 USING incoming_shipments AS src
 ON tgt.sku = src.sku
@@ -69,6 +69,7 @@ RETURNING merge_action() AS action,
 ```
 
 MERGE contracts:
+
 - `merge_action()` returns `'INSERT'`, `'UPDATE'`, or `'DELETE'` -- typed signal for downstream event emission
 - `OLD.*` / `NEW.*` in RETURNING access pre/post values in PostgreSQL 18 -- replaces audit trigger patterns
 - `OLD` is NULL for INSERT actions; `NEW` is NULL for DELETE actions
@@ -79,12 +80,11 @@ MERGE contracts:
 - MERGE fires statement-level triggers for the actions specified in the command and row-level triggers for rows that execute the corresponding action
 - MERGE RETURNING composes inside CTEs for downstream INSERT/audit pipelines
 
-
-## Conditional aggregation
+## [03]-[CONDITIONAL_AGGREGATION]
 
 FILTER (WHERE) replaces CASE WHEN inside aggregates -- clearer intent, better optimization:
 
-```sql
+```sql conceptual
 SELECT department,
        count(*) FILTER (WHERE status = 'active') AS active_count,
        avg(salary) FILTER (WHERE status = 'active') AS active_avg_salary,
@@ -94,16 +94,16 @@ GROUP BY department;
 ```
 
 FILTER contracts:
+
 - FILTER (WHERE) is evaluated before the aggregate function -- pre-filter, not post-filter
 - Applies to regular aggregates, window aggregates, and ordered-set aggregates
 - CASE WHEN inside aggregates is an anti-pattern -- use FILTER (WHERE) exclusively
 
-
-## Multi-dimensional aggregation
+## [04]-[MULTI_DIMENSIONAL_AGGREGATION]
 
 GROUPING SETS, CUBE, and ROLLUP replace N separate GROUP BY queries with a single scan -- set-algebraic multi-level aggregation:
 
-```sql
+```sql conceptual
 -- GROUPING SETS: explicit dimension combinations
 SELECT region, product_category, date_trunc('month', sale_date) AS month,
        SUM(revenue) AS total_revenue,
@@ -139,6 +139,7 @@ GROUP BY ROLLUP (
 ```
 
 Multi-dimensional aggregation contracts:
+
 - `GROUPING(col1, col2, ...)` returns a bitmask: bit=1 when column is aggregated (NULL because of grouping, not data) -- use to distinguish NULL-from-data vs NULL-from-rollup
 - CUBE(a, b, c) produces 2^3 = 8 grouping sets -- exponential growth; limit to 3-4 columns
 - ROLLUP(a, b, c) produces 4 grouping sets: (a,b,c), (a,b), (a), () -- hierarchical, not combinatorial
@@ -146,12 +147,11 @@ Multi-dimensional aggregation contracts:
 - Planner uses HashAggregate or GroupAggregate with Sort -- partial indexes on grouping columns accelerate sorted strategies
 - `FILTER (WHERE ...)` composes with GROUPING SETS -- conditional aggregation within each dimension slice
 
-
-## Window functions
+## [05]-[WINDOW_FUNCTIONS]
 
 GROUPS framing + EXCLUDE + FILTER in single query:
 
-```sql
+```sql conceptual
 SELECT tenant_id, month, revenue,
        SUM(revenue) OVER (
            PARTITION BY tenant_id
@@ -166,7 +166,7 @@ FROM monthly_metrics;
 
 Ordered-set aggregates with WITHIN GROUP:
 
-```sql
+```sql conceptual
 SELECT region,
        percentile_cont(0.95) WITHIN GROUP (ORDER BY latency)
            FILTER (WHERE status = 'success') AS p95_latency,
@@ -179,7 +179,7 @@ GROUP BY region;
 
 RANGE with INTERVAL -- time-based windowing without physical row counting:
 
-```sql
+```sql conceptual
 SELECT tenant_id, event_date, revenue,
        AVG(revenue) OVER (
            PARTITION BY tenant_id
@@ -196,7 +196,7 @@ FROM daily_metrics;
 
 FIRST_VALUE / LAST_VALUE / NTH_VALUE -- positional extraction with frame trap:
 
-```sql
+```sql conceptual
 SELECT product_id, price_date, price,
        FIRST_VALUE(price) OVER w AS initial_price,
        LAST_VALUE(price) OVER w AS current_price,
@@ -211,7 +211,7 @@ WINDOW w AS (
 
 Distribution analytics -- PERCENT_RANK and CUME_DIST:
 
-```sql
+```sql conceptual
 SELECT employee_id, department, salary,
        PERCENT_RANK() OVER w AS pct_rank,
        CUME_DIST() OVER w AS cumulative_dist
@@ -221,7 +221,7 @@ WINDOW w AS (PARTITION BY department ORDER BY salary);
 
 Gap/island detection via LAG -- boolean expression, no CASE:
 
-```sql
+```sql conceptual
 SELECT user_id, action_time,
        action_time - LAG(action_time) OVER w AS gap,
        (EXTRACT(EPOCH FROM (
@@ -233,7 +233,7 @@ WINDOW w AS (PARTITION BY user_id ORDER BY action_time);
 
 Time-series gap fill -- generate_series + LEFT JOIN + window:
 
-```sql
+```sql conceptual
 SELECT gs.day,
        COALESCE(s.revenue, 0) AS revenue,
        AVG(COALESCE(s.revenue, 0)) OVER (
@@ -247,6 +247,7 @@ LEFT JOIN daily_sales s ON gs.day = s.sale_date;
 ```
 
 Window contracts:
+
 - GROUPS framing counts distinct peer groups, not individual rows -- different from ROWS
 - RANGE framing operates on value distance from current row's ORDER BY value -- composable with INTERVAL for time-based windows
 - RANGE with INTERVAL requires a single ORDER BY column of date/timestamp/interval type -- multi-column ORDER BY invalid with RANGE INTERVAL
@@ -261,12 +262,11 @@ Window contracts:
 - CUME_DIST: count(values <= current) / total_rows, range (0, 1] -- use for cumulative distribution
 - Gap detection: `(expression)::int` coercion preferred over CASE for boolean-to-integer projection
 
-
-## JSON_TABLE and SQL/JSON
+## [06]-[JSON_TABLE_AND_SQL_JSON]
 
 JSON_TABLE -- structured relational extraction from JSONB:
 
-```sql
+```sql conceptual
 SELECT o.id AS order_id, jt.*
 FROM orders o,
     JSON_TABLE(
@@ -284,7 +284,7 @@ WHERE jt.quantity > 0;
 
 jsonb_path_query with variables and predicate pushdown:
 
-```sql
+```sql conceptual
 SELECT id, metadata
 FROM events
 WHERE jsonb_path_exists(metadata, '$.tags[*] ? (@ == "priority")')
@@ -292,6 +292,7 @@ WHERE jsonb_path_exists(metadata, '$.tags[*] ? (@ == "priority")')
 ```
 
 SQL/JSON contracts:
+
 - JSON_TABLE produces a relational result set -- composable with JOINs, WHERE, GROUP BY
 - JSON_TABLE is an implicit LATERAL join -- outer row columns are accessible in path expressions
 - JSON_TABLE COLUMNS support scalar SQL types only (text, int, numeric, uuid, boolean, timestamptz) -- composite and array types invalid
@@ -304,14 +305,13 @@ SQL/JSON contracts:
 - SQL/JSON path language uses `@` for current item, `$` for root -- not JSONPath dot notation
 - jsonb_path_query variables: second argument is jsonb object -- keys become `$varname` in path expression
 
-
-## LATERAL JOIN
+## [07]-[LATERAL_JOIN]
 
 Scalar subqueries in SELECT list are FORBIDDEN -- always LATERAL JOIN for correlated subqueries.
 
 Top-N per group -- latest 3 orders per customer:
 
-```sql
+```sql conceptual
 SELECT c.id, c.name, recent.order_id, recent.total, recent.created_at
 FROM customers c
 CROSS JOIN LATERAL (
@@ -325,7 +325,7 @@ CROSS JOIN LATERAL (
 
 LATERAL with aggregation -- correlated aggregate without GROUP BY in outer:
 
-```sql
+```sql conceptual
 SELECT d.id, d.name, stats.order_count, stats.total_revenue
 FROM departments d
 LEFT JOIN LATERAL (
@@ -338,17 +338,17 @@ LEFT JOIN LATERAL (
 ```
 
 LATERAL contracts:
+
 - LATERAL subquery can reference columns from preceding FROM items -- standard correlated subquery semantics
 - `CROSS JOIN LATERAL` excludes rows where lateral returns empty; `LEFT JOIN LATERAL ... ON TRUE` preserves them with NULLs
 - Planner may convert LATERAL to nested loop -- verify with EXPLAIN for large outer sets
 - LATERAL + LIMIT is the canonical top-N-per-group pattern -- index on `(foreign_key, sort_column DESC)` required
 
-
-## Temporal queries (tstzrange)
+## [08]-[TEMPORAL_QUERIES_TSTZRANGE]
 
 Range containment -- find entity version valid at a specific moment:
 
-```sql
+```sql conceptual
 SELECT id, entity_id, payload, valid_period
 FROM entity_versions
 WHERE entity_id = $1
@@ -359,7 +359,7 @@ LIMIT 1;
 
 Temporal diff -- detect changes between two points in time:
 
-```sql
+```sql conceptual
 SELECT v_new.entity_id,
        v_old.payload AS before_state,
        v_new.payload AS after_state
@@ -372,7 +372,7 @@ WHERE v_new.valid_period @> $2::timestamptz   -- "now" snapshot
 
 Contiguous coverage verification -- detect gaps in temporal history:
 
-```sql
+```sql conceptual
 SELECT entity_id,
        unnest(range_agg(valid_period) - tstzrange(MIN(lower(valid_period)), MAX(upper(valid_period)))) AS gap
 FROM entity_versions
@@ -382,6 +382,7 @@ HAVING range_agg(valid_period) != tstzrange(MIN(lower(valid_period)), MAX(upper(
 ```
 
 Temporal contracts:
+
 - `@>` (range contains point): index via GiST on `valid_period` -- primary temporal lookup operator
 - `&&` (ranges overlap): detects temporal conflicts; `WITHOUT OVERLAPS` in PK/UNIQUE prevents at schema level
 - `-|-` (ranges adjacent): detects gapless sequences; `range_agg()` (PG 14+) collapses overlapping/adjacent ranges -- subtract from bounding range to expose gaps
@@ -389,12 +390,11 @@ Temporal contracts:
 - Temporal tables with `WITHOUT OVERLAPS` guarantee at-most-one-match for point-in-time `@>` lookups -- no `LIMIT 1` needed on containment queries when constraint is present
 - `PERIOD` in temporal FK enforces containment: child range must fall entirely within parent range
 
-
-## Keyset pagination
+## [09]-[KEYSET_PAGINATION]
 
 Compound cursor -- multi-column sort with tiebreaker:
 
-```sql
+```sql template
 SELECT id, rank, title, created_at
 FROM articles
 WHERE tenant_id = $1
@@ -404,6 +404,7 @@ LIMIT $page_size + 1;
 ```
 
 Keyset contracts:
+
 - Fetch N+1 rows; `has_next = rows.length > page_size`; cursor = last visible row's sort key tuple
 - First page: omit cursor WHERE clause, keep ORDER BY + LIMIT
 - Bidirectional: reverse ORDER BY and comparison operator for "previous page"
@@ -411,12 +412,11 @@ Keyset contracts:
 - Sort columns must be indexed -- composite index matching ORDER BY direction
 - Ties in non-unique sort columns: always include PK as tiebreaker
 
-
-## Batch operations via unnest
+## [10]-[BATCH_OPERATIONS_VIA_UNNEST]
 
 Unnest array parameters for set-based batch INSERT/UPDATE — never row-at-a-time loops:
 
-```sql
+```sql template
 INSERT INTO tags (tenant_id, entity_id, label)
 SELECT $1, unnest($2::uuid[]), unnest($3::text[])
 ON CONFLICT (tenant_id, entity_id, label) DO NOTHING;
@@ -431,26 +431,24 @@ WHERE products.id = batch.id AND products.tenant_id = $3;
 - `ON CONFLICT DO NOTHING` for idempotent batch insert — no duplicate error on retry
 - Array parameters bind via `EXECUTE ... USING` in PL/pgSQL or `sql(arrayParam)` in Effect-SQL
 
+## [11]-[EFFECT_SQL_INTEGRATION]
 
-## Effect-SQL integration
+Typed query execution via `@effect/sql-pg` (`v0.49+`):
 
-Typed query execution via `@effect/sql-pg` (v0.49+):
-
-```typescript
+```typescript conceptual
 // SqlSchema.findAll — typed result decode via schema, parameterized query
 const findByTenant = SqlSchema.findAll({
     Request: TenantId,
     Result: Order,
-    execute: (tenantId) =>
-        sql`SELECT id, name, status FROM orders WHERE tenant_id = ${tenantId}`,
-})
+    execute: (tenantId) => sql`SELECT id, name, status FROM orders WHERE tenant_id = ${tenantId}`,
+});
 
 // SqlSchema.findOne — Option-wrapped single result
 const findById = SqlSchema.findOne({
     Request: OrderId,
     Result: Order,
     execute: (id) => sql`SELECT * FROM orders WHERE id = ${id}`,
-})
+});
 
 // SqlResolver — batched N+1 resolution with automatic deduplication
 const OrderById = SqlResolver.findById("OrderById", {
@@ -458,7 +456,7 @@ const OrderById = SqlResolver.findById("OrderById", {
     Result: Order,
     ResultId: (row) => row.id,
     execute: (ids) => sql`SELECT * FROM orders WHERE id IN ${sql.in(ids)}`,
-})
+});
 
 // Keyset pagination with typed cursor
 const listOrders = (tenantId: TenantId, cursor: Option<PageCursor>, limit: number) =>
@@ -468,13 +466,15 @@ const listOrders = (tenantId: TenantId, cursor: Option<PageCursor>, limit: numbe
         execute: () =>
             sql`SELECT id, rank, title, created_at FROM orders
                 WHERE tenant_id = ${tenantId}
-                ${cursor.pipe(Option.match({
-                    onNone: () => sql``,
-                    onSome: (c) => sql`AND (rank, id) < (${c.rank}, ${c.id})`,
-                }))}
+                ${cursor.pipe(
+                    Option.match({
+                        onNone: () => sql``,
+                        onSome: (c) => sql`AND (rank, id) < (${c.rank}, ${c.id})`,
+                    }),
+                )}
                 ORDER BY rank DESC, id DESC
                 LIMIT ${limit + 1}`,
-    })(undefined)
+    })(undefined);
 ```
 
 - `sql` tagged template: parameterized, type-safe, injection-proof — never string concatenation

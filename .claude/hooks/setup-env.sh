@@ -21,8 +21,11 @@ if ((BASH_VERSINFO[0] < 5)) && [[ -x "/etc/profiles/per-user/${USER}/bin/bash" ]
 fi
 shopt -s inherit_errexit
 IFS=$'\n\t'
+# Every artifact this hook writes is secret-adjacent: resolver dumps, retry
+# side files, stderr captures, key manifests. One umask owns their mode.
+umask 077
 
-# --- [CONSTANTS] --------------------------------------------------------------
+# --- [CONSTANTS] ------------------------------------------------------------------------
 
 readonly JUPYTER_TOKEN_CACHE="${HOME}/.config/jupyter/forge-token.env"
 readonly DOPPLER_CACHE_DIR="${CLAUDE_DOPPLER_CACHE_DIR:-${HOME}/.cache/doppler}"
@@ -50,6 +53,7 @@ declare -ra _ENV_KEYS=(
     GOOGLE_WORKSPACE_CLI_CLIENT_ID GOOGLE_WORKSPACE_CLI_CLIENT_SECRET
     GOOGLE_WORKSPACE_CLI_CONFIG_DIR GOOGLE_WORKSPACE_PROJECT_ID
     MAGHZ_REMOTE_HOST MAGHZ_REMOTE_USER MAGHZ_REMOTE_WORKROOT
+    NTFY_URL NTFY_TOPIC NTFY_TOKEN
 )
 readonly EXTRA_ENV_KEYS="${CLAUDE_ENV_EXPORT_KEYS:-}"
 readonly TOOL_PATHS="${CLAUDE_TOOL_PATHS:-${HOME}/.local/bin}"
@@ -59,12 +63,11 @@ declare -a _RECEIPT=()
 declare -a _ALERTS=()
 _MATERIAL=0
 
-# --- [OPERATIONS] -------------------------------------------------------------
+# --- [OPERATIONS] -----------------------------------------------------------------------
 
 _mtime() {
-    # Fractional seconds: a live refresh inside the same wall-clock second must
-    # still classify as live. Output is shape-validated per stat flavor — GNU
-    # stat parses BSD's '-f %Fm' as a file operand and emits multiline junk.
+    # Fractional seconds: a refresh inside the same wall-clock second must still classify live.
+    # Shape-validated per stat flavor — GNU stat reads BSD's '-f %Fm' as a file operand, emitting multiline junk.
     local m
     m="$(stat -f %Fm "$1" 2>/dev/null)" || m=""
     [[ "${m}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { m="$(stat -c %.9Y "$1" 2>/dev/null)" || m=""; }
@@ -83,12 +86,9 @@ _join() {
 
 _fetch() {
     local -r project="$1" config="$2" snap="$3" token="$4" out="$5"
-    # Request budget sits inside the SessionStart hook timeout: a stalled API
-    # degrades to the snapshot instead of killing the whole emission. no-cache
-    # forces a full fetch so every live success rewrites the snapshot — the
-    # mtime advance IS the live verdict; cache-served reads would fake snapshot.
-    # json format: the dump is parsed, never sourced — secret bytes cannot
-    # reach the shell parser, and the snapshot stores json bytes for offline.
+    # Request budget sits inside the hook timeout: a stalled API degrades to the snapshot, never kills emission.
+    # --no-cache forces a full fetch so every live success rewrites the snapshot — the mtime advance IS the live verdict, where a cache-served read would fake it.
+    # --format json is parsed, never sourced, so secret bytes never reach the shell parser; the snapshot holds json for offline.
     local -a flags=(--fallback "${snap}" --no-cache --timeout 3s)
     [[ "${DOPPLER_OFFLINE}" != "1" ]] || flags+=(--fallback-only)
     if [[ -n "${token}" ]]; then
@@ -104,19 +104,21 @@ _fetch() {
 
 _classify() {
     local -r rc="$1" pre="$2" post="$3"
-    if (( rc != 0 )); then echo dead
-    elif [[ "${DOPPLER_OFFLINE}" == "1" ]]; then echo snapshot
-    elif _newer "${pre}" "${post}"; then echo live
+    if ((rc != 0)); then
+        echo dead
+    elif [[ "${DOPPLER_OFFLINE}" == "1" ]]; then
+        echo snapshot
+    elif _newer "${pre}" "${post}"; then
+        echo live
     else echo snapshot; fi
 }
 
 _resolve_source() {
-    # Background worker: writes ${out} (env dump), ${out}.err, ${out}.meta
-    # (outcome|keys|age_days|auth|reason) and refreshes the per-source key-name
-    # manifest — the derived expected map a dead row is reported against.
+    # Background worker: writes ${out} (env dump), ${out}.err, and ${out}.meta
+    # (outcome|keys|age_days|auth|reason), and refreshes the per-source key-name manifest a dead row is reported against.
     local -r spec="$1" out="$2"
     local project config snapshot tokenvar
-    IFS=: read -r project config snapshot tokenvar <<< "${spec}"
+    IFS=: read -r project config snapshot tokenvar <<<"${spec}"
     local -r snap="${DOPPLER_CACHE_DIR}/${snapshot}"
     local token="" auth=cli
     if [[ -n "${tokenvar}" && -n "${!tokenvar:-}" ]]; then
@@ -129,20 +131,16 @@ _resolve_source() {
     post="$(_mtime "${snap}")"
     outcome="$(_classify "${rc}" "${pre}" "${post}")"
     if [[ "${auth}" == "token" && "${outcome}" != "live" ]]; then
-        # Resilient rail: a degraded token attempt retries ambient CLI auth once,
-        # into a side file so a failed retry can never clobber served material.
-        # Runs offline too — fallback decryption is passphrase-bound to the
-        # fetching auth, so only the ambient retry can read a CLI-written
-        # snapshot. Blame lands on the token only when ambient disproves it: a
-        # live retry, or ambient material where the token lane died (Doppler
-        # never serves fallback on 401/403/404, so a dead token lane IS auth).
+        # Resilient rail: a degraded token attempt retries ambient CLI auth once into a side file, so a failed retry never clobbers served material.
+        # Offline too — fallback decryption is passphrase-bound to the fetching auth, so only the ambient retry reads a CLI-written snapshot.
+        # Blame lands on the token only when ambient disproves it: a live retry, or ambient material where the token lane died (Doppler never serves fallback on 401/403/404, so a dead token lane IS auth).
         # Snapshot-for-snapshot keeps auth=token — the snapshot alert covers it.
         local rc2=0 retry
         pre="${post}"
         _fetch "${project}" "${config}" "${snap}" "" "${out}.retry" || rc2=$?
         post="$(_mtime "${snap}")"
         retry="$(_classify "${rc2}" "${pre}" "${post}")"
-        if [[ "${retry}" == "live" ]] || { [[ "${outcome}" == "dead" ]] && (( rc2 == 0 )); }; then
+        if [[ "${retry}" == "live" ]] || { [[ "${outcome}" == "dead" ]] && ((rc2 == 0)); }; then
             auth="token-failed-cli-served"
             outcome="${retry}"
             cat "${out}.retry.err" >>"${out}.err" 2>/dev/null || true
@@ -155,12 +153,13 @@ _resolve_source() {
         : >"${out}"
         reason="$(tail -n1 "${out}.err" 2>/dev/null | sed -E $'s/\x1b\\[[0-9;]*m//g' || true)"
     else
-        nkeys="$(jq -r 'length' "${out}" 2>/dev/null)" || nkeys=0
+        # One projection per snapshot: the keys manifest is the count's source.
         jq -r 'keys_unsorted[]' "${out}" >"${snap%.json}.keys.$$" 2>/dev/null || true
+        nkeys="$(wc -l <"${snap%.json}.keys.$$" | tr -d ' ')"
         chmod 600 "${snap%.json}.keys.$$" 2>/dev/null || true
         mv -f "${snap%.json}.keys.$$" "${snap%.json}.keys" 2>/dev/null || rm -f "${snap%.json}.keys.$$"
         if [[ "${outcome}" == "snapshot" && -f "${snap}" ]]; then
-            age=$(( (EPOCHSECONDS - ${post%%.*}) / 86400 ))
+            age=$(((EPOCHSECONDS - ${post%%.*}) / 86400))
         fi
     fi
     printf '%s|%s|%s|%s|%s\n' "${outcome}" "${nkeys}" "${age}" "${auth}" "${reason}" >"${out}.meta"
@@ -170,7 +169,7 @@ _prune_snapshots() {
     local f base row spec keep
     local -a expected=("${SNAPSHOT_KEEP[@]}") pruned=()
     for spec in "${DOPPLER_SOURCES[@]}"; do
-        IFS=: read -r _ _ row _ <<< "${spec}"
+        IFS=: read -r _ _ row _ <<<"${spec}"
         expected+=("${row}" "${row%.json}.keys")
     done
     # Prune only the file families this hook owns; doppler's own dot-prefixed
@@ -180,11 +179,17 @@ _prune_snapshots() {
         base="${f##*/}"
         keep=0
         for row in "${expected[@]}"; do
-            [[ "${base}" != "${row}" ]] || { keep=1; break; }
+            [[ "${base}" != "${row}" ]] || {
+                keep=1
+                break
+            }
         done
-        (( keep == 1 )) || { rm -f "${f}"; pruned+=("${base}"); }
+        ((keep == 1)) || {
+            rm -f "${f}"
+            pruned+=("${base}")
+        }
     done
-    (( ${#pruned[@]} == 0 )) || _RECEIPT+=("note  pruned orphan snapshots: $(_join "${pruned[@]}")")
+    ((${#pruned[@]} == 0)) || _RECEIPT+=("note  pruned orphan snapshots: $(_join "${pruned[@]}")")
 }
 
 _load_secrets() {
@@ -210,16 +215,15 @@ _load_secrets() {
             out="${outs[${idx}]}"
             local project config snapshot tokenvar label keysfile owed
             local outcome=dead nkeys=0 age=0 auth=none reason="resolver died"
-            IFS=: read -r project config snapshot tokenvar <<< "${DOPPLER_SOURCES[${idx}]}"
+            IFS=: read -r project config snapshot tokenvar <<<"${DOPPLER_SOURCES[${idx}]}"
             label="${project}/${config}"
             if [[ -f "${out}.meta" ]]; then
                 IFS='|' read -r outcome nkeys age auth reason <"${out}.meta" || true
             fi
             if [[ "${outcome}" != "dead" && -s "${out}" ]]; then
                 _MATERIAL=1
-                # NUL-delimited literal assignment, never source/eval: Doppler's
-                # env escaping is server-side and unproven shell-safe, so secret
-                # bytes must not reach the parser. jq decodes json exactly.
+                # NUL-delimited literal assignment, never source/eval: Doppler's env escaping is server-side and unproven shell-safe,
+                # so secret bytes never reach the parser; jq decodes json exactly.
                 local k v
                 while IFS= read -r -d '' k && IFS= read -r -d '' v; do
                     [[ "${k}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
@@ -231,28 +235,28 @@ _load_secrets() {
             [[ "${auth}" != "token-failed-cli-served" ]] ||
                 _ALERTS+=("setup-env: ${label} service token failed; ambient CLI auth served (${tokenvar:-unset})")
             case "${outcome}" in
-                live)
-                    _RECEIPT+=("ok    ${label} live keys=${nkeys} auth=${auth}")
-                    ;;
-                snapshot)
-                    local stale=""
-                    (( age < SNAPSHOT_STALE_DAYS )) || stale=" STALE"
-                    _RECEIPT+=("warn  ${label} snapshot keys=${nkeys} age=${age}d auth=${auth}${stale}")
-                    if [[ -n "${stale}" ]]; then
-                        _ALERTS+=("setup-env: ${label} snapshot is STALE (${age}d >= ${SNAPSHOT_STALE_DAYS}d)")
-                    elif [[ "${DOPPLER_OFFLINE}" != "1" ]]; then
-                        _ALERTS+=("setup-env: ${label} live fetch failed; snapshot served (age ${age}d)")
-                    fi
-                    ;;
-                *)
-                    keysfile="${DOPPLER_CACHE_DIR}/${snapshot%.json}.keys"
-                    owed="none-recorded"
-                    if [[ -f "${keysfile}" ]]; then
-                        owed="$(paste -sd' ' - <"${keysfile}")"
-                    fi
-                    _RECEIPT+=("DEAD  ${label} reason: ${reason:-unknown}; owed keys: ${owed}")
-                    _ALERTS+=("setup-env: ${label} DEAD (${reason:-unknown}); owed keys: ${owed}")
-                    ;;
+            live)
+                _RECEIPT+=("ok    ${label} live keys=${nkeys} auth=${auth}")
+                ;;
+            snapshot)
+                local stale=""
+                ((age < SNAPSHOT_STALE_DAYS)) || stale=" STALE"
+                _RECEIPT+=("warn  ${label} snapshot keys=${nkeys} age=${age}d auth=${auth}${stale}")
+                if [[ -n "${stale}" ]]; then
+                    _ALERTS+=("setup-env: ${label} snapshot is STALE (${age}d >= ${SNAPSHOT_STALE_DAYS}d)")
+                elif [[ "${DOPPLER_OFFLINE}" != "1" ]]; then
+                    _ALERTS+=("setup-env: ${label} live fetch failed; snapshot served (age ${age}d)")
+                fi
+                ;;
+            *)
+                keysfile="${DOPPLER_CACHE_DIR}/${snapshot%.json}.keys"
+                owed="none-recorded"
+                if [[ -f "${keysfile}" ]]; then
+                    owed="$(paste -sd' ' - <"${keysfile}")"
+                fi
+                _RECEIPT+=("DEAD  ${label} reason: ${reason:-unknown}; owed keys: ${owed}")
+                _ALERTS+=("setup-env: ${label} DEAD (${reason:-unknown}); owed keys: ${owed}")
+                ;;
             esac
         done
         _prune_snapshots
@@ -270,7 +274,7 @@ _load_secrets() {
     for key in "${_ENV_KEYS[@]}"; do
         [[ -n "${!key:-}" ]] || unresolved+=("${key}")
     done
-    (( ${#unresolved[@]} == 0 )) || _RECEIPT+=("warn  unresolved keys: $(_join "${unresolved[@]}")")
+    ((${#unresolved[@]} == 0)) || _RECEIPT+=("warn  unresolved keys: $(_join "${unresolved[@]}")")
 }
 
 _emit_env_key() {
@@ -284,7 +288,7 @@ _emit_extra_env_keys() {
     [[ -n "${EXTRA_ENV_KEYS}" ]] || return 0
     local -a keys=()
     local key
-    IFS=$' \t' read -ra keys <<< "${EXTRA_ENV_KEYS//,/ }"
+    IFS=$' \t' read -ra keys <<<"${EXTRA_ENV_KEYS//,/ }"
     for key in "${keys[@]}"; do
         _emit_env_key "${key}"
     done
@@ -294,29 +298,26 @@ _emit_tool_paths() {
     [[ -n "${TOOL_PATHS}" ]] || return 0
     local -a paths=() selected=()
     local path path_value
-    IFS=: read -ra paths <<< "${TOOL_PATHS}"
+    IFS=: read -ra paths <<<"${TOOL_PATHS}"
     for path in "${paths[@]}"; do
         [[ -n "${path}" ]] || continue
         if [[ -d "${path}" || "${ALLOW_MISSING_TOOL_PATHS}" == "1" ]]; then
             selected+=("${path}")
         fi
     done
-    (( ${#selected[@]} > 0 )) || return 0
+    ((${#selected[@]} > 0)) || return 0
     printf -v path_value '%s:' "${selected[@]}"
     # shellcheck disable=SC2016  # Single quotes intentional -- expand when Claude sources the env file.
     printf 'export PATH=%q":${PATH}"\n' "${path_value%:}"
 }
 
-# --- [PUBLISH] ------------------------------------------------------------------
+# --- [PUBLISH] --------------------------------------------------------------------------
 
-# Resolve Doppler, then publish: keys into CLAUDE_ENV_FILE (env mode only),
-# the TUI/GUI session cache on resolver material, and the key-name receipt.
-# A total outage preserves the last good cache; a fresh machine with no cache
-# yet still bootstraps from whatever emitted.
+# Resolve Doppler, then publish: keys into CLAUDE_ENV_FILE (env mode only), the session cache on resolver material, and the key-name receipt.
+# A total outage preserves the last good cache; a cache-less fresh machine still bootstraps from whatever emitted.
 _resolve_and_publish() {
     local publish_env="$1" key
     _load_secrets
-    umask 077
     local keys_tmp
     keys_tmp="$(mktemp "${TMPDIR:-/tmp}/claude-keys.XXXXXX")"
     _TMP_FILES+=("${keys_tmp}")
@@ -341,7 +342,7 @@ _resolve_and_publish() {
 
     mkdir -p "${SESSION_CACHE_DIR}"
     chmod 700 "${SESSION_CACHE_DIR}"
-    if [[ -s "${keys_tmp}" ]] && { (( _MATERIAL == 1 )) || [[ ! -f "${SESSION_CACHE}" ]]; }; then
+    if [[ -s "${keys_tmp}" ]] && { ((_MATERIAL == 1)) || [[ ! -f "${SESSION_CACHE}" ]]; }; then
         local cache_tmp
         cache_tmp="$(mktemp "${SESSION_CACHE_DIR}/.session-env.XXXXXX")"
         _TMP_FILES+=("${cache_tmp}")
@@ -362,10 +363,10 @@ _resolve_and_publish() {
     chmod 600 "${receipt_tmp}"
     mv -f "${receipt_tmp}" "${SESSION_CACHE_DIR}/receipt"
     printf '%s\n' "${_RECEIPT[@]}" >&2
-    (( ${#_ALERTS[@]} == 0 )) || printf '%s\n' "${_ALERTS[@]}"
+    ((${#_ALERTS[@]} == 0)) || printf '%s\n' "${_ALERTS[@]}"
 }
 
-# --- [ENTRY] ------------------------------------------------------------------
+# --- [ENTRY] ----------------------------------------------------------------------------
 
 trap '[[ ${#_TMP_FILES[@]} -eq 0 ]] || rm -f "${_TMP_FILES[@]}"' EXIT
 # Signal death reaps the parallel resolver workers before the EXIT cleanup.
@@ -403,26 +404,47 @@ readonly ENV_DIR
 [[ -d "${ENV_DIR}" && -w "${ENV_DIR}" && ! -d "${CLAUDE_ENV_FILE}" ]] || exit 0
 
 # Warm lane: replay the cache into the env file instantly — no network inside
-# the hook budget — and dispatch the detached refresh.
-if [[ -s "${SESSION_CACHE}" ]]; then
-    umask 077
-    _ENV_TMP="$(mktemp "${CLAUDE_ENV_FILE}.tmp.XXXXXX")"
-    readonly _ENV_TMP
-    _TMP_FILES+=("${_ENV_TMP}")
+# the hook budget — and dispatch the detached refresh (PATH-resolved nohup:
+# /usr/bin is a Darwin fact and this hook runs on every host).
+_replay_cache() {
+    local env_tmp
+    env_tmp="$(mktemp "${CLAUDE_ENV_FILE}.tmp.XXXXXX")"
+    _TMP_FILES+=("${env_tmp}")
     {
         cat "${SESSION_CACHE}"
         _emit_extra_env_keys
         _emit_tool_paths
-    } >"${_ENV_TMP}"
-    chmod 600 "${_ENV_TMP}"
-    mv "${_ENV_TMP}" "${CLAUDE_ENV_FILE}"
+    } >"${env_tmp}"
+    chmod 600 "${env_tmp}"
+    mv "${env_tmp}" "${CLAUDE_ENV_FILE}"
     # Last refresh verdicts stay loud: degraded rows reach the session context.
     grep -E 'DEAD|STALE' "${SESSION_CACHE_DIR}/receipt" 2>/dev/null || true
+}
+if [[ -s "${SESSION_CACHE}" ]]; then
+    _replay_cache
     printf 'setup-env: replay served from session cache; refresh dispatched\n' >&2
-    (/usr/bin/nohup "$0" --refresh >/dev/null 2>>"${SESSION_CACHE_DIR}/refresh.err" &)
+    (nohup "$0" --refresh >/dev/null 2>>"${SESSION_CACHE_DIR}/refresh.err" &)
     exit 0
 fi
 
 # Cold lane (first boot, no cache): resolve inline so the first session still
-# receives keys; every later session rides the warm lane.
+# receives keys. Concurrent cold sessions single-flight through the refresh
+# lock: the loser polls for the winner's cache and replays it, resolving
+# inline unlocked only when no cache lands inside the wait budget.
+mkdir -p "${SESSION_CACHE_DIR}"
+chmod 700 "${SESSION_CACHE_DIR}"
+if mkdir "${REFRESH_LOCK}" 2>/dev/null; then
+    _LOCKED=1
+    trap 'rm -rf "${REFRESH_LOCK}"; [[ ${#_TMP_FILES[@]} -eq 0 ]] || rm -f "${_TMP_FILES[@]}"' EXIT
+else
+    for _ in {1..20}; do
+        [[ -s "${SESSION_CACHE}" ]] && break
+        sleep 0.5
+    done
+    if [[ -s "${SESSION_CACHE}" ]]; then
+        _replay_cache
+        printf 'setup-env: replay served from a concurrent resolver cache\n' >&2
+        exit 0
+    fi
+fi
 _resolve_and_publish env

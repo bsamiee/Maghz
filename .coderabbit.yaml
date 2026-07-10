@@ -4,360 +4,248 @@ early_access: false
 enable_free_tier: true
 inheritance: false
 reviews:
-  profile: assertive
-  request_changes_workflow: false
-  high_level_summary: true
-  high_level_summary_instructions: >-
-    Lead with contract-surface and behavior deltas, one dense paragraph. No restated
-    diff statistics, no methodology narration.
-  high_level_summary_placeholder: "@coderabbitai summary"
-  high_level_summary_in_walkthrough: false
-  auto_title_placeholder: "@coderabbitai"
-  auto_title_instructions: ""
-  review_status: true
-  review_details: true
-  commit_status: true
-  fail_commit_status: false
-  collapse_walkthrough: true
-  changed_files_summary: true
-  sequence_diagrams: true
-  estimate_code_review_effort: true
-  assess_linked_issues: true
-  related_issues: true
-  related_prs: true
-  suggested_labels: true
-  labeling_instructions: []
-  mutually_exclusive_groups: {}
-  auto_apply_labels: true
-  suggested_reviewers: true
-  auto_assign_reviewers: true
-  suggested_reviewers_instructions: []
-  in_progress_fortune: false
-  poem: false
-  enable_prompt_for_ai_agents: true
-  abort_on_close: true
-  disable_cache: false
-  slop_detection:
-    enabled: true
-  path_filters:
-    - "!uv.lock"
-  path_instructions:
-    - path: "**"
-      instructions: >-
-        Universal bar: anticipate 10x functionality growth — surfaces absorb new modalities
-        as rows, cases, or dispatch arms, never as new files, flags, or knobs. Defects:
-        knob/param/flag spam, hardcoded values, fragile string plumbing, naive happy-path
-        logic, hand-rolled reimplementations of capability the ecosystem already provides.
-        External packages are first-class implementation material used at full power, newest
-        stable versions. Everything is agent-first: composable, receipt-bearing,
-        self-describing, no interactive-only paths. Collapse spam relentlessly.
-        Fix-to-root is a review demand: a PR that patches a symptom while its root cause
-        stands, leaves a known defect unfixed because it sits outside the change's scope, or
-        defers a residual for a later pass is defective — the root fix belongs in the same
-        change, and a genuinely blocked item is an explicit unreachable naming its owner,
-        never a silent residual.
-    - path: "{**/*.py,pyproject.toml}"
-      instructions: >-
-        The Python doctrine lives in docs/stacks/python in this repo — review against it,
-        not generic convention. Version floor per pyproject.toml; uv-managed, ruff and ty
-        clean. Typed result rails, expression-shaped logic, polymorphic dispatch over
-        function spam, no bare exceptions crossing domain boundaries. Secret material never
-        lands in code, logs, or committed files — Doppler owns custody. Version movement is
-        forward-only — a downgrade or stale pin without a recorded reason is a defect.
-    - path: "admin/**"
-      instructions: >-
-        Ops rails under docs/standards/ops-doctrine.md. CLI handlers are thin lowerers:
-        bind request shapes, call owner rails, lower one envelope, map status to exit
-        code — domain logic in handlers is a defect. One settings owner feeds adapters;
-        direct os.environ reads, duplicate DSNs, and inline credentials are defects. Every
-        operation emits a typed receipt carrying route, resource changes, diagnostics,
-        counts, and timings; generic envelope abstractions replacing operation-specific
-        receipts are defects. Remote work rides one scoped SSH rail with quoted argv and
-        rail-lowered faults.
-    - path: "compose.yaml"
-      instructions: >-
-        Transitional topology declaration: the Pulumi stack in admin/infra.py is the
-        end-state owner and this file retires when that rail lands — flag drift between
-        compose service rows and their admin/infra.py counterparts. Services are
-        declarative rows; profiles own local/prd exclusion; secrets arrive only through
-        doppler run with required interpolation — an inline credential, token, or resolved
-        DSN is a defect.
-    - path: "db/**"
-      instructions: >-
-        SQL is declarative and idempotent: canonical schema files replay to no-op; numbered
-        migrations and up/down pairs are defects. Search and ranking logic lives in
-        database-owned routines, never application loops. Dictionary staging precedes SQL
-        replay; each database object keeps its single owning file per admin/README.md.
-    - path: "image/**"
-      instructions: >-
-        Container image on the declared Postgres base with a generated extension block:
-        hand edits drifting from the generator, base changes without a recorded reason, and
-        secret material in build args are defects. hadolint-clean.
-    - path: "{.mcp.json,.codex/**}"
-      instructions: >-
-        Generated projections from admin/mcp.py: hand edits are defects — the generator
-        changes first, then the projection re-renders. Server entries carry env references
-        only, never inline secret values.
-    - path: "**/*.sh"
-      instructions: >-
-        Standalone shell including .claude hooks: set -euo pipefail, shellcheck-clean
-        without directives, no `|| true` failure masks, no embedded repo paths, usernames,
-        or magic values. Hooks never pass secret values through shell parsing, logs, or
-        receipts. Service or container lifecycle mutation in an ad hoc script is a defect —
-        the admin/ rails and their typed receipts own VPS mutation.
-    - path: ".claude/workflows/**"
-      instructions: >-
-        Workflow scripts are deterministic orchestration: plain control flow, schema-typed
-        agent outputs, bounded loops and harvest rounds, every stage writing its product to
-        disk and returning a path receipt. Defects: bare promises without await ownership,
-        unbounded polling, branching on wall clock, subagents asked to wait — codex wrappers
-        are launch-only and the orchestrator owns time.
-    - path: "**/*.md"
-      instructions: >-
-        Review prose and structure against docs/standards/style-guide.md,
-        docs/standards/formatting.md, and docs/standards/information-structure.md — the
-        docgen discipline. Defects: no-op sentences that change no reader decision, leading
-        filler words, meta-commentary, provenance/freshness tails, checklist tails, heading
-        proliferation for short content, tables carrying explanations instead of enumerable
-        facts, duplicated content an owning doc already carries, drift from the [UPPER_CASE]
-        label convention, quality ladders (good/better/best tiers) where a contract gate
-        belongs, restated obligations the instruction chain already carries (follow
-        CLAUDE.md, use available tools), and defensive caveats softening settled rules.
-    - path: ".claude/skills/**"
-      instructions: >-
-        Skill bundles under the docgen skill-craft law. Defects: first- or second-person
-        voice in frontmatter descriptions — quoted user-utterance trigger phrases are not
-        voice; over-broad triggers spanning unrelated domains or keyword-stuffed synonym
-        lists; SKILL.md over 500 lines or carrying reference
-        banks, troubleshooting ledgers, or example floods that belong one hop down;
-        references that only route to other references; no-op intensifiers with no owner,
-        action, or gate; filler lead-ins (note that, make sure to, remember to);
-        good/better/best quality ladders instead of contract gates; command catalogs
-        without task triggers; generic think/plan/implement lifecycle steps; closing
-        checklists with no machine-checkable gate; deterministic multi-step procedures
-        narrated in prose where a bundled script belongs; three or more abstract guidance
-        bullets with no paired rejected/accepted example or gate; one mandated output
-        skeleton regardless of consumer; instructed network fetches or global installs
-        inside skill bodies, except an owned install surface naming exact source, scope,
-        and verification.
-  auto_review:
-    enabled: true
-    description_keyword: ""
-    auto_incremental_review: true
-    auto_pause_after_reviewed_commits: 0
-    ignore_title_keywords: []
-    labels: []
-    drafts: true
-    base_branches: []
-    ignore_usernames: []
-  finishing_touches:
-    docstrings:
-      enabled: true
-    unit_tests:
-      enabled: false
-    simplify:
-      enabled: false
-    autofix:
-      enabled: true
-    custom: []
-  pre_merge_checks:
-    override_requested_reviewers_only: false
-    docstrings:
-      mode: "off"
-      threshold: 80
-    title:
-      mode: "off"
-      requirements: ""
-    description:
-      mode: "off"
-    issue_assessment:
-      mode: "off"
-    custom_checks: []
-  tools:
-    ast-grep:
-      essential_rules: true
-      rule_dirs: []
-      util_dirs: []
-      packages: []
-    shellcheck:
-      enabled: true
-    ruff:
-      enabled: true
-    markdownlint:
-      enabled: false
-    github-checks:
-      enabled: true
-      timeout_ms: 90000
-    languagetool:
-      enabled: false
-      enabled_rules: []
-      disabled_rules: []
-      enabled_categories: []
-      disabled_categories: []
-      enabled_only: false
-      level: default
-    biome:
-      enabled: true
-    hadolint:
-      enabled: true
-    swiftlint:
-      enabled: true
-    phpstan:
-      enabled: true
-      level: default
-    phpmd:
-      enabled: true
-    phpcs:
-      enabled: true
-    golangci-lint:
-      enabled: true
-    yamllint:
-      enabled: true
-    gitleaks:
-      enabled: true
-    trufflehog:
-      enabled: true
-    checkov:
-      enabled: true
-    tflint:
-      enabled: true
-    detekt:
-      enabled: true
-    eslint:
-      enabled: true
-    flake8:
-      enabled: true
-    fbinfer:
-      enabled: true
-      enable_java: false
-    fortitudeLint:
-      enabled: true
-    rubocop:
-      enabled: true
-    buf:
-      enabled: true
-    regal:
-      enabled: true
-    actionlint:
-      enabled: true
-    zizmor:
-      enabled: true
-    pmd:
-      enabled: true
-    clang:
-      enabled: true
-    cppcheck:
-      enabled: true
-    opengrep:
-      enabled: true
-    semgrep:
-      enabled: true
-    circleci:
-      enabled: true
-    clippy:
-      enabled: true
-    sqlfluff:
-      enabled: true
-    squawk:
-      enabled: true
-    trivy:
-      enabled: true
-    prismaLint:
-      enabled: true
-    pylint:
-      enabled: true
-    oxc:
-      enabled: true
-    shopifyThemeCheck:
-      enabled: true
-    luacheck:
-      enabled: true
-    brakeman:
-      enabled: true
-    dotenvLint:
-      enabled: true
-    htmlhint:
-      enabled: true
-    stylelint:
-      enabled: true
-    checkmake:
-      enabled: true
-    osvScanner:
-      enabled: true
-    oasdiff:
-      enabled: true
-    reactDoctor:
-      enabled: true
-    presidio:
-      enabled: true
-    blinter:
-      enabled: true
-    smartyLint:
-      enabled: true
-    emberTemplateLint:
-      enabled: true
-    skillspector:
-      enabled: true
-    psscriptanalyzer:
-      enabled: true
-chat:
-  art: false
-  allow_non_org_members: true
-  auto_reply: true
-  integrations:
-    jira:
-      usage: disabled
-    linear:
-      usage: disabled
-knowledge_base:
-  opt_out: false
-  web_search:
-    enabled: true
-  code_guidelines:
-    enabled: true
-    filePatterns:
-      - "docs/standards/*.md"
-      - "docs/stacks/*/README.md"
-  learnings:
-    scope: local
-    approval_delay: 0
-  issues:
-    scope: local
-  jira:
-    usage: disabled
-    project_keys: []
-  linear:
-    usage: disabled
-    team_keys: []
-  pull_requests:
-    scope: local
-  mcp:
-    usage: auto
-    disabled_servers: []
-  automatic_repository_linking: false
-  linked_repositories:
-    - repository: bsamiee/Parametric_Forge
-      instructions: >-
-        Machine owner for local shell, PATH, provisioning, and launcher rails; toolchain or
-        secret-injection failures are fixed there, never patched around in admin/.
-    - repository: bsamiee/Rasm
-      instructions: >-
-        Doctrine master this repo's copied stack law derives from; skill bundles mirror
-        byte-identical across the estate — flag divergence in mirrored surfaces.
-code_generation:
-  docstrings:
-    language: en-US
-    path_instructions: []
-  unit_tests:
-    path_instructions: []
-issue_enrichment:
-  auto_enrich:
-    enabled: true
-  planning:
-    enabled: false
-    auto_planning:
-      enabled: false
-      labels: []
-  labeling:
-    labeling_instructions: []
+    profile: assertive
+    request_changes_workflow: false
+    high_level_summary: true
+    high_level_summary_instructions: >-
+        Lead with contract-surface and behavior deltas, one dense paragraph. No restated diff statistics, no methodology narration.
+    high_level_summary_placeholder: "@coderabbitai summary"
+    high_level_summary_in_walkthrough: false
+    auto_title_placeholder: "@coderabbitai"
+    review_status: true
+    review_details: true
+    commit_status: true
+    fail_commit_status: false
+    collapse_walkthrough: true
+    changed_files_summary: true
+    sequence_diagrams: true
+    estimate_code_review_effort: true
+    assess_linked_issues: true
+    related_issues: true
+    related_prs: true
+    suggested_labels: true
     auto_apply_labels: true
+    suggested_reviewers: false
+    auto_assign_reviewers: false
+    in_progress_fortune: false
+    poem: false
+    enable_prompt_for_ai_agents: true
+    abort_on_close: true
+    disable_cache: false
+    slop_detection:
+        enabled: true
+    path_filters:
+        - "!uv.lock"
+    path_instructions:
+        - path: "**"
+          instructions: >-
+            Universal bar: anticipate 10x functionality growth — surfaces absorb new modalities as rows, cases, or dispatch arms, never as new files, flags, or knobs. Defects: knob/param/flag spam, hardcoded values, fragile string plumbing, naive happy-path logic, hand-rolled reimplementations of capability the ecosystem already provides. External packages are first-class implementation material used at full power, newest stable versions. Everything is agent-first: composable, receipt-bearing, self-describing, no interactive-only paths. Collapse spam relentlessly. Never restate law the formatters and gates already enforce (ruff, ty, sqlfluff, hadolint, shellcheck); flag their suppressions and bypasses — a noqa, type: ignore, or shellcheck directive in a diff demands the ownership justification, and suppression-as-fix is the defect. Fix-to-root is a review demand: a PR that patches a symptom while its root cause stands, leaves a known defect unfixed because it sits outside the change's scope, or defers a residual for a later pass is defective — the root fix belongs in the same change, and a genuinely blocked item is an explicit unreachable naming its owner, never a silent residual. Comment discipline: a comment exists only for the in-situ constraint the code cannot show — the why, the invariant, the trap — one line as the target, inlined onto its statement when short, two lines the usual ceiling; what-comments, narration, and restated code are defects, and every pass that touches a file prunes its stale or drifted comments in the same pass.
+        - path: "{**/*.py,pyproject.toml}"
+          instructions: >-
+            The Python doctrine lives in docs/stacks/python in this repo — review against it, not generic convention. Version floor per pyproject.toml; uv-managed, ruff and ty clean. Typed result rails, expression-shaped logic, polymorphic dispatch over function spam, no bare exceptions crossing domain boundaries. Secret material never lands in code, logs, or committed files — Doppler owns custody. Version movement is forward-only — a downgrade or stale pin without a recorded reason is a defect.
+        - path: "admin/**"
+          instructions: >-
+            Ops rails under docs/standards/ops-doctrine.md. CLI handlers are thin lowerers: bind request shapes, call owner rails, lower one envelope, map status to exit code — domain logic in handlers is a defect. One settings owner feeds adapters; direct os.environ reads, duplicate DSNs, and inline credentials are defects. Every operation emits a typed receipt carrying route, resource changes, diagnostics, counts, and timings; generic envelope abstractions replacing operation-specific receipts are defects. Remote work rides one scoped SSH rail with quoted argv and rail-lowered faults. The Pulumi stack in admin/infra.py is the sole VPS topology owner — the image build and the db/ollama/n8n service rows behind StackOp; imperative provider calls or one-off scripts mutating the VPS outside its verbs, an inline credential, or a resolved DSN are defects.
+        - path: "db/**"
+          instructions: >-
+            SQL is declarative and idempotent: canonical schema files replay to no-op; numbered migrations and up/down pairs are defects. Search and ranking logic lives in database-owned routines, never application loops. Dictionary staging precedes SQL replay; each database object keeps its single owning file per admin/README.md.
+        - path: "image/**"
+          instructions: >-
+            Container image on the declared Postgres base with a generated extension block: hand edits drifting from the generator, base changes without a recorded reason, and secret material in build args are defects. hadolint-clean.
+        - path: "{.mcp.json,.codex/**}"
+          instructions: >-
+            Generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders. Server entries carry env references only, never inline secret values.
+        - path: "**/*.sh"
+          instructions: >-
+            Standalone shell including .claude hooks: set -euo pipefail, shellcheck-clean without directives, no `|| true` failure masks, no embedded repo paths, usernames, or magic values. Hooks never pass secret values through shell parsing, logs, or receipts. Service or container lifecycle mutation in an ad hoc script is a defect — the admin/ rails and their typed receipts own VPS mutation.
+        - path: "**/*.md"
+          instructions: >-
+            Review prose and structure against docs/standards/style-guide.md, docs/standards/formatting.md, and docs/standards/information-structure.md — the docgen discipline. Defects: no-op sentences that change no reader decision, leading filler words, meta-commentary, provenance/freshness tails, checklist tails, heading proliferation for short content, tables carrying explanations instead of enumerable facts, duplicated content an owning doc already carries, drift from the [UPPER_CASE] label convention, quality ladders (good/better/best tiers) where a contract gate belongs, restated obligations the instruction chain already carries (follow CLAUDE.md, use available tools), and defensive caveats softening settled rules. Table repair preserves the grid — hoist repeats into headers, relieve clause tails into the lead or a note, split overloaded rows — and conversion to cards or lists is earned only when rows share no comparison question or a type standard owns the shape; cell width alone never converts a table. Apply the regeneration test: a sentence a fresh agent regenerates from disk plus the document's stated invariants is a mirror and is deleted. Sibling files of one kind (references of one bundle, templates, doc pages) share one structural schema — section vocabulary, card field sets, marker tokens — and a locally-optimized deviation is a defect even when it reads better in isolation.
+        - path: ".claude/skills/**"
+          instructions: >-
+            Skill bundles under the docgen skill-craft law. Defects: first- or second-person voice in frontmatter descriptions — quoted user-utterance trigger phrases are not voice; over-broad triggers spanning unrelated domains or keyword-stuffed synonym lists; SKILL.md over 500 lines or carrying reference banks, troubleshooting ledgers, or example floods that belong one hop down; references that only route to other references; no-op intensifiers with no owner, action, or gate; filler lead-ins (note that, make sure to, remember to); good/better/best quality ladders instead of contract gates; command catalogs without task triggers; generic think/plan/implement lifecycle steps; closing checklists with no machine-checkable gate; deterministic multi-step procedures narrated in prose where a bundled script belongs; three or more abstract guidance bullets with no paired rejected/accepted example or gate; one mandated output skeleton regardless of consumer; instructed network fetches or global installs inside skill bodies, except an owned install surface naming exact source, scope, and verification. The SKILL.md root follows the declared schema: H1 is the bare [SKILL_TOKEN], routable bundles open with [01]-[ROUTING] router cards (- [NN]-[TOKEN](path): phrase), group labels are [TOKEN]: lines never bold, and a body rule that would change no agent output if deleted is dead weight regardless of its register.
+    auto_review:
+        enabled: true
+        auto_incremental_review: true
+        auto_pause_after_reviewed_commits: 0
+        drafts: true
+    finishing_touches:
+        docstrings:
+            enabled: false
+        unit_tests:
+            enabled: false
+        simplify:
+            enabled: false
+        autofix:
+            enabled: true
+    pre_merge_checks:
+        docstrings:
+            mode: "off"
+        title:
+            mode: "off"
+        description:
+            mode: "off"
+        issue_assessment:
+            mode: "off"
+    tools:
+        ast-grep:
+            essential_rules: true
+        shellcheck:
+            enabled: true
+        ruff:
+            enabled: true
+        markdownlint:
+            enabled: false
+        github-checks:
+            enabled: true
+            timeout_ms: 90000
+        languagetool:
+            enabled: false
+        biome:
+            enabled: false
+        hadolint:
+            enabled: true
+        swiftlint:
+            enabled: false
+        phpstan:
+            enabled: false
+        phpmd:
+            enabled: false
+        phpcs:
+            enabled: false
+        golangci-lint:
+            enabled: false
+        yamllint:
+            enabled: true
+        gitleaks:
+            enabled: true
+        trufflehog:
+            enabled: true
+        checkov:
+            enabled: false
+        tflint:
+            enabled: false
+        detekt:
+            enabled: false
+        eslint:
+            enabled: false
+        flake8:
+            enabled: false
+        fbinfer:
+            enabled: false
+        fortitudeLint:
+            enabled: false
+        rubocop:
+            enabled: false
+        buf:
+            enabled: false
+        regal:
+            enabled: false
+        actionlint:
+            enabled: false
+        zizmor:
+            enabled: false
+        pmd:
+            enabled: false
+        clang:
+            enabled: false
+        cppcheck:
+            enabled: false
+        opengrep:
+            enabled: false
+        semgrep:
+            enabled: false
+        circleci:
+            enabled: false
+        clippy:
+            enabled: false
+        sqlfluff:
+            enabled: true
+        squawk:
+            enabled: false
+        trivy:
+            enabled: true
+        prismaLint:
+            enabled: false
+        pylint:
+            enabled: false
+        oxc:
+            enabled: false
+        shopifyThemeCheck:
+            enabled: false
+        luacheck:
+            enabled: false
+        brakeman:
+            enabled: false
+        dotenvLint:
+            enabled: false
+        htmlhint:
+            enabled: false
+        stylelint:
+            enabled: false
+        checkmake:
+            enabled: false
+        osvScanner:
+            enabled: true
+        oasdiff:
+            enabled: false
+        reactDoctor:
+            enabled: false
+        presidio:
+            enabled: false
+        blinter:
+            enabled: false
+        smartyLint:
+            enabled: false
+        emberTemplateLint:
+            enabled: false
+        skillspector:
+            enabled: true
+        psscriptanalyzer:
+            enabled: false
+chat:
+    art: false
+    allow_non_org_members: true
+    auto_reply: true
+    integrations:
+        jira:
+            usage: disabled
+        linear:
+            usage: disabled
+knowledge_base:
+    opt_out: false
+    web_search:
+        enabled: true
+    code_guidelines:
+        enabled: true
+        filePatterns:
+            - "docs/standards/*.md"
+            - "docs/stacks/*/README.md"
+    learnings:
+        scope: local
+        approval_delay: 0
+    issues:
+        scope: local
+    jira:
+        usage: disabled
+    linear:
+        usage: disabled
+    pull_requests:
+        scope: local
+    mcp:
+        usage: auto
+    automatic_repository_linking: false
+    linked_repositories:
+        - repository: bsamiee/Parametric_Forge
+          instructions: >-
+            Machine owner for local shell, PATH, provisioning, and launcher rails; toolchain or secret-injection failures are fixed there, never patched around in admin/.
+        - repository: bsamiee/Rasm
+          instructions: >-
+            Doctrine master this repo's copied stack law derives from; skill bundles mirror byte-identical across the estate — flag divergence in mirrored surfaces.
+issue_enrichment:
+    auto_enrich:
+        enabled: true
+    planning:
+        enabled: false
+    labeling:
+        auto_apply_labels: true

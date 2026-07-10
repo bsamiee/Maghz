@@ -13,6 +13,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+from typing import override
 
 
 SECRET = os.environ.get("MAGHZ_HOOK_SECRET", "").encode()
@@ -56,6 +57,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ledger.write(json.dumps(receipt) + "\n")
         return self._reply(204)
 
+    @override
     def log_message(self, format: str, *args: object) -> None:
         """Receipts are the ledger; per-request access logs are noise."""
 

@@ -1,12 +1,12 @@
 ---
 name: tavily-crawl
 description: >-
-  Crawl websites and extract content from many pages via the Tavily CLI, with depth and
-  breadth control, path filtering, semantic instructions, and per-page markdown files on
-  disk. Use to crawl a site, download documentation, extract an entire docs section, or
-  bulk-extract pages — "crawl", "get all the pages", "download the docs", "extract everything
-  under /docs", "bulk extract". Single known URLs belong to tavily-extract; URL discovery
-  without content belongs to tavily-map.
+    Crawl websites and extract content from many pages via the Tavily CLI, with depth and
+    breadth control, path filtering, semantic instructions, and per-page markdown files on
+    disk. Use to crawl a site, download documentation, extract an entire docs section, or
+    bulk-extract pages — "crawl", "get all the pages", "download the docs", "extract everything
+    under /docs", "bulk extract". Single known URLs belong to tavily-extract; URL discovery
+    without content belongs to tavily-map.
 allowed-tools: Bash(uvx *)
 ---
 
@@ -16,7 +16,7 @@ Crawl a website and extract content from every discovered page, optionally savin
 
 ## [01]-[USAGE]
 
-```bash
+```bash template
 # Basic crawl
 uvx --from tavily-cli tvly crawl "https://docs.example.com" --json
 
@@ -58,7 +58,7 @@ uvx --from tavily-cli tvly crawl "https://docs.example.com" --instructions "Find
 - [AGENTIC]: Results feeding an LLM always ride `--instructions` plus `--chunks-per-source` — relevant chunks instead of full pages, no context explosion.
 - [COLLECTION]: Data collection to disk rides `--output-dir` without `--chunks-per-source` — full pages as markdown files.
 
-```bash
+```bash template
 uvx --from tavily-cli tvly crawl "https://docs.example.com" --instructions "API authentication" --chunks-per-source 3 --json
 uvx --from tavily-cli tvly crawl "https://docs.example.com" --max-depth 2 --output-dir ./docs/
 ```

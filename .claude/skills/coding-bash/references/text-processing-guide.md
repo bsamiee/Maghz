@@ -17,8 +17,9 @@ External tool reference: rg, awk, sd, fd, choose, jq, yq, mlr, jnv. Pipeline com
 |  [09]   | JSON (TUI)     | `jnv`    |   -   | Interactive jq query dev — paste into scripts                |
 |  [10]   | Tabular align  | `column` |   -   | `-t` pretty-prints; display only                             |
 
-**Capability probing** — always gate on availability:
-```bash
+[CAPABILITY_PROBING]:always gate on availability:
+
+```bash copy-safe
 _require_tool() {
     command -v "${1}" >/dev/null 2>&1 || {
         printf '[WARN] %s unavailable — falling back to %s\n' "${1}" "${2}" >&2
@@ -30,7 +31,7 @@ _require_tool rg grep && _search() { rg "$@"; } || _search() { grep -rn "$@"; }
 _require_tool fd find && _find() { fd "$@"; } || _find() { find "$@"; }
 ```
 
-**macOS (Darwin) caveats** — use when the active environment targets Darwin:
+[MACOS_DARWIN_CAVEATS]:use when the active environment targets Darwin:
 
 | [INDEX] | [ISSUE]         | [CONSEQUENCE]                  | [FIX]                     |
 | :-----: | :-------------- | :----------------------------- | :------------------------ |
@@ -41,20 +42,19 @@ _require_tool fd find && _find() { fd "$@"; } || _find() { find "$@"; }
 
 ## [02]-[REGEX_DIALECTS]
 
-`rg` and `sd` use PCRE2 natively. BRE/ERE awareness needed only when reading existing `grep`/`sed` in legacy scripts.
+`rg`/`sd` use PCRE2 natively; `grep`/`sed` use BRE; `grep -E`/`awk` use ERE — awareness needed only when reading existing scripts in the older dialects.
 
-| [INDEX] | [FEATURE]     | [PCRE2] (`rg`/`sd`) | [BRE] (`grep`/`sed`) | [ERE] (`grep -E`/`awk`) |
-| :-----: | ------------- | :------------------ | :------------------- | :---------------------- |
-|  [01]   | One or more   | `+`                 | `\+`                 | `+`                     |
-|  [02]   | Zero or one   | `?`                 | `\?`                 | `?`                     |
-|  [03]   | Alternation   | `\|`                | `\|`                 | `\|`                    |
-|  [04]   | Grouping      | `(...)`             | `\(...\)`            | `(...)`                 |
-|  [05]   | Lookahead     | `(?=…)` / `(?!…)`   | -                    | -                       |
-|  [06]   | Lookbehind    | `(?<=…)` / `(?<!…)` | -                    | -                       |
-|  [07]   | Named capture | `(?P<name>…)`       | -                    | -                       |
-|  [08]   | Non-greedy    | `*?`, `+?`, `??`    | -                    | -                       |
+| [INDEX] | [FEATURE]     | [PCRE2]             | [BRE]     | [ERE]   |
+| :-----: | :------------ | :------------------ | :-------- | :------ |
+|  [01]   | One or more   | `+`                 | `\+`      | `+`     |
+|  [02]   | Zero or one   | `?`                 | `\?`      | `?`     |
+|  [03]   | Alternation   | `\|`                | `\|`      | `\|`    |
+|  [04]   | Grouping      | `(...)`             | `\(...\)` | `(...)` |
+|  [05]   | Lookahead     | `(?=…)` / `(?!…)`   | -         | -       |
+|  [06]   | Lookbehind    | `(?<=…)` / `(?<!…)` | -         | -       |
+|  [07]   | Named capture | `(?P<name>…)`       | -         | -       |
 
-**POSIX classes** (locale-safe, inside `[[:class:]]`):
+[POSIX_CLASSES]: (locale-safe, inside `[[:class:]]`):
 
 ```text
 [:alnum:] A-Za-z0-9    [:alpha:] A-Za-z      [:digit:] 0-9
@@ -86,8 +86,9 @@ _require_tool fd find && _find() { fd "$@"; } || _find() { find "$@"; }
 |  [19]   | `-.`                 | Search hidden files    | `rg -. 'SECRET' .env*` (short `--hidden`) |
 |  [20]   | `--hyperlink-format` | OSC 8 terminal links   | `rg --hyperlink-format vscode 'WORKITEM'` |
 
-**rg + jq composition** — structured search results:
-```bash
+[RG_JQ_COMPOSITION]:structured search results:
+
+```bash copy-safe
 # Extract matched lines as clean JSON array
 rg --json 'ERROR' app.log \
     | jq -s '[.[] | select(.type == "match") | .data.lines.text]'
@@ -99,9 +100,9 @@ rg --json 'ERROR' logs/ \
 
 ## [04]-[AWK]
 
-Prefer `choose` for simple field selection. Prefer `mlr` for CSV/TSV (header-aware, typed). awk for: aggregation, state machines, multi-field formatting on unstructured text. Use gawk 5.3+ `--csv` for CSV with quoted fields — eliminates `-F','` breakage on embedded commas.
+Prefer `choose` for simple field selection. Prefer `mlr` for CSV/TSV (header-aware, typed). awk for: aggregation, state machines, multi-field formatting on unstructured text. Use gawk `5.3+` `--csv` for CSV with quoted fields — eliminates `-F','` breakage on embedded commas.
 
-```bash
+```bash copy-safe
 # Frequency table — single program, no pipe chain
 awk '{ip[$1]++} END {for (i in ip) printf "%6d %s\n", ip[i], i}' access.log | sort -rn
 # Multi-counter in single pass
@@ -118,13 +119,13 @@ gawk 'BEGIN {print mkbool(1), mkbool(0)}' # true false (typed, not 1/0)
 
 Builtins: `NF` (fields), `NR` (line#), `FNR` (file-line#), `FS`/`OFS` (separators), `FILENAME`. gawk 5.4: MinRX engine (POSIX-compliant default), `\uHHHH` Unicode escapes, `@nsinclude` for namespace-preserving includes.
 
-**Zero-fork alternative for simple field ops**: when extracting/transforming bash variables, prefer `local -n` nameref + `printf -v` over spawning awk/sed subshells. Reserve awk for multi-line aggregation and state machines where bash builtins cannot compete.
+[ZERO_FORK_ALTERNATIVE]: when extracting/transforming bash variables, prefer `local -n` nameref + `printf -v` over spawning awk/sed subshells. Reserve awk for multi-line aggregation and state machines where bash builtins cannot compete.
 
 ## [05]-[SD]
 
 sd uses PCRE2 natively, writes in-place by default (no `-i` flag), and requires no backslash escaping for capture groups. On macOS, `sed -i` requires an empty string argument (`sed -i '' ...`) — sd avoids this entirely.
 
-```bash
+```bash copy-safe
 sd 'pattern' 'replacement' file.txt       # In-place, global (all occurrences)
 sd -s 'literal.string' 'replacement' f    # Fixed string mode (no regex)
 sd '(\w+)@(\w+)' '$1 AT $2' emails.txt    # PCRE2 captures — $ not \
@@ -134,8 +135,9 @@ command | sd 'old' 'new'                  # Pipe mode (stdin → stdout)
 
 ## [06]-[PIPELINE_PATTERNS]
 
-**Tool composition patterns**:
-```bash
+[TOOL_COMPOSITION_PATTERNS]:
+
+```bash copy-safe
 # rg → awk: filter then extract fields from unstructured log
 rg 'ERROR' app.log | awk '{print $1, $2, $NF}'
 # rg --json → jq: structured search with typed output
@@ -160,7 +162,7 @@ mlr -c -j filter '$revenue > 1000' then sort-by -nr revenue data.csv \
     | jq '[.[].email]'
 ```
 
-**Decision dispatch** — tool selection by data shape:
+[DECISION_DISPATCH]:tool selection by data shape:
 
 | [INDEX] | [DATA_SHAPE]      | [PRIMARY]    | [COMPOSITION]                   |
 | :-----: | :---------------- | :----------- | :------------------------------ |
@@ -188,9 +190,9 @@ mlr -c -j filter '$revenue > 1000' then sort-by -nr revenue data.csv \
 
 ## [08]-[STRUCTURED_DATA]
 
-### jq 1.8+ — JSON processing
+### [08.1]-[JQ_1_8_JSON_PROCESSING]
 
-```bash
+```bash copy-safe
 # Field extraction with fallback (// = alternative operator)
 jq -r '.tool_input.file_path // empty' <<< "${INPUT}"
 # try-catch (1.7+): graceful handling of malformed input
@@ -219,9 +221,9 @@ jq '.flags | to_entries | map(.value |= toboolean)' settings.json
 jq -r '$ENV.HOME + "/.config/" + .name' packages.json
 ```
 
-### yq 4.46+ — universal config codec (YAML/JSON/TOML/INI/XML/HCL/CSV)
+### [08.2]-[YQ_4_46_UNIVERSAL_CONFIG_CODEC_YAML_JSON_TOML_INI_XML_HCL_CSV]
 
-```bash
+```bash copy-safe
 # YAML → JSON conversion for jq pipeline
 yq eval -o=json config.yaml | jq '.database'
 # In-place YAML mutation
@@ -236,9 +238,9 @@ yq eval -i -p=toml -o=toml '.database.pool_size = 20' config.toml
 yq eval -p=hcl -o=yaml '.resource.aws_instance' main.tf
 ```
 
-### mlr 6+ — CSV/TSV/JSON format conversion
+### [08.3]-[MLR_6_CSV_TSV_JSON_FORMAT_CONVERSION]
 
-```bash
+```bash copy-safe
 # CSV → JSON with filter and sort (-c = --csv, -j = --json shorthands)
 mlr -c -j filter '$revenue > 1000' then sort-by -nr revenue data.csv
 # CSV stats: group-by aggregation
@@ -253,9 +255,9 @@ mlr --ijson --ocsv cat api_response.json
 # mlr repl  (then type verbs interactively against piped data)
 ```
 
-### jnv — interactive JSON exploration
+### [08.4]-[JNV_INTERACTIVE_JSON_EXPLORATION]
 
-```bash
+```bash copy-safe
 # Develop jq queries interactively, then embed in scripts
 curl -s api.example.com/data | jnv
 ```

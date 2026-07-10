@@ -6,7 +6,7 @@
 
 Every component carries four elements: extend `ComponentResource` and call `super()` with a type URN; accept name, args, and `ComponentResourceOptions`; set `parent: this` on every child; call `registerOutputs()` as the constructor's last act.
 
-```typescript
+```typescript conceptual
 import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
@@ -23,11 +23,15 @@ class StaticSite extends pulumi.ComponentResource {
         super("myorg:index:StaticSite", name, {}, opts);
 
         const bucket = new aws.s3.Bucket(`${name}-bucket`, {}, { parent: this });
-        const website = new aws.s3.BucketWebsiteConfigurationV2(`${name}-website`, {
-            bucket: bucket.id,
-            indexDocument: { suffix: args.indexDocument ?? "index.html" },
-            errorDocument: { key: args.errorDocument ?? "error.html" },
-        }, { parent: this });
+        const website = new aws.s3.BucketWebsiteConfigurationV2(
+            `${name}-website`,
+            {
+                bucket: bucket.id,
+                indexDocument: { suffix: args.indexDocument ?? "index.html" },
+                errorDocument: { key: args.errorDocument ?? "error.html" },
+            },
+            { parent: this },
+        );
 
         this.bucketName = bucket.id;
         this.websiteUrl = website.websiteEndpoint;
@@ -36,7 +40,7 @@ class StaticSite extends pulumi.ComponentResource {
 }
 ```
 
-```python
+```python conceptual
 import pulumi
 import pulumi_aws as aws
 
@@ -63,7 +67,7 @@ The args interface defines what consumers configure and how composable the compo
 - [NO_FUNCTIONS]: Callbacks cannot serialize across language boundaries; configuration properties (`namePrefix`, `nameSuffix`) replace them.
 - [DEFAULTS]: Sensible defaults land in the constructor via `??` so consumers configure only what they need; security posture defaults on (`args.enableVersioning !== false` gates the opt-out).
 
-```typescript
+```typescript conceptual
 interface DatabaseArgs {
     instanceClass: pulumi.Input<string>;
     storageGb: pulumi.Input<number>;
@@ -76,7 +80,7 @@ interface DatabaseArgs {
 
 A component exposes only what consumers need — endpoint, port, security group id — never every internal resource; over-exposure leaks implementation detail into every consumer. Composite values derive with `pulumi.interpolate` or `pulumi.concat`:
 
-```typescript
+```typescript conceptual
 this.connectionString = pulumi.interpolate`postgresql://${args.username}:${args.password}@${cluster.endpoint}:${cluster.port}/${args.databaseName}`;
 this.registerOutputs({ connectionString: this.connectionString });
 ```
@@ -109,25 +113,25 @@ Consumers install with `pulumi package add <git-repo-url>[@vX.Y.Z]`, which downl
 
 The private registry gives automatic API documentation, version management, and org-wide discoverability. Versions are `v`-prefixed git tags; a README is required and becomes the registry documentation page; type annotations (JSDoc, docstrings, Go `Annotate()`) enrich generated SDK docs.
 
-```bash
+```bash template
 pulumi package publish https://github.com/myorg/my-component --publisher myorg
 ```
 
-```yaml
+```yaml template
 # CI publish on tag push, OIDC-authenticated
 on: { push: { tags: ["v*"] } }
 permissions: { id-token: write, contents: read }
 jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: pulumi/auth-actions@v1
-        with:
-          organization: myorg
-          requested-token-type: urn:pulumi:token-type:access_token:organization
-      - run: pulumi package publish https://github.com/${{ github.repository }} --publisher myorg
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with: { fetch-depth: 0 }
+            - uses: pulumi/auth-actions@v1
+              with:
+                  organization: myorg
+                  requested-token-type: urn:pulumi:token-type:access_token:organization
+            - run: pulumi package publish https://github.com/${{ github.repository }} --publisher myorg
 ```
 
 ## [07]-[ANTI_PATTERNS]

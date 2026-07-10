@@ -2,9 +2,9 @@
 
 Use `heptabase file list` to resolve a PDF/media card ID into exportable file IDs. Use `heptabase file export` to copy a local raw file into a scratch directory so native file-reading tools can inspect it.
 
-## Command Summary
+## [01]-[COMMAND_SUMMARY]
 
-```bash
+```bash template
 heptabase file list --card-id <pdf-or-media-card-id>
 heptabase file export <fileId> --output-dir <existing-directory>
 ```
@@ -13,40 +13,40 @@ heptabase file export <fileId> --output-dir <existing-directory>
 - `file export` copies a local raw file into `--output-dir` and returns the file path to read.
 - Read only the returned `path`; never inspect Heptabase internal file paths.
 
-## List Files
+## [02]-[LIST_FILES]
 
-If you have a PDF or media card ID, list its files first:
+Given a PDF or media card ID, list its files first:
 
-```bash
+```bash template
 heptabase file list --card-id 22222222-2222-4222-8222-222222222222
 ```
 
 Example response:
 
-```json
+```json output-only
 {
-  "cardId": "22222222-2222-4222-8222-222222222222",
-  "cardType": "pdf",
-  "files": [
-    {
-      "id": "55555555-5555-4555-8555-555555555555",
-      "purpose": "content",
-      "name": "report.pdf",
-      "mimeType": "application/pdf",
-      "size": 123456,
-      "lastEditedTime": "2026-05-02T00:00:00.000Z"
-    }
-  ]
+    "cardId": "22222222-2222-4222-8222-222222222222",
+    "cardType": "pdf",
+    "files": [
+        {
+            "id": "55555555-5555-4555-8555-555555555555",
+            "purpose": "content",
+            "name": "report.pdf",
+            "mimeType": "application/pdf",
+            "size": 123456,
+            "lastEditedTime": "2026-05-02T00:00:00.000Z"
+        }
+    ]
 }
 ```
 
-Pick the file `id` whose `purpose` you need, then pass that `id` to `file export` as `<fileId>`.
+Pick the file `id` for the required `purpose`, then pass that `id` to `file export` as `<fileId>`.
 
-## Export And Read
+## [03]-[EXPORT_AND_READ]
 
 1. Create a scratch directory:
 
-```bash
+```bash copy-safe
 mktemp -d
 ```
 
@@ -54,7 +54,7 @@ Copy the returned directory path for the next command.
 
 2. Export the file:
 
-```bash
+```bash template
 heptabase file export 55555555-5555-4555-8555-555555555555 --output-dir <scratchDirFromMktemp>
 ```
 
@@ -62,32 +62,32 @@ heptabase file export 55555555-5555-4555-8555-555555555555 --output-dir <scratch
 
 Example response:
 
-```json
+```json output-only
 {
-  "fileId": "55555555-5555-4555-8555-555555555555",
-  "path": "/tmp/hepta-read/report-55555555-5555-4555-8555-555555555555.pdf",
-  "filename": "report-55555555-5555-4555-8555-555555555555.pdf",
-  "originalName": "report.pdf",
-  "mimeType": "application/pdf",
-  "size": 123456,
-  "lastEditedTime": "2026-05-02T00:00:00.000Z"
+    "fileId": "55555555-5555-4555-8555-555555555555",
+    "path": "/tmp/hepta-read/report-55555555-5555-4555-8555-555555555555.pdf",
+    "filename": "report-55555555-5555-4555-8555-555555555555.pdf",
+    "originalName": "report.pdf",
+    "mimeType": "application/pdf",
+    "size": 123456,
+    "lastEditedTime": "2026-05-02T00:00:00.000Z"
 }
 ```
 
 Now read `/tmp/hepta-read/report-55555555-5555-4555-8555-555555555555.pdf` with your native file-reading tool.
 
-## Avoid Reading Huge Files Blindly
+## [04]-[AVOID_READING_HUGE_FILES_BLINDLY]
 
 - Check `size`, `mimeType`, and `name` before reading.
 - For textual PDF reads, prefer `references/pdf-reading.md` and `heptabase pdf read` over exporting the raw PDF.
 - If the file is large, ask the user before reading the whole file or use targeted extraction, search, or page reads to avoid wasting tokens.
 
-## Clean Up Scratch Files
+## [05]-[CLEAN_UP_SCRATCH_FILES]
 
-- Exported files are temporary scratch copies. After you finish reading them, delete the scratch directory created by `mktemp -d`.
+- Exported files are temporary scratch copies. After reading them, delete the scratch directory created by `mktemp -d`.
 - Do not delete the scratch directory until all tools that need the returned `path` are done.
 
-## Troubleshooting
+## [06]-[TROUBLESHOOTING]
 
 - `file list --card-id` returns empty `files`: this card has no exportable local file. If the user expected a PDF/media file, ask them to verify the card.
 - `file export` says the file is unavailable locally: ask the user to open/sync the file in Heptabase, then retry.

@@ -1,12 +1,12 @@
 ---
 name: tavily-map
 description: >-
-  Discover and list all URLs on a website without extracting content, via the Tavily CLI —
-  faster than crawling, returns URLs only. Use to find a specific page on a large site, list
-  site structure, or locate where something lives on a domain — "map the site", "find the URL
-  for", "what pages are on", "list all pages", "site structure". Essential when the site is
-  known but the exact page is not; pair with tavily-extract for the content. Bulk content
-  across many pages belongs to tavily-crawl.
+    Discover and list all URLs on a website without extracting content, via the Tavily CLI —
+    faster than crawling, returns URLs only. Use to find a specific page on a large site, list
+    site structure, or locate where something lives on a domain — "map the site", "find the URL
+    for", "what pages are on", "list all pages", "site structure". Essential when the site is
+    known but the exact page is not; pair with tavily-extract for the content. Bulk content
+    across many pages belongs to tavily-crawl.
 allowed-tools: Bash(uvx *)
 ---
 
@@ -16,7 +16,7 @@ Discover URLs on a website with no content extraction — the reconnaissance ste
 
 ## [01]-[USAGE]
 
-```bash
+```bash template
 # Discover all URLs
 uvx --from tavily-cli tvly map "https://docs.example.com" --json
 
@@ -45,11 +45,11 @@ uvx --from tavily-cli tvly map "https://example.com" --max-depth 3 --limit 200 -
 |  [09]   | `-o, --output`                           | Save output to file                          |
 |  [10]   | `--json`                                 | Structured JSON output                       |
 
-## [03]-[MAP_THEN_EXTRACT]
+## [03]-[LANE_SELECTION]
 
 Map finds the right page, extract pulls it — cheaper than crawling an entire site when only a few pages matter:
 
-```bash
+```bash template
 # Step 1: locate the authentication docs
 uvx --from tavily-cli tvly map "https://docs.example.com" --instructions "authentication" --json
 

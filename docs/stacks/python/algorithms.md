@@ -41,7 +41,19 @@ import numpy as np
 from builtins import frozendict
 from expression import Error, Ok, Result
 
-type SolveFault = Literal["<nan>", "<inf>", "<non-finite>", "<singular>", "<rank-deficient>", "<residual-exceeded>", "<stalled>", "<broken>", "<wrong-arity>", "<broken-symmetry>", "<contract>"]
+type SolveFault = Literal[
+    "<nan>",
+    "<inf>",
+    "<non-finite>",
+    "<singular>",
+    "<rank-deficient>",
+    "<residual-exceeded>",
+    "<stalled>",
+    "<broken>",
+    "<wrong-arity>",
+    "<broken-symmetry>",
+    "<contract>",
+]
 type Solver = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, int]]
 type Gate = Callable[[np.ndarray, np.ndarray, int], Result[np.ndarray, SolveFault]]
 type Probe = Callable[[np.ndarray, float], Result[np.ndarray, SolveFault]]
@@ -84,10 +96,10 @@ POLICY: frozendict[Route, RoutePolicy] = frozendict({
 
 def solved(route: Route, operand: np.ndarray, solvers: frozendict[Route, Solver], b: np.ndarray, cap: float, /) -> Result["SolveReceipt", SolveFault]:
     policy = POLICY[route]
-    return admitted(operand).bind(lambda m: policy.probe(m, cap)).bind(
-        lambda m: policy.gate(m, *solvers[route](m, b)).bind(
-            lambda x: witnessed(route, m, x, b, scaled(policy.scale, m, b))
-        )
+    return (
+        admitted(operand)
+        .bind(lambda m: policy.probe(m, cap))
+        .bind(lambda m: policy.gate(m, *solvers[route](m, b)).bind(lambda x: witnessed(route, m, x, b, scaled(policy.scale, m, b))))
     )
 ```
 
@@ -220,7 +232,7 @@ def settled(verdict: SolveTerminal, witness: float, cap: float, /) -> Result[np.
 
 [TYPED_RECEIPT]:
 - Law: every result leaves as one frozen `msgspec.Struct` `SolveReceipt` carrying the route case as a `Route` member, the scale-derived tolerance it was gated against, and the recomputed residual — the numeric evidence this layer owns; it never carries the operator, the factorization handle, or an eagerly decoded solution array, because the numeric block is large and its decode is the consumer's choice. The solution defers as a `Raw` field: the contiguous-octet capture and the consumer's zero-copy `frombuffer` view are `numpy`'s own `ascontiguousarray(...).tobytes()` and reconstruction, this page's substrate, while the byte-identical opaque round-trip band is `boundaries.md`'s `msgspec.Raw` wire mechanic — this card fixes only which evidence the receipt holds.
-- Law: the egress weave is the `aspected` factory `surfaces-and-dispatch.md` owns, composed over the pure witness core and never re-derived here: the in-process numeric interior carries no transient provider, so the spine weaves only the factory's fixed contract arm under one shared `BeartypeConf`, which lifts a `BeartypeCallHintViolation` through `lifted` onto `<contract>` — a malformed operand shape becomes a `SolveFault` member rather than an escaping exception, and a co-occurring concern lands as one more `Concern` entry with the body untouched. No `numpy.linalg.LinAlgError` capture rides this weave: the `<singular>` cap-against-`cond` gate at admission already precludes the near-singular factorization that raises it, so a re-catch at egress would re-impose a gate the interior owns once.
+- Law: the egress weave is the `aspected` factory `surfaces-and-dispatch.md` owns, composed over the pure witness core and never re-derived here: the in-process numeric interior carries no transient provider, so the spine weaves only the factory's fixed contract arm under one shared `BeartypeConf`, which lifts a `BeartypeCallHintViolation` through `lifted` onto `<contract>` — a malformed operand shape becomes a `SolveFault` member rather than an escaping exception, and a co-occurring concern lands as one more `Concern` entry with the body untouched. No `numpy.linalg.LinAlgError` capture rides this weave: the `<singular>` cap-against-`cond` gate at admission already precludes the near-singular factorization that raises it, so a re-catch at egress re-imposes a gate the interior owns once.
 - Boundary: the receipt's scalar projection — route, tolerance, residual — is the `str | float` evidence a downstream span or structured-emission consumer reads, never the `Raw` solution bytes; the emission weave that consumes it is the domain observability owner's, this layer states only that the projection carries scalars and the solution stays bytes.
 
 ```python conceptual
@@ -276,8 +288,10 @@ def admitted_kernel(lowered: Kernel, arity: int, /) -> Result[Kernel, SolveFault
     probe = (np.zeros(1) for _ in range(arity))
     sample = lowered(*probe)
     return (
-        Error("<wrong-arity>") if len(sample) != 2
-        else Ok(lowered) if all(np.isfinite(np.asarray(part)).all() for part in sample)
+        Error("<wrong-arity>")
+        if len(sample) != 2
+        else Ok(lowered)
+        if all(np.isfinite(np.asarray(part)).all() for part in sample)
         else Error("<non-finite>")
     )
 ```

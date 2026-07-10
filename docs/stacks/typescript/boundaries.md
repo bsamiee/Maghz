@@ -1,270 +1,488 @@
-# [BOUNDARIES]
+# [TYPESCRIPT_BOUNDARIES]
 
-Foreign material crosses once: a boundary owner decodes bytes, sentinels, callbacks, promises, worker-affine work, state cells, and provider shapes into decoded values or typed Effect rails, and a Layer wires the capability graph so everything the interior receives — values, receipts, services, effects — is recoverable from declarations rather than from the foreign surface that produced it. The Layer graph is where requirement edges collapse to `never`; the Schema is where untyped input becomes domain material; the wire codec is the only site where protocol and interior schemas meet.
+The edge is the only place the system meets material it did not mint: wire payloads, foreign codecs, callback surfaces, platform capability, sibling threads and peers, durable stores. This page fixes where each crossing converts and who owns it — admission placement, contracts as data, codec engines, runtime selection, marshal, and the persistence seam — so that no module past a seam names a provider shape, re-validates an admitted value, or resolves a runtime. Every seam is a declaration site: what crosses, in which direction, with which fault, is recoverable from the owner alone.
 
-## [01]-[SEAM_CHOOSER]
+## [01]-[EDGE_CHOOSER]
 
-This table selects the owner for a foreign signal; when a signal matches several rows, the most specific wins, and lifetime rows are read before transport rows.
+This table selects the owner for a foreign signal; when a signal matches several rows, the most specific wins, and identity rows are read before transport rows.
 
-| [INDEX] | [FOREIGN_SIGNAL]        | [SEAM_OWNER]                          | [INTERIOR_FORM]                       | [REJECT]                     |
-| :-----: | :---------------------- | :------------------------------------ | :------------------------------------ | :--------------------------- |
-|  [01]   | untyped input payload   | `Schema.decodeUnknown`                | decoded owner in the rail             | interior revalidation        |
-|  [02]   | throwing async call     | `Effect.tryPromise`                   | typed `Effect` failure                | raw `Promise` in domain      |
-|  [03]   | null or sentinel        | `Option.fromNullable`                 | `Option<T>` or tagged family          | nullable payload past seam   |
-|  [04]   | cause-bearing absence   | tagged `Data.TaggedError`             | closed failure family                 | `Option.none` for a cause    |
-|  [05]   | resource lifetime       | `Effect.acquireRelease`               | scoped value, LIFO finalizer          | manual cleanup, leaked fiber |
-|  [06]   | worker/main-thread call | marshal `Effect`                      | `Effect` with captured runtime        | ambient main-thread read     |
-|  [07]   | high-frequency callback | `Queue`/`PubSub` or `SubscriptionRef` | drained `Stream` or latest cell       | blocked/mutating callback    |
-|  [08]   | event or subscription   | scoped `PubSub`/`Queue`               | drained `Stream` of decoded signals   | orphan handler               |
-|  [09]   | isolated-axis lifetime  | derived `Scope`/`Layer.fresh`         | one-axis-isolated instance            | shared cancellation/registry |
-|  [10]   | session/singleton state | `SubscriptionRef` state family        | committed `Data.TaggedEnum` cell      | boolean lifecycle flag       |
-|  [11]   | keyed recomputation     | `Equivalence`-keyed memo / `RcMap`    | full-dimension cache key              | path-only/type-only cache    |
-|  [12]   | capability dependency   | `Layer` + `Effect.Service`            | provided context, `R = never` at root | service location             |
-|  [13]   | protocol payload        | `Schema.transform` codec              | decoded owner                         | codec-bearing domain owner   |
-|  [14]   | signed byte field       | raw-bytes-then-hash capture           | canonical octets plus hash            | parse-reserialize            |
+| [INDEX] | [FOREIGN_SIGNAL]               | [SEAM_OWNER]                    | [INTERIOR_FORM]                 | [REJECTED_FORM]                |
+| :-----: | :----------------------------- | :------------------------------ | :------------------------------ | :----------------------------- |
+|  [01]   | raw payload: body/file/message | Schema owner at first sight     | decoded value on the rail       | interior re-validation         |
+|  [02]   | signed or hashed octets        | opaque byte band at admission   | digest receipt + projection     | parse-then-reserialize         |
+|  [03]   | trace identity in headers      | `HttpTraceContext` codec family | `Option`-carried parent span    | hand-parsed `traceparent`      |
+|  [04]   | HTTP, RPC, or CLI surface      | contribution family             | derived server, client, spec    | hand-rolled route table        |
+|  [05]   | foreign binary or text format  | `Schema.transformOrFail` codec  | `ParseError` on the decode rail | second codec fault family      |
+|  [06]   | platform capability            | abstract `Context.Tag`          | requirement in the `R` channel  | direct `node:*`/`fetch` import |
+|  [07]   | foreign callback API           | `Effectify.effectify`           | typed effect signature          | per-site `Effect.async` wrap   |
+|  [08]   | environment or config read     | `Config` provider chain         | validated value at construction | scattered `process.env` reads  |
+|  [09]   | process start                  | `runMain` in one boot module    | drained fibers and finalizers   | top-level `Effect.runPromise`  |
+|  [10]   | host cancellation signal       | `{ signal }`, `tryPromise`      | fiber interruption on `Cause`   | `AbortController` in domain    |
+|  [11]   | off-thread or socket handoff   | Schema-typed marshal frame      | tagged request/response family  | untyped `postMessage` payload  |
+|  [12]   | relational store               | `SqlClient`; `sql` statements   | `SqlSchema`-fused decoded rows  | hand-built SQL, driver import  |
+|  [13]   | store read after writes        | `Reactivity` keyed invalidation | re-run `Mailbox`/`Stream`       | cadence poll of unchanged rows |
+|  [14]   | reactive view binding          | `Atom.runtime` over Layer graph | `useAtomValue`/`useAtomSet`     | `run*`, per-render Layer       |
+|  [15]   | wasm module                    | scoped capability-Tag instance  | calls through the marked kernel | escaping linear-memory view    |
+
+- [04]: contribution family: endpoint/group expressed as data.
+- [06]: platform capability: fs, net, exec.
 
 ## [02]-[ADMISSION]
 
-[DECODE_PROJECTION]:
-- Use: any untyped ingress — request body, env, provider row, foreign JSON — decoded exactly once through `Schema.decodeUnknown(schema)(input)`, with `{ errors: "all" }` when every parse failure must accumulate.
-- Law: the `ParseError` lifts into the error channel through `Effect.mapError` at the same seam; interior code receives the decoded owner and never re-validates.
-- Law: a present branch never manufactures a meaningless value; a field that can become absent after decode is `Schema.optionalWith(..., { as: "Option" })` so the absence is `Option.none`, not a `null`.
-- Reject: a sentinel check in interior flow; a nullable payload riding past the seam; `decode` where `decodeUnknown` is the untrusted-input form.
-
-[ABSENCE_TAXONOMY]:
-- Law: cause-bearing foreign state — unavailable, degraded, pending, faulted — is a closed `Data.TaggedEnum` or `Data.TaggedError` family, never `Option.none`; `Option<T>` is correct only when absence has no action-changing cause.
-- Law: provision and state are different axes: a required capability is always present as a service whose value carries its own unavailable state, and `Effect.serviceOption(Tag)` is the one authorized optional-capability seam fusing read and projection.
-- Reject: flattening nested absence before the layer carrying cause is consumed; a `null` service or a service lookup standing in for runtime absence.
-
-[PROBE_SWEEP_POLICY]:
-- Law: a probe sweep fixes its algebra once at the seam — `Effect.all({ mode: "validate" })` reports every absence, the fail-fast default reports one — selecting the mode selects whether the boundary reports one absence or all.
-- Accept: `Effect.partition` for the survivor/casualty split when callers need both usable values and rejected facts with `E = never`.
-- Reject: a later walk over the results that reinterprets why each probe disappeared.
-
-```ts conceptual
-import { Data, Effect, Match, Option, Schema as S } from "effect"
-
-const Payload = S.NonEmptyString.pipe(S.brand("Payload")) // decoded owner; interior never re-validates
-type Payload = typeof Payload.Type
-class RowFault extends Data.TaggedError("RowFault")<{ readonly reason: "absent" | "unavailable"; readonly detail: string }> {} // cause carries its axis
-
-const _Row = S.Struct({ state: S.Literal("missing", "detached", "ready"), value: S.OptionFromNullOr(Payload) })
-
-const _route = (row: typeof _Row.Type): Effect.Effect<Option.Option<Payload>, RowFault> => // explicit channel pins E = RowFault; the curried matcher would widen it to unknown
-  Match.value(row).pipe(
-    Match.discriminatorsExhaustive("state")({ // closed wire discriminant folds total; a fourth state breaks here, never a silent default
-      missing:  ()         => Effect.succeed(Option.none<Payload>()), // structural absence, no cause: rides Option
-      detached: ()         => Effect.fail(new RowFault({ reason: "unavailable", detail: "detached" })), // cause-bearing: rides the fault
-      ready:    ({ value }) => Option.match(value, {
-        onNone: () => Effect.fail(new RowFault({ reason: "absent", detail: "value" })), // present-but-null is a fault, never Some(null)
-        onSome: (v) => Effect.succeed(Option.some(v)),
-      }),
-    }),
-  )
-
-const admit = (raw: unknown): Effect.Effect<Option.Option<Payload>, RowFault> => // one inbound funnel admits every shape at one seam
-  S.decodeUnknown(_Row)(raw).pipe(Effect.mapError((e) => new RowFault({ reason: "absent", detail: e.message })), Effect.flatMap(_route))
-```
-
-## [03]-[LIFETIME]
-
-[CAPSULE_OWNER]:
-- Use: connections, pools, file handles, sockets, leases, and external cursors.
-- Law: one `Effect.acquireRelease(acquire, release)` acquires, projects, and releases inside the scoped service constructor; the release runs LIFO on success, failure, and interruption, exactly once on every exit path.
-- Law: callers receive values or rails, never live handles; the capsule converts its own thrown exceptions through `Effect.tryPromise` at the acquire site.
-- Law: `Effect.forkScoped` binds a drain fiber to the service scope so closure interrupts it; `Effect.fork` inside a scoped generator leaks the fiber past teardown.
-- Exemption: a `// BOUNDARY ADAPTER` callback wiring a foreign event handler inside the capsule is the named platform-forced statement seam.
-- Reject: scattered manual cleanup, a public handle field, a parallel borrowed/owned wrapper pair, or a second finalizer registry.
-
-```ts conceptual
-import { Chunk, Duration, Effect, PubSub, Stream } from "effect"
-import { SqlClient } from "@effect/sql"
-
-class EventDrain extends Effect.Service<EventDrain>()("domain/EventDrain", {
-  scoped: Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    const hub = yield* Effect.acquireRelease(PubSub.bounded<{ readonly topic: string; readonly payload: string }>(2048), PubSub.shutdown)
-    const sub = yield* PubSub.subscribe(hub)
-    const persist = (batch: Chunk.Chunk<{ readonly topic: string; readonly payload: string }>) =>
-      sql.withTransaction(Effect.forEach(Chunk.toReadonlyArray(batch), (e) => sql`INSERT INTO events (topic, payload) VALUES (${e.topic}, ${e.payload})`, { concurrency: 1 }))
-    yield* Effect.forkScoped(Stream.fromQueue(sub).pipe(Stream.groupedWithin(100, Duration.millis(250)), Stream.mapEffect(persist), Stream.runDrain))
-    return { publish: (topic: string, payload: string) => PubSub.publish(hub, { topic, payload }).pipe(Effect.asVoid) } as const
-  }),
-}) {}
-```
-
-[SUBSCRIPTION_VALUE]:
-- Law: `PubSub.subscribe` executes inside the scoped generator before `Effect.forkScoped` — subscribing inside the forked fiber races the producer and silently drops messages published between constructor return and fork start.
-- Law: `Stream.groupedWithin(count, window)` batches by whichever threshold hits first and flushes partial chunks on time expiry, so the drain observes every published message; an interrupted drain leaves unprocessed messages in the queue as back-pressure, never silent loss.
-- Reject: an inline handler that cannot detach, a finalizer-owned unsubscribe split from its attach, and a foreign callback running arbitrary downstream domain logic.
-
-## [04]-[MARSHAL_AND_HANDOFF]
-
-[HOST_MARSHAL]:
-- Use: worker-pool decode jobs, `postMessage`/`MessagePort` round trips, `requestAnimationFrame`/main-thread-affine reads, and any work pinned to a runtime that is not the calling fiber's.
-- Law: a `Runtime`/`Scope` is captured once at the composition root and the marshal effect runs foreign-thread work through `Runtime.runPromiseExit(runtime)` — `postMessage` and worker `onmessage` swallow thrown errors and a missing port silently degrades to dropped work, so the seam reifies every foreign outcome into an `Exit` and lifts it through `Effect.mapError`, never trusting the host to propagate.
-- Law: cancellation normalizes once into the seam's failure vocabulary — fiber interruption is structural and `Effect.retry` never re-runs it, while a local `Effect.timeout` and an external `AbortSignal` carry distinct typed evidence (a `reason: "aborted"` row) — and cancellation is never transient: the abort arm is the first predicate every `Effect.retry({ while })` refuses, so a retry policy can never resurrect cancelled work.
-- Reject: a `self`/`globalThis`/`window` read inside a reusable transform, a fire-and-forget `port.postMessage` whose rejection is unobserved, and a worker callback that resolves a bare `Promise` no fiber awaits.
-
-[HANDOFF_DRAIN]:
-- Use: a high-frequency producer (a worker emitting decode progress, a pointer-move stream, a socket frame burst) handing off to a slower interior consumer.
-- Law: a high-frequency callback submits intent and returns — a `SubscriptionRef<A>` is the latest-value cell for a per-tick consumer that needs only the current state, a `Queue`/`PubSub` is the log for a consumer that must observe every intermediate; the consumer's read contract selects the carrier, and producer back-pressure is independent of consumer pacing.
-- Law: a bounded carrier's full-behavior is the seam's declared policy stated where the writer is constructed — `Queue.bounded` suspends the producer, `Queue.dropping` discards the newest, `Queue.sliding` evicts the oldest; the unbounded form is admitted only when the producer is provably finite.
-- Reject: blocking inside the foreign callback, mutating interior state from it, a `SubscriptionRef` whose `changes` consumer re-enters the producer, and an unbounded `Queue` fed by an open-ended host event.
-
-```ts conceptual
-import { Cause, Data, Effect, Queue, Runtime, Schedule, Scope, Stream } from "effect"
-
-class MarshalFault extends Data.TaggedError("MarshalFault")<{ readonly reason: "worker" | "aborted" }> {}
-
-class DecodeWorkerPool extends Effect.Service<DecodeWorkerPool>()("domain/DecodeWorkerPool", {
-  scoped: Effect.gen(function* () {
-    const scope = yield* Effect.scope
-    const inbox = yield* Effect.acquireRelease(Queue.dropping<{ readonly job: Uint8Array }>(1024), Queue.shutdown)
-    const marshal = (worker: Worker, job: Uint8Array): Effect.Effect<Uint8Array, MarshalFault> =>
-      Effect.async<Uint8Array, MarshalFault>((resume) => {
-        const onMessage = (e: MessageEvent<Uint8Array>) => resume(Effect.succeed(e.data))
-        const onError = () => resume(Effect.fail(new MarshalFault({ reason: "worker" })))
-        worker.addEventListener("message", onMessage, { once: true }) // BOUNDARY ADAPTER: host event wiring
-        worker.addEventListener("error", onError, { once: true })
-        worker.postMessage(job, [job.buffer])
-        return Effect.sync(() => { worker.removeEventListener("message", onMessage); worker.removeEventListener("error", onError) })
-      }).pipe(Effect.retry({ while: (f) => f.reason !== "aborted", schedule: Schedule.recurs(2) }))
-    const drainOn = (worker: Worker) =>
-      Stream.fromQueue(inbox).pipe(Stream.mapEffect(({ job }) => marshal(worker, job)), Stream.runDrain, Effect.forkIn(scope))
-    return { submit: (job: Uint8Array) => Queue.offer(inbox, { job }).pipe(Effect.asVoid), attach: drainOn } as const
-  }),
-}) {}
-
-const _bridge = <A>(runtime: Runtime.Runtime<never>, scope: Scope.Scope, work: Effect.Effect<A>): Promise<A> =>
-  Runtime.runPromise(runtime)(Effect.scoped(Scope.extend(work, scope))) // BOUNDARY ADAPTER: foreign-thread entry, interruption is never a retried fault
-```
-
-[SCOPE_AND_LEASE]:
-- Law: a derived scope isolates exactly one named axis — a forked drain fiber, a per-key lease, a migration pool beside a read pool — and the wrong derivation silently shares the axis the caller meant to isolate; `Layer.fresh(dep)` forces an isolated instance under the default reference-memoized diamond, and `Effect.forkScoped` versus `Effect.forkIn(scope)` selects which scope owns the fiber lifetime.
-- Law: a per-key resource family is `RcMap` (reference-counted, idle-TTL eviction) and a homogeneous fungible pool is `Pool.make`/`makeWithTTL` — `RcMap.get` acquires-or-shares inside a scope and the entry releases when the last borrower's scope closes, so a hand-kept `HashMap<K, Resource>` plus a manual refcount is the retired form; `RcRef` is the single-resource degenerate case.
-- Law: a lease, rental, or pooled permit releases exactly once on every exit path — success, typed failure, and interruption — through `Effect.acquireRelease` keyed on the logical extent, and a throwing release is contained so it never aborts the remaining LIFO sweep.
-- Reject: a parent and child scope both finalizing one connection, subscription set, or abort signal; a pooled buffer or rate permit escaping as public service state; a `Layer` default memoized where two consumers require independent state.
-
-[MEMO_KEY]:
-- Law: a memo key encodes every dimension that changes output — content, decode policy, capability version, and foreign identity feed one structured key compared by an `Equivalence`, never a `${a}:${b}` signature string nor a `${fault._tag}:${fault.code}:${digest}` dedupe key whose collision is silent.
-- Law: `Effect.cachedFunction(f, eq?)` and `RcMap`/`Effect.cachedInvalidateWithTTL` are the memo owners — the `Equivalence` keys the structured value directly, so a key that is itself a `Data.Class` or tagged value compares by `Equal.equals` with no projection step.
-- Reject: a path-only, type-only, or `Option`-partial cache key that omits a dimension the body reads; a `HashMap` keyed on a mutable foreign handle whose identity drifts under reconnection; a `Set<string>` dedupe ledger where `HashSet` of the tagged value coalesces structurally.
-
-## [05]-[STATE_CELLS]
-
-A boundary lifecycle is a closed state family in one cell, never a boolean ladder; the transition stays pure and replayable, and waiters wake only from committed state.
-
-[TOKEN_LIFECYCLE]:
-- Law: session, singleton, and cross-call boundary lifetime is one `Data.TaggedEnum` family — `Pending`/`Live`/`Failed` — held in a `SubscriptionRef` so every observer reads the committed state through `changes`, never a `boolean` open flag plus a nullable handle that can disagree; a `Ref.modify` returning the transition outcome is the atomic commit and the losing acquisition releases the resource it built.
-- Law: a `Live` case carries the owning token, so a stale teardown succeeds only while its token still owns the cell (`current._tag === "Live" && current.token === mine`); re-opening replaces the whole cell because a `Failed` cell is escaped only by a fresh value carrying typed evidence, never by mutating a flag back.
-- Law: `SubscriptionRef.set` publishes one immutable replacement so multi-field state never tears, and `changes` emits only after the commit — a per-tick consumer (a `ui` recovery fallback) reads the latest through `SubscriptionRef.get`, a must-see-every-transition consumer drains `changes`.
-- Reject: a `boolean` lifecycle flag, a nullable handle beside a state enum, a teardown that can dispose a replacement session, and a waiter woken from an aborted transition.
-
-[DRAIN_COORDINATION]:
-- Law: a quiescence gate reads phase, in-flight count, and deadline as one `STM.commit` snapshot — admission is fenced (`STM.check(phase._tag === "Open")`) while mid-flight work reaches a typed terminal, so a flag-based close that still admits through a second cell is the torn form STM retires.
-- Law: the in-flight counter transitions inside the same transaction that reads the phase, never a `Ref` incremented beside an independent phase `Ref`; settling decrements and a zero count under `Draining` is the drained signal a `TDeferred` publishes once.
-- Reject: closing from one flag while another cell still admits; acting on a change fired from an aborted transition; a poll loop where `STM.check` suspends until the gate opens.
-
-```ts conceptual
-import { Data, Effect, Ref, SubscriptionRef } from "effect"
-
-type Gate = Data.TaggedEnum<{
-  readonly Pending: {}
-  readonly Live: { readonly token: string; readonly session: { readonly close: Effect.Effect<void> } }
-  readonly Failed: { readonly reason: string }
-}>
-const Gate = Data.taggedEnum<Gate>()
-
-const open = (cell: SubscriptionRef.SubscriptionRef<Gate>, acquire: Effect.Effect<{ readonly close: Effect.Effect<void> }, string>) =>
-  Effect.gen(function* () {
-    const token = yield* Effect.sync(() => crypto.randomUUID())
-    const claimed = yield* Ref.modify(cell, (g) => g._tag === "Pending" ? [true, Gate.Live({ token, session: { close: Effect.void } })] : [false, g])
-    return claimed
-      ? yield* acquire.pipe(
-          Effect.matchEffect({
-            onFailure: (reason) => SubscriptionRef.set(cell, Gate.Failed({ reason })).pipe(Effect.zipRight(Effect.fail(reason))),
-            onSuccess: (session) => SubscriptionRef.set(cell, Gate.Live({ token, session })).pipe(Effect.as(session)),
-          }))
-      : yield* SubscriptionRef.get(cell).pipe(Effect.flatMap(Gate.$match({
-          Pending: () => Effect.fail("regressed"),
-          Live: ({ session }) => Effect.succeed(session),
-          Failed: ({ reason }) => Effect.fail(reason),
-        })))
-  })
-```
-
-## [06]-[LAYER_COMPOSITION]
-
-[REQUIREMENT_ELIMINATION]:
-- Law: `Layer.provide(dep)` collapses a requirement edge retaining only consumer output — the provider vanishes; `Layer.provideMerge(dep)` collapses the edge and unions the provider output downstream; misclassifying an edge is a type error or a silent capability leak.
-- Law: a diamond DAG deduplicates a shared provider by reference under default memoization; `Layer.fresh` forces an isolated instance where shared state would race (a migration pool beside a read pool).
-- Law: `dependencies: [Dep.Default]` auto-provides upstream layers into a service's `Default`; `DefaultWithoutDependencies` preserves the raw `R` for test substitution through `Layer.provide(TestDep)`.
-- Use: `Layer.scoped` to attach finalizers to the layer scope, `Layer.effect` for a no-lifecycle layer, `Layer.succeed` to enforce the full service shape at compile time (omitting a method is a type error), and `Layer.unwrapEffect`/`unwrapScoped` for deferred topology selection.
-- Reject: relying on accidental exposure; a partial layer reaching the root; a second cache, retry, or correlation owner where one layer composes.
-
-[OUTPUT_SHAPING]:
-- Law: `Layer.project(From, To, f)` narrows a single-tag output to a consumer-facing subset (unions are rejected — collapse via `provide` first); `Layer.discard` zeros the output to initialization-only; `Layer.passthrough` re-exposes requirements as outputs for test introspection only.
-- Law: `Layer.match`/`matchCause` rewrite the construction graph on a typed failure or a full cause — `Layer.match` receives the typed `E` and lets defects and interrupts propagate, `matchCause` receives `Cause<E>` for cause-level fallback.
-- Boundary: the root assembly merges every subgraph at `RIn = never` through `Layer.mergeAll`, `Layer.launch` converts it to a long-running `Effect`, and the platform runtime (`NodeRuntime.runMain` / a browser runtime) owns signals, finalization, and exit codes — a one-time edge operation.
-- Reject: exposing every internal node and creating accidental coupling; a build-phase `tap`/`annotateLogs` mistaken for a per-request operation.
-
-```ts conceptual
-import { Context, Duration, Effect, Layer } from "effect"
-
-const _Transport = Context.GenericTag<{ readonly endpoint: string }>("Cmp/Transport")
-const _Collector = Context.GenericTag<{ readonly endpoint: string; readonly window: Duration.Duration }>("Cmp/Collector")
-const _Pool = Context.GenericTag<{ readonly endpoint: string; readonly slot: string }>("Cmp/Pool")
-
-const _transport = (region: string) => Layer.succeed(_Transport, { endpoint: `otlp://${region}.collector:4317` })
-const _collector = Layer.effect(_Collector, _Transport.pipe(Effect.map((t) => ({ endpoint: t.endpoint, window: Duration.seconds(30) }))))
-const _pool = (slot: string) => Layer.effect(_Pool, _Transport.pipe(Effect.map((t) => ({ endpoint: t.endpoint, slot })))) // both consume _Transport: a diamond
-
-const _root = (region: string): Layer.Layer<typeof _Collector.Identifier | typeof _Pool.Identifier> => // RIn = never proves the graph is closed
-  _collector.pipe(
-    Layer.provideMerge(_pool("read").pipe(Layer.fresh)), // provideMerge unions _Pool downstream; Layer.fresh forces an isolated instance the memoized diamond would otherwise share
-    Layer.provide(_transport(region)), // provide collapses the _Transport edge: the provider vanishes from the output
-  )
-```
-
-## [07]-[WIRE_CONTRACTS]
-
-[PROTOCOL_EDGE]:
-- Law: wire shapes stay protocol-shaped at the edge — one `Schema.transform(wire, domain, { decode, encode })` is the only site where protocol and interior schemas meet, and interior owners carry no codec attributes or transport objects.
-- Law: a bidirectional transform preserves round-trip fidelity; a derived field present in domain but absent from wire is intentional asymmetry the encode side drops, and layered schemas (`Schema.Uint8ArrayFromBase64` on the wire leg, `Schema.Uint8ArrayFromSelf` on the domain leg) each own one concern.
-- Law: an inner envelope rejects drift — unknown members, missing required keys, and depth excess fail before admission through `Schema` filters — while an outer wrapper tolerates only declared extension material.
-- Reject: a separate parser and serializer pair; a last-write-wins or best-effort parse for an owned protocol shape; a post-decode mutation step.
-
-[CONTRACT_SURFACE]:
-- Law: one `HttpApi` graph sources server handlers, typed HTTP clients, and workflow proxies — `HttpApiClient.makeWith` for the full graph, `.group`/`.endpoint` for narrowed scopes — so capability is scoped statically and a caller cannot invoke an undeclared endpoint.
-- Law: `HttpApiBuilder.group` is a total function — the type signature encodes which `handle` calls remain open and narrows with each handled endpoint until exhaustion is a compile-time proof; a handler body is a thin one-line delegation to a protocol-agnostic service method.
-- Law: one `Schema.TaggedError` (an `HttpApi` error via `.addError`) propagates to every endpoint, with `HttpApiSchema.annotations` binding the default status and a computed getter overriding per reason; an auth failure reuses the same fault type, never a parallel one.
-- Reject: a handler body exceeding a delegation (domain logic leaking past the service boundary); a per-endpoint error type where one fault with a `reason` row adds it.
-
-```ts conceptual
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform"
-import { Effect, Record as R, Schema as S } from "effect"
-
-const _Policy = {
-  unauthorized: { status: 401, retryable: false, log: Effect.logWarning },
-  notFound:     { status: 404, retryable: false, log: Effect.logInfo    },
-  unavailable:  { status: 503, retryable: true,  log: Effect.logError   },
-} as const satisfies Record<string, { status: number; retryable: boolean; log: (...a: ReadonlyArray<unknown>) => Effect.Effect<void> }>
-
-class Fault extends S.TaggedError<Fault>()("Fault", { // wire enum derives from the policy anchor; the lone cast is the non-emptiness witness
-  reason: S.Literal(...(R.keys(_Policy) as [keyof typeof _Policy, ...Array<keyof typeof _Policy>])),
-}, HttpApiSchema.annotations({ status: 500 })) {
-  get status()    { return _Policy[this.reason].status    }
-  get retryable() { return _Policy[this.reason].retryable }
-}
-
-const _Api = HttpApi.make("tenants").addError(Fault).add(
-  HttpApiGroup.make("tenant").add(HttpApiEndpoint.get("byId", "/tenants/:id").setPath(S.Struct({ id: S.UUID })).addSuccess(S.Struct({ id: S.UUID, name: S.String }))),
-)
-```
+[DECODE_PLACEMENT]:
+- Use: every ingress — request bodies, headers, query params, file content, message frames, storage reads.
+- Law: the decode sits on the first line that sees the foreign value, and that seam fixes three decisions at once: the owner (`Schema.decodeUnknown(Owner)`), the accumulation posture (`errors: "all"` for reportable admission, first-error for guard seams), and the drift posture (`onExcessProperty: "error"` where an unknown member is evidence of contract skew, the default where extension bands are tolerated). The configured decode is a module-scope value — one admission policy per seam, never per call.
+- Law: HTTP decode is written once against the owner both edges instantiate — `HttpServerRequest` and `HttpClientResponse` extend `HttpIncomingMessage` with the edge's fault as `E` (`RequestError`, `ResponseError`), so `HttpIncomingMessage.schemaBodyJson`/`schemaBodyUrlParams`/`schemaHeaders` fuse read, decode, and error lift for server ingress and client replies in one spelling; the server edge adds `HttpServerRequest.schemaSearchParams`/`schemaCookies`, the reply edge adds `HttpClientResponse.schemaJson`/`matchStatus`, and `HttpIncomingMessage.withMaxBodySize` scopes the admission ceiling before any byte materializes. A raw body read followed by a separate validate, or a decode family maintained per edge, is the fused owner decomposed by hand.
+- Law: causal identity crosses as headers through one codec family — `HttpTraceContext.toHeaders` stamps a span outbound, `HttpTraceContext.fromHeaders` recovers `Option<Tracer.ExternalSpan>` inbound, and the `w3c`/`b3`/`xb3` rows select the dialect; `HttpClient.withTracerPropagation` composes the stamp onto the shared client, so a hand-parsed `traceparent` header re-implements a codec the platform ships.
+- Law: a foreign value that resurfaces past the seam — a nested `unknown` band, a lazy provider default, a second read from the same source — is a second admission site, not a leaked first one; it decodes where it appears, because the first decode never covered it and interior totality holds only over what was admitted.
+- Law: egress is the mirror seam — `Schema.encode` at the explicit projection point, never field-by-field serialization; the encoded twin derives from the same owner, so the wire shape cannot skew from the interior shape.
+- Exemption: the `TextDecoder` byte-to-text crossing inside the admission kernel is the named platform-forced seam.
+- Reject: a decoded value re-checked downstream; a decode inside a loop body where the seam owns the collection; `ParseResult.ArrayFormatter`/`TreeFormatter` rendering anywhere but the terminal reporting edge; an `as` cast standing where a decode produces evidence.
 
 [BYTE_IDENTITY]:
-- Law: semantic equality and byte equality are different contracts; raw octets are captured before decode, canonical octets are emitted once, and a content-addressed artifact crosses as a `Uint8Array` plus its hash — never parsed and reserialized between verification, signing, or forwarding.
-- Law: a signed numeric or timestamp field survives only as raw token bytes because decode-then-encode re-spells floats and trims timestamps; the boundary forwards the original bytes through the streaming wire fence.
-- Boundary: a receipt carries coordinates and a hash, never the payload bytes; an artifact frame consumes the server-streamed content-addressed bytes over the existing wire fence.
-- Reject: parse-and-reserialize between two byte-identity operations; choosing the encoder per site where one encoder per byte-identity domain is a composition-time invariant.
+- Use: signatures, content keys, idempotency tokens, checksum verification, byte-stable forwarding.
+- Law: a sub-band that must round-trip byte-identically is held opaque at admission — `Schema.Uint8ArrayFromSelf` in memory, `Schema.Uint8ArrayFromBase64` across a text wire — and the digest computes over those held octets before any content parse; identity and content are two projections of one admission, never two reads of the source.
+- Law: parse-then-reserialize is rejected for signed material — a re-encode respells float forms, key order, and escapes — so forwarding emits the held octets verbatim, and `Schema.encode` of the envelope re-emits the same band bytes by construction.
+- Boundary: the receipt carries the coordinate and the digest, never the octets; the digest function is fixed at composition and arrives as a parameter or service, never chosen per site.
+
+```typescript conceptual
+import { Effect, Option, type ParseResult, Schema } from "effect"
+
+// --- [MODELS] ---------------------------------------------------------------------------
+
+class Passport extends Schema.Class<Passport>("Passport")({
+  kind: Schema.Literal("<kind-a>", "<kind-b>"),
+  extent: Schema.Number.pipe(Schema.positive(), Schema.brand("Extent")),
+  note: Schema.optionalWith(Schema.String, { as: "Option" }),
+}) {}
+
+class Envelope extends Schema.Class<Envelope>("Envelope")({
+  coordinate: Schema.String,
+  band: Schema.Uint8ArrayFromBase64,
+}) {
+  static readonly emitted: (envelope: Envelope) => Effect.Effect<typeof Envelope.Encoded, ParseResult.ParseError> =
+    Schema.encode(Envelope)                                    // the configured encode rides the owner: egress is a derivation, never a sibling export
+}
+
+// --- [OPERATIONS] -----------------------------------------------------------------------
+
+const _utf8 = new TextDecoder()
+const _opened = Schema.decodeUnknown(Envelope, { errors: "all", onExcessProperty: "error" })
+const _content = Schema.decodeUnknown(Schema.parseJson(Passport), { errors: "all" })
+
+const admitted: (
+  raw: unknown,
+  digest: (octets: Uint8Array) => string,
+) => Effect.Effect<
+  { readonly key: string; readonly coordinate: string; readonly label: string; readonly passport: Passport },
+  ParseResult.ParseError
+> = Effect.fn("admitted")(function* (raw: unknown, digest: (octets: Uint8Array) => string) {
+  const envelope = yield* _opened(raw)
+  const passport = yield* _content(_utf8.decode(envelope.band))
+  return {
+    key: digest(envelope.band),
+    coordinate: envelope.coordinate,
+    label: Option.getOrElse(passport.note, () => "<value-a>"),
+    passport,
+  } as const
+})
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export { admitted, Envelope, Passport }
+```
+
+## [03]-[CONTRACT_FAMILY]
+
+[CONTRIBUTION_FAMILY]:
+- Use: every HTTP, RPC, and CLI entry surface.
+- Law: the contract is data — `HttpApiEndpoint` carries path, payload, success, and error Schemas as one declaration (`HttpApiEndpoint.get(name, path)` with `.setPath`/`.setPayload`/`.addSuccess`/`.addError`, or the `HttpApiSchema.param` template form); `HttpApiGroup.make(name).add(endpoint)` is the owning module's contribution; exactly one `HttpApi.make(id).add(group)` assembles at the composition root. The god contract has no lib-side existence — structurally impossible, not disciplined against.
+- Law: the same assembly law spans transports — `RpcGroup.make(...Rpc.make(tag, { payload, success, error, stream }))` is the procedure family, and the CLI command tree contributes verbs under the identical shape; protocol and serialization cross as two orthogonal Layer axes the root selects from the matrix below. A definition names no transport, no port, no engine.
+- Law: handler exhaustiveness is compiler-checked — `HttpApiBuilder.group` demands `.handle` for every declared endpoint and `RpcGroup.toLayer` demands the full handler record; a missing or mistyped handler is a compile error, never a 404 discovered at runtime.
+- Law: group-scoped concerns ride the declaration — `.middleware(Tag)` on the group, `.addError` for group-wide faults, `.prefix` for mount points — so a cross-cutting obligation is recoverable from the contract value, never from handler bodies.
+- Reject: a hand-rolled router table where the declarative family fits; a route registered beside the contract; transport or codec baked into a handler; a second contract authored for a client variant.
+
+Axes pair freely — any protocol row under any serialization row, selected only at the root; protocol rows live on `RpcServer`, serialization rows on `RpcSerialization`, and the client mirror rows are `RpcClient.layerProtocolHttp`/`layerProtocolSocket`/`layerProtocolWorker`.
+
+| [INDEX] | [PROTOCOL_ROW]                     | [SERIALIZATION_ROW] |
+| :-----: | :--------------------------------- | :------------------ |
+|  [01]   | `layerProtocolHttp({ path })`      | `layerJson`         |
+|  [02]   | `layerProtocolWebsocket({ path })` | `layerNdjson`       |
+|  [03]   | `layerProtocolWorkerRunner`        | `layerMsgPack`      |
+|  [04]   | `layerProtocolStdio`               | `layerJsonRpc()`    |
+|  [05]   | `layerProtocolSocketServer`        | `layerNdJsonRpc()`  |
+
+[DERIVED_SURFACES]:
+- Law: one declaration derives every consumer surface — `HttpApiBuilder.api` plus `HttpApiBuilder.serve` derive the server, `HttpApiClient.make` derives the fully typed client, `OpenApi.fromApi` derives the spec, `HttpApiBuilder.toWebHandler` derives the fetch-shaped handler for hostless runtimes; server, client, and spec cannot drift because they are projections of one value. `RpcClient.make` against the same group is the identical law on the RPC axis, `RpcServer.toWebHandler` its hostless projection, and `RpcTest.makeClient` short-circuits transport in specs — the production and test callers share the contract.
+- Law: endpoint faults are declared — `Schema.TaggedError` classes on `.addError` with their status — so the caller reconstructs the exact tagged family the handler failed with, and one error vocabulary spans the wire; the family's design is `rails-and-effects.md`'s.
+- Reject: a hand-written fetch client beside a contract; an API document authored by hand; a client-side error type parallel to the declared fault; a spec regenerated into source and committed as a second truth.
+
+```typescript conceptual
+import { HttpApi, HttpApiBuilder, HttpApiClient, HttpApiEndpoint, type HttpApiError, HttpApiGroup, type HttpClient, type HttpClientError, OpenApi } from "@effect/platform"
+import { Effect, Layer, type ParseResult, Schema } from "effect"
+
+// --- [MODELS] ---------------------------------------------------------------------------
+
+class Row extends Schema.Class<Row>("Row")({
+  key: Schema.Number,
+  label: Schema.String,
+}) {}
+
+class Missing extends Schema.TaggedError<Missing>()("Missing", { key: Schema.Number }) {}
+
+// --- [CONTRACT] -------------------------------------------------------------------------
+
+const _rows = HttpApiGroup.make("rows")
+  .add(
+    HttpApiEndpoint.get("one", "/rows/:key")
+      .setPath(Schema.Struct({ key: Schema.NumberFromString }))
+      .addSuccess(Row)
+      .addError(Missing, { status: 404 }),
+  )
+  .add(HttpApiEndpoint.post("grow", "/rows").setPayload(Schema.Struct({ label: Schema.String })).addSuccess(Row))
+
+const Contract = HttpApi.make("contract").add(_rows)
+
+// --- [COMPOSITION] ----------------------------------------------------------------------
+
+const _RowsLive = HttpApiBuilder.group(Contract, "rows", (handlers) =>
+  handlers
+    .handle("one", ({ path }) =>
+      path.key > 0
+        ? Effect.succeed(new Row({ key: path.key, label: "<value-a>" }))
+        : Effect.fail(new Missing({ key: path.key })))
+    .handle("grow", ({ payload }) => Effect.succeed(new Row({ key: 1, label: payload.label }))))
+
+const ContractLive: Layer.Layer<HttpApi.Api> = HttpApiBuilder.api(Contract).pipe(Layer.provide(_RowsLive)) // the root proof: every handler edge eliminated at the declaration
+
+// --- [OPERATIONS] -----------------------------------------------------------------------
+
+const specification: OpenApi.OpenAPISpec = OpenApi.fromApi(Contract)
+
+const probed: (
+  key: number,
+) => Effect.Effect<
+  Row,
+  Missing | HttpApiError.HttpApiDecodeError | HttpClientError.HttpClientError | ParseResult.ParseError,
+  HttpClient.HttpClient
+> = Effect.fn("probed")(function* (key: number) { // the stated union is the whole client fault surface: declared fault, decode skew, transport
+  const client = yield* HttpApiClient.make(Contract, { baseUrl: "<origin>" })
+  return yield* client.rows.one({ path: { key } })
+})
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export { Contract, ContractLive, Missing, probed, Row, specification }
+```
+
+## [04]-[CODEC_ENGINE]
+
+[ENGINE_FOLD]:
+- Use: every foreign codec — binary formats, text formats, compression, crypto envelopes — whose decode/encode pair the platform does not own.
+- Law: the engine is a pure function pair behind one `Schema.transformOrFail` from the byte schema to `Schema.Unknown`, composed onto the owned shape with `Schema.compose(shape, { strict: false })`; the engine's throw is caught inside the transform — `Either.try` folding the defect to `new ParseResult.Type(ast, actual, message)` — so codec faults join the same `ParseError` rail every admission rides. A codec fault family beside the decode rail is the rejected second vocabulary: the caller already discriminates admission failure, and the engine's failure is admission failure.
+- Law: the engine configures once at the owner per policy — instance options, untrusted-input ceilings, tag and extension registries are module-init facts — and the configured decode is the exported surface; the interior receives the owned shape and never a raw engine value, so replacing the engine is an edit to one module.
+- Law: the transform is total both directions — the encode arm folds the engine's serializer through the same `Either.try` — so the owner round-trips and the wire twin derives; a decode-only crossing that hand-writes its egress is half an owner.
+- Reject: engine output touched by domain code before the Schema owner; a throwing engine call outside the transform; per-call engine construction; a decode ceiling checked after the decode it was meant to bound.
+
+[QUIRK_CAPTURE]:
+- Law: provider type-surface drift — runtime-real members the shipped declarations omit, mislabeled declarations, phantom re-exports — reconciles at one `declare module "<package>"` augmentation co-located with the engine owner; the augmentation declares only verified runtime truth, the mislabeled member is never called, and downstream composes the corrected surface without re-discovering the mismatch.
+- Law: behavioral quirks — a default option that engages a proprietary dialect, a shared global registry, a native accelerator probe — are internalized as the owner's configuration facts; the owner's construction encodes the correct posture, so no consumer can reach the quirk path.
+- Reject: an `as` bridge at call sites where the augmentation owns the truth; the augmentation in a global ambient dump far from the engine; a wrapper whose only job is smuggling a corrected type.
+
+```typescript conceptual
+import { type Effect, Either, ParseResult, Schema } from "effect"
+
+// --- [TYPES] ----------------------------------------------------------------------------
+
+type Engine = {
+  readonly decode: (octets: Uint8Array) => unknown
+  readonly encode: (value: unknown) => Uint8Array
+}
+
+// --- [MODELS] ---------------------------------------------------------------------------
+
+class Snapshot extends Schema.Class<Snapshot>("Snapshot")({
+  key: Schema.String,
+  extent: Schema.Number,
+  held: Schema.Uint8ArrayFromSelf,
+}) {}
+
+// --- [OPERATIONS] -----------------------------------------------------------------------
+
+const engineSchema = <A, I, R>(engine: Engine, shape: Schema.Schema<A, I, R>): Schema.Schema<A, Uint8Array, R> =>
+  Schema.transformOrFail(Schema.Uint8ArrayFromSelf, Schema.Unknown, {
+    strict: true,
+    decode: (octets, _options, ast) =>
+      Either.try({
+        try: () => engine.decode(octets),
+        catch: (defect) => new ParseResult.Type(ast, octets, String(defect)),
+      }),
+    encode: (value, _options, ast) =>
+      Either.try({
+        try: () => engine.encode(value),
+        catch: (defect) => new ParseResult.Type(ast, value, String(defect)),
+      }),
+  }).pipe(Schema.compose(shape, { strict: false }))
+
+const admitted = (engine: Engine): ((raw: unknown) => Effect.Effect<Snapshot, ParseResult.ParseError>) =>
+  Schema.decodeUnknown(engineSchema(engine, Snapshot))        // the configured decode is the exported surface; its stated type is the whole seam contract
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export { admitted, engineSchema, Snapshot }
+export type { Engine }
+```
+
+## [05]-[RUNTIME_SELECTION]
+
+[CAPABILITY_TAG]:
+- Use: filesystem, HTTP egress, subprocess, tty, socket, worker spawn, key-value storage, path algebra.
+- Law: capability is the abstract Tag — `FileSystem.FileSystem`, `HttpClient.HttpClient`, `Command`/`CommandExecutor`, `Terminal.Terminal`, `Socket.Socket`, `Worker.WorkerManager`, `KeyValueStore.KeyValueStore`, `Path.Path` — yielded on the rail; the runtime binding — `NodeContext.layer` plus `NodeHttpClient.layerUndici` and `NodeHttpServer.layer`, `BunContext.layer` plus `BunHttpServer.layer`, `FetchHttpClient.layer`, `BrowserHttpClient.layerXMLHttpRequest` — is provided once at the root, so a runtime change is a Layer row, never a fork; the wiring algebra is `services-and-layers.md`'s.
+- Law: a direct `node:*`, `fetch`, or socket-library import in domain flow bypasses tracing, the typed error rail, pooling policy, and portability in one stroke; those specifiers survive only inside the binding packages and the named FFI seam.
+- Law: a foreign callback surface admits once at the seam owner — `Effectify.effectify(fn)` lifts the callback arity into an `Effect`-returning signature, and `effectify(fn, onError, onSyncError)` types the failure channel at the same declaration — so the callback API has exactly one effect spelling; an `Effect.async` wrap repeated per call site is the same defect as a scattered `process.env` read.
+- Law: a wasm module is capability, not code — instantiation is a scoped acquisition behind an abstract Tag, exports call through the marked kernel, and no linear-memory `TypedArray` view escapes it, because the module's memory is shared mutable state only the kernel may touch; the mark's legality is `language.md`'s.
+- Law: egress policy attaches to the one shared client as composed transformers — `HttpClient.retryTransient`, `filterStatusOk`, `mapRequest`, `withTracerPropagation` — so retry, admission, auth, and propagation are recoverable from the client's declaration, never re-stated per call.
+- Boundary: config ingress is the same shape — the provider chain (`PlatformConfigProvider.layerDotEnv`, `layerFileTree`) satisfies `Config` reads at the root; a `process.env` read in domain flow is the same defect as a `node:fs` import.
+
+[BOOT_EDGE]:
+- Law: one `runMain` per process is the entire imperative surface — `NodeRuntime.runMain`, `BunRuntime.runMain`, and `BrowserRuntime.runMain` inhabit the single `RunMain` shape that forks the root fiber, installs interrupt handling, sets the exit code from the `Exit`, and drains finalizers on signal; its parameter pins `R` to `never`, so the boot line is where an unwired Tag becomes a compile error rather than a runtime absence.
+- Law: `Effect.runPromise` heading a long-lived process is the rejected boot — no signal draining, finalizers lost on interrupt; a second `runMain` in one process is the named defect.
+- Law: the boot module is the only module that names a runtime, and it exports nothing — the empty exports surface is the structural proof it is terminal; a worker entry is a boot module under the same law, `WorkerRunner.launch` run beneath the runner binding.
+- Law: the view lane boots the same way once — `Atom.runtime(root)` stands the Layer graph behind the atom registry with one shared `memoMap` across runtime atoms, components project through `useAtomValue`/`useAtomSet`, and `withReactivity(keys)` re-runs an atom on the invalidation coordinates `[07]`'s bus stamps — an in-view `run*` call or a per-render Layer build is a second boot edge in disguise; which runtime owner a process holds is `services-and-layers.md`'s.
+- Law: host cancellation crosses as `AbortSignal` exactly twice — inbound, the run seam's option (`runPromise(effect, { signal })` on the `Runtime` and `ManagedRuntime` handles) converts an abort into fiber interruption; outbound, `Effect.tryPromise` and `Effect.promise` hand their evaluator a signal the fiber's own interruption fires — so an `AbortController` threaded through domain flow restates the interruption rail, whose semantics are `concurrency.md`'s.
+- Law: importing a binding pins a module to that runtime lane; domain modules import zero bindings and therefore sit in every lane — the per-runtime subpath gate enforces the fence, and this page owns its consequence: a browser bundle cannot resolve a server binding because the module graph never reaches one.
+- Exemption: the top-level `runMain` call is the named platform-forced statement seam.
+- Reject: a runtime binding imported for one capability where the aggregate context Layer already carries it; runtime detection branching inside domain flow; a library module that calls any `run*`.
+
+[CONFIG_SURFACE]:
+- Law: configuration is one `Config.unwrap` owner — a nested record of reads collapsed to a single validated struct at construction, each scalar admitted where it enters: `Config.branded` lifts a `Brand.Constructor` an owner already carries, a Schema-refined brand admits through `Schema.Config` with the owning field schema, `Config.url`/`Config.port`/`Config.duration` parse structure, `Config.nested` scopes the namespace, `Config.redacted` seals secrets — so the environment contract is one declaration resolved once at the boot edge and no validated value is re-checked past it.
+- Law: a config value with real shape admits through `Schema.Config(name, shape)` — the full Schema algebra over a string `Encoded`, brands, unions, and transforms included, its `ParseError` folded into the same `ConfigError` rail — so structure never re-parses past the seam.
+- Law: `Config.withDescription` rides every row — a missing or malformed variable reports its meaning in the `ConfigError`, never a bare key name.
+- Reject: scattered per-site `Config.string` reads; a raw scalar carried where the brand exists; a default buried at a read site where `Config.withDefault` states it at the owner; a regex check after `Config.string` where `Schema.Config` owns the shape.
+
+```typescript conceptual
+import { Command, FileSystem, HttpClient, Path, PlatformConfigProvider } from "@effect/platform"
+import { NodeContext, NodeHttpClient, NodeRuntime } from "@effect/platform-node"
+import { Config, Effect, Layer, Schema } from "effect"
+
+// --- [CONSTANTS] ------------------------------------------------------------------------
+
+const Setting = Config.unwrap({
+  origin: Config.url("ORIGIN").pipe(Config.withDescription("<meaning-a>")),
+  root: Config.string("ROOT").pipe(Config.withDefault("<root>"), Config.withDescription("<meaning-b>")),
+  lane: Config.nested(
+    Config.unwrap({
+      port: Config.port("PORT").pipe(Config.withDescription("<meaning-c>")),
+      token: Config.redacted("TOKEN").pipe(Config.withDescription("<meaning-d>")),
+    }),
+    "LANE",
+  ),
+  extent: Schema.Config("EXTENT", Schema.NumberFromString.pipe(Schema.int(), Schema.between(1, 64), Schema.brand("Extent"))).pipe(
+    Config.withDescription("<meaning-e>"),                     // the owning field schema admits here: the resolved scalar arrives branded, not re-proven downstream
+  ),
+})
+
+// --- [OPERATIONS] -----------------------------------------------------------------------
+
+const staged = Effect.fn("staged")(function* () {
+  const setting = yield* Setting                       // the one resolution; no config read survives past this line
+  const client = yield* HttpClient.HttpClient
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const body = yield* client.get(setting.origin).pipe(
+    Effect.flatMap((response) => response.text),
+    Effect.scoped,
+  )
+  const target = path.join(setting.root, "<file>")
+  yield* fs.writeFileString(target, body)
+  const code = yield* Command.make("<command>", target).pipe(Command.exitCode)
+  return { target, code, extent: setting.extent } as const
+})
+
+// --- [COMPOSITION] ----------------------------------------------------------------------
+
+const Root = Layer.mergeAll(
+  NodeContext.layer,
+  NodeHttpClient.layerUndici,
+  PlatformConfigProvider.layerDotEnv("<file>").pipe(Layer.provide(NodeContext.layer)),
+)
+
+// --- [ENTRY] ----------------------------------------------------------------------------
+
+NodeRuntime.runMain(staged().pipe(Effect.provide(Root))) // R pinned to never: an unwired Tag fails here at compile time
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export {}
+```
+
+## [06]-[MARSHAL]
+
+[WORKER_PROTOCOL]:
+- Use: off-main-thread compute, worker pools, process-boundary request/response.
+- Law: the message vocabulary is a closed family of `Schema.TaggedRequest` classes — payload, success, and failure Schemas in one declaration — collected by `Schema.Union` into one protocol; the pool executes decoded requests (`Worker.makePoolSerializedLayer(Tag, options)` — `executeEffect` one-shot, `execute` streaming, `broadcast` fan-out; the request's declared nature discriminates the modality, never a parallel pool), and the worker implements the same protocol through `WorkerRunner.layerSerialized(protocol, handlers)` — an `Effect` handler answers once, a `Stream` handler streams — with the handler record compiler-checked against the union.
+- Law: pool sizing is one policy value — fixed `{ size, concurrency, targetUtilization }` or elastic `{ minSize, maxSize, timeToLive }` — chosen at the pool layer; a second pool per load profile restates what the options row already carries.
+- Law: failure crosses as the request's failure Schema and reconstructs as the same tagged class on the caller, so one fault vocabulary spans the thread boundary; a stringified error message crossing a worker seam destroys the discriminant every downstream recovery dispatches on.
+- Law: zero-copy crossings are declared at the schema — `Transferable.Uint8Array`, `Transferable.MessagePort`, `Transferable.ImageData`, or `Transferable.schema(shape, project)` for a composite — and the `Transferable.Collector` service gathers the projected list during encode (`makeCollector` constructs it, `addAll` accumulates, `read` yields the transfer list), so the marshal plan is recoverable from the message declaration and the transfer list from the encode itself, never from an argument list at a call site.
+- Boundary: the pool's spawner and the runner's binding are runtime rows at the boot edge; the protocol module names neither; the RPC protocol row `RpcServer.layerProtocolWorkerRunner` serves an `RpcGroup` over this same runner law.
+- Reject: an untyped `postMessage` payload; a hand-rolled `onmessage` switch; a string-keyed message map with casts; per-message transferable lists at call sites; a second pool where a request tag discriminates.
+
+[FRAME_CHANNEL]:
+- Use: socket duplex, WebSocket sessions, any byte-stream peer.
+- Law: the schema seam over a structured channel is one owner — `ChannelSchema.duplex`/`duplexUnknown({ inputSchema, outputSchema })` types messages in both directions with backpressure, `ChannelSchema.decodeUnknown`/`encode` are its one-directional rows — and a byte wire first rides a frame row that owns chunk reassembly and mints its own fault: `MsgPack.duplex` (`MsgPackError`) for length-delimited binary, `Ndjson.duplex`/`duplexString` (`NdjsonError`) for newline-delimited frames. The shipped fusions `MsgPack.duplexSchema` and `Ndjson.duplexSchema` are `ChannelSchema.duplexUnknown` composed over the frame row, so the frame choice is a row swap under an unchanged schema seam.
+- Law: the socket is a byte `Channel` — `Socket.toChannelWith<E>()` — and its construction is capability, not code: `Socket.makeWebSocket(url)` against the `Socket.WebSocketConstructor` Tag the runtime row satisfies, so one framed transport definition serves every runtime lane; the pipeline geometry above the frame is `streams.md`'s.
+- Reject: raw socket event listeners; a hand-written length-prefix parser; `JSON.stringify` written to a socket where a frame row owns the framing; a per-format duplex owner where the frame table and the one schema seam compose.
+
+```typescript conceptual
+import { ChannelSchema, Ndjson, Socket, Transferable, Worker, type WorkerError, WorkerRunner } from "@effect/platform"
+import { type Channel, type Chunk, Context, Effect, type Layer, type ParseResult, Schema, Stream } from "effect"
+
+// --- [MODELS] ---------------------------------------------------------------------------
+
+class MarshalFault extends Schema.TaggedError<MarshalFault>()("MarshalFault", {
+  reason: Schema.Literal("<reason-a>", "<reason-b>"),
+}) {}
+
+class Grade extends Schema.TaggedRequest<Grade>()("Grade", {
+  payload: { octets: Transferable.Uint8Array },
+  success: Schema.Struct({ key: Schema.String, extent: Schema.Number }),
+  failure: MarshalFault,
+}) {
+  static readonly executed = (
+    octets: Uint8Array,
+  ): Effect.Effect<{ readonly key: string; readonly extent: number }, MarshalFault | ParseResult.ParseError | WorkerError.WorkerError, Bench> =>
+    Effect.flatMap(Bench, (pool) => pool.executeEffect(new Grade({ octets }))) // the union states the marshal truth: domain fault, wire decode, worker transport
+}
+
+class Sweep extends Schema.TaggedRequest<Sweep>()("Sweep", {
+  payload: { keys: Schema.Array(Schema.String) },
+  success: Schema.String,
+  failure: MarshalFault,
+}) {
+  static readonly streamed = (
+    keys: ReadonlyArray<string>,
+  ): Stream.Stream<string, MarshalFault | ParseResult.ParseError | WorkerError.WorkerError, Bench> =>
+    Stream.unwrap(Effect.map(Bench, (pool) => pool.execute(new Sweep({ keys }))))
+}
+
+const _Protocol = Schema.Union(Grade, Sweep)
+
+// --- [SERVICES] -------------------------------------------------------------------------
+
+class Bench extends Context.Tag("Bench")<Bench, Worker.SerializedWorkerPool<Grade | Sweep>>() {}
+
+// --- [COMPOSITION] ----------------------------------------------------------------------
+
+const BenchLive: Layer.Layer<Bench, WorkerError.WorkerError, Worker.Spawner | Worker.WorkerManager> =
+  Worker.makePoolSerializedLayer(Bench, { size: 4, concurrency: 2 })  // the R tail names the runtime rows only the boot edge satisfies
+
+const RunnerLive: Layer.Layer<never, WorkerError.WorkerError, WorkerRunner.PlatformRunner> =
+  WorkerRunner.layerSerialized(_Protocol, {
+    Grade: ({ octets }) => Effect.succeed({ key: "<value-a>", extent: octets.byteLength }),
+    Sweep: ({ keys }) => Stream.fromIterable(keys),
+  })
+
+// --- [OPERATIONS] -----------------------------------------------------------------------
+
+const framed = (
+  socket: Socket.Socket,
+): Channel.Channel<
+  Chunk.Chunk<Grade | Sweep>,
+  Chunk.Chunk<Grade | Sweep>,
+  Ndjson.NdjsonError | ParseResult.ParseError | Socket.SocketError,
+  ParseResult.ParseError,
+  void,
+  unknown
+> =>
+  Socket.toChannelWith<Ndjson.NdjsonError | ParseResult.ParseError>()(socket).pipe(
+    Ndjson.duplex(),
+    ChannelSchema.duplexUnknown({ inputSchema: _Protocol, outputSchema: _Protocol }), // the fused Ndjson.duplexSchema collapses this pair; the frame row swaps to MsgPack.duplex with the schema seam untouched
+  )
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export { Bench, BenchLive, framed, Grade, MarshalFault, RunnerLive, Sweep }
+```
+
+## [07]-[PERSISTENCE_SEAM]
+
+[SQL_STORE]:
+- Use: every relational store — statements, transactions, migrations, batched lookups.
+- Law: the store is the `SqlClient` Tag on `R`, and statements are `sql` tagged-template fragments composed as values — parameters bind at the fragment, and the helper rows (`sql.insert`, `sql.update`, `sql.in`, `sql.and`, `sql.or`) compose fragments from data — so string-built SQL has no spelling; the transaction is the bracket-shaped `sql.withTransaction`, a rail transformer that commits on success and rolls back on failure or interruption.
+- Law: decode rides the admission law — `SqlSchema.findAll`/`findOne`/`single`/`void` fuse Request and Result Schemas with the statement so every row enters as a decoded value on the one `ParseError` rail, and `SqlResolver.ordered`/`grouped`/`findById` batch keyed lookups behind the same fused contract, each resolver's `.execute` the one call surface its callers share; accessors and resolvers bind once at the owning service construction — a fused accessor or resolver rebuilt inside a call body re-mints resolver identity per call and defeats the batch window.
+- Law: migrations run at the boot edge — `Migrator.fromGlob`/`Migrator.fromRecord` rows executed by the boot module's Layer, never by a handler; the dialect binding and its migrator Layer are runtime rows at the root under `[05]`'s law.
+- Reject: a driver import in domain flow; a query string assembled by hand; a second decode after the fused accessor; a transaction opened per statement where one bracket owns the unit of work.
+
+[DURABLE_AND_LIVE]:
+- Use: flat durable state, schema-keyed result bands, fleet-quota windows, reads that must follow writes.
+- Law: flat durable state rides `KeyValueStore.layerSchema(shape, tagIdentifier)` — the returned `{ tag, layer }` publishes a `SchemaStore` whose `get` yields `Option` of the decoded owner and whose `set` encodes through the same Schema — decode skew rides the admission `ParseError`, the store's own I/O fault rides `PlatformError` beside it — chosen where a relational store is unearned, satisfied at the root like every capability.
+- Law: store-backed capability rows provision here and are consumed elsewhere — `Persistence.ResultPersistence` (`Persistence.layerResultKeyValueStore`, `layerResultMemory`) is the schema-keyed result band behind `PersistedCache` and `RequestResolver.persisted`, and `RateLimiterStore` (`RateLimiter/Redis.layerStore` and `layerStoreConfig`, `RateLimiter.layerStoreMemory`) is the fleet-quota window's band — both `@effect/experimental` under the manifest pin, with the consuming owners `concurrency.md`'s and `streams.md`'s.
+- Law: a read that must follow writes rides the `Reactivity` bus (`@effect/experimental`, provisioned by `Reactivity.layer`) — `mutation(keys, write)` stamps the write's invalidation coordinates, `query(keys, read)` yields a `Mailbox` re-delivering on every overlapping mutation, `stream` is the same feed as a `Stream`, and `invalidate(keys)` is the foreign-write edge; keys are the currency — the array form names whole bands, the record form scopes `{ band: ids }`, and a record mutation wakes member readers and whole-band readers both — the same coordinates `[05]`'s view lane refreshes on, so a cadence poll of unchanged rows restates delivery the keys already own.
+- Reject: a stored string re-shaped by hand where the `SchemaStore` fuses admission; an in-process quota beside the store-backed window; a hand pub/sub of table-changed strings beside the bus.
+
+```typescript conceptual
+import { Reactivity } from "@effect/experimental"
+import { KeyValueStore } from "@effect/platform"
+import { Migrator, SqlClient, SqlResolver, SqlSchema } from "@effect/sql"
+import { Array, Effect, Option, Schema } from "effect"
+
+// --- [MODELS] ---------------------------------------------------------------------------
+
+class Row extends Schema.Class<Row>("Row")({
+  key: Schema.Number.pipe(Schema.int(), Schema.brand("Key")),
+  label: Schema.String,
+  extent: Schema.Number,
+}) {}
+
+// --- [SERVICES] -------------------------------------------------------------------------
+
+const Checkpoint = KeyValueStore.layerSchema(Schema.Struct({ mark: Schema.String }), "Checkpoint")
+
+class Ledger extends Effect.Service<Ledger>()("Ledger", {
+  effect: Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const bus = yield* Reactivity.Reactivity
+    const mark = yield* Checkpoint.tag
+    const inserted = SqlSchema.void({
+      Request: Schema.Array(Schema.Struct({ label: Schema.String, extent: Schema.Number })),
+      execute: (rows) => sql`INSERT INTO rows ${sql.insert(rows)}`,
+    })
+    const found = SqlSchema.findAll({
+      Request: Schema.String,
+      Result: Row,
+      execute: (label) => sql`SELECT * FROM rows WHERE label = ${label}`,
+    })
+    const byKey = yield* SqlResolver.findById("RowByKey", {
+      Id: Schema.Number,
+      Result: Row,
+      ResultId: (row) => row.key,
+      execute: (keys) => sql`SELECT * FROM rows WHERE ${sql.in("key", keys)}`, // one statement answers the whole batch window
+    })
+    return {                                                   // fused accessors, the resolver, the store, and the bus bind once; every call shares them
+      recorded: (drafts: ReadonlyArray<{ readonly label: string; readonly extent: number }>, needle: string) =>
+        bus.mutation(
+          { rows: Array.map(drafts, (draft) => draft.label) }, // the write stamps its coordinates: member readers and whole-band readers both re-run
+          sql.withTransaction(inserted(drafts)).pipe(
+            Effect.andThen(found(needle)),
+            Effect.tap(() => mark.set("<key>", { mark: needle })),
+          ),
+        ),
+      held: (key: number) => Effect.map(byKey.execute(key), Option.isSome),
+      watched: (needle: string) => bus.stream({ rows: [needle] }, found(needle)), // the live query: re-runs on every overlapping mutation, never a cadence poll
+    }
+  }),
+  dependencies: [Checkpoint.layer, Reactivity.layer],
+}) {}
+
+// --- [COMPOSITION] ----------------------------------------------------------------------
+
+const migrations = Migrator.fromRecord({
+  "0001_<name>": Effect.asVoid(
+    Effect.flatMap(SqlClient.SqlClient, (sql) => sql`CREATE TABLE rows (key INTEGER PRIMARY KEY, label TEXT, extent REAL)`),
+  ),
+})
+
+// --- [EXPORTS] --------------------------------------------------------------------------
+
+export { Checkpoint, Ledger, migrations, Row }
+```

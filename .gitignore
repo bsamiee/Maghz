@@ -10,3 +10,21 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# --- [TRANSIENT_TREES] ---------------------------------------------------------
+
+.archive/
+_archive/
+scratch/
+.scratch/
+_tmp/
+.tmp/
+.history/
+
+# --- [AI_TOOLING] -------------------------------------------------------------
+
+.claude/agent-memory-local/
+.claude/skills/**/.cache/
+.claude/settings.local.json
+.claude/worktrees/
+.playwright-mcp/

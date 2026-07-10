@@ -2,12 +2,12 @@
 
 ## [01]-[SYNTAX]
 
-`${{ }}` for dynamic values. `if:` conditions are implicit (can omit `${{ }}`). Expressions resolve **before** runner execution — they are string interpolation, not runtime code.
+`${{ }}` for dynamic values. `if:` conditions are implicit (can omit `${{ }}`). Expressions resolve before runner execution — they are string interpolation, not runtime code.
 
 ## [02]-[CONTEXTS]
 
 | [INDEX] | [CONTEXT]      | [KEY_PROPERTIES]                                                                            |
-| :-----: | -------------- | ------------------------------------------------------------------------------------------- |
+| :-----: | :------------- | :------------------------------------------------------------------------------------------ |
 |  [01]   | `github`       | `.event_name`, `.ref`, `.ref_name`, `.sha`, `.actor`, `.repository`, `.run_id`, `.workflow` |
 |  [02]   | `github.event` | `.action`, `.pull_request.number/.head.ref/.base.ref/.head.sha`, `.head_commit.message`     |
 |  [03]   | `env`          | `env.VAR_NAME` — workflow, job, step level; step-level overrides job-level.                 |
@@ -24,7 +24,7 @@
 **`runner` context expansions:**
 
 | [INDEX] | [PROPERTY]           | [VALUE]                            |
-| :-----: | -------------------- | ---------------------------------- |
+| :-----: | :------------------- | :--------------------------------- |
 |  [01]   | `runner.os`          | `Linux`, `Windows`, `macOS`        |
 |  [02]   | `runner.arch`        | `X64`, `ARM64`, `ARM`              |
 |  [03]   | `runner.environment` | `github-hosted`, `self-hosted`     |
@@ -36,7 +36,7 @@
 ## [03]-[FUNCTIONS]
 
 | [INDEX] | [FUNCTION]         | [EXAMPLE]                                                            |
-| :-----: | ------------------ | -------------------------------------------------------------------- |
+| :-----: | :----------------- | :------------------------------------------------------------------- |
 |  [01]   | `contains(a, b)`   | `contains(github.ref, 'refs/tags/')` — **case-insensitive**.         |
 |  [02]   | `startsWith(a, b)` | `startsWith(github.ref, 'refs/tags/v')` — **case-insensitive**.      |
 |  [03]   | `endsWith(a, b)`   | `endsWith(github.ref, '/main')` — **case-insensitive**.              |
@@ -50,17 +50,17 @@
 |  [11]   | `always()`         | Run regardless of outcome.                                           |
 |  [12]   | `cancelled()`      | Workflow was cancelled.                                              |
 
-**Operators:** `()` > `!` > `<` `<=` `>` `>=` > `==` `!=` > `&&` > `||`
+[OPERATORS]: `()` > `!` > `<` `<=` `>` `>=` > `==` `!=` > `&&` > `||`
 
 **`hashFiles` behavior:** Returns empty string `''` on no match (no error, no warning). Uses `@actions/glob` patterns. Multiple args = logical AND across patterns. Broken symlinks produce empty hash silently. Glob matching is case-insensitive on Windows, case-sensitive on Linux/macOS. `?` wildcard not supported — returns empty.
 
-**`contains()` / `startsWith()` / `endsWith()`:** All three are **case-insensitive** for string comparisons. `contains('Hello', 'hello')` evaluates to `true`. When comparing against arrays, `contains()` checks for exact element match.
+[CONTAINS_STARTSWITH_ENDSWITH]: All three are case-insensitive for string comparisons. `contains('Hello', 'hello')` evaluates to `true`. When comparing against arrays, `contains()` checks for exact element match.
 
-**Comparison semantics:** Falsy values: `false`, `0`, `-0`, `""`, `null`. GitHub ignores case for string `==`/`!=`. `NaN` relational comparisons always return `false`. Objects/arrays equal only when same instance.
+[COMPARISON_SEMANTICS]: Falsy values: `false`, `0`, `-0`, `""`, `null`. GitHub ignores case for string `==`/`!=`. `NaN` relational comparisons always return `false`. Objects/arrays equal only when same instance.
 
 ## [04]-[PATTERNS]
 
-```yaml
+```yaml conceptual
 # Branch/tag conditionals
 if: github.ref == 'refs/heads/main'
 if: startsWith(github.ref, 'refs/tags/v')
@@ -93,25 +93,25 @@ if: always() && needs.deploy.result == 'failure' && needs.deploy.result != 'canc
 
 ## [05]-[CROSS_JOB_OUTPUTS]
 
-```yaml
+```yaml conceptual
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
-      should-deploy: ${{ steps.check.outputs.deploy }}
-    steps:
-      - id: ver
-        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
-      - id: check
-        run: echo "deploy=${{ github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+    setup:
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.ver.outputs.version }}
+            should-deploy: ${{ steps.check.outputs.deploy }}
+        steps:
+            - id: ver
+              run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+            - id: check
+              run: echo "deploy=${{ github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
 
-  deploy:
-    needs: setup
-    if: needs.setup.outputs.should-deploy == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Deploying ${{ needs.setup.outputs.version }}"
+    deploy:
+        needs: setup
+        if: needs.setup.outputs.should-deploy == 'true'
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo "Deploying ${{ needs.setup.outputs.version }}"
 ```
 
 [IMPORTANT] All job outputs are strings. Boolean comparisons require string equality: `== 'true'`, not `== true`. Multi-line outputs require delimiter syntax.
@@ -119,21 +119,23 @@ jobs:
 ## [06]-[INJECTION_PREVENTION]
 
 [CRITICAL]:
-- [NEVER] Interpolate `${{ github.event.* }}` directly in `run:` — attacker-controlled PR titles, branch names, and commit messages can inject shell commands.
-- [ALWAYS] Route untrusted values through `env:` block, then reference as shell variable.
 
-```yaml
+- [NEVER]: Interpolate `${{ github.event.* }}` directly in `run:` — attacker-controlled PR titles, branch names, and commit messages can inject shell commands.
+- [ALWAYS]: Route untrusted values through `env:` block, then reference as shell variable.
+
+```yaml conceptual
 # SAFE — env var indirection
 - env:
-    PR_TITLE: ${{ github.event.pull_request.title }}
-    PR_BODY: ${{ github.event.pull_request.body }}
-    COMMENT: ${{ github.event.comment.body }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      COMMENT: ${{ github.event.comment.body }}
   run: |
-    printf 'Title: %s\n' "$PR_TITLE"
-    printf 'Body: %s\n' "$PR_BODY"
+      printf 'Title: %s\n' "$PR_TITLE"
+      printf 'Body: %s\n' "$PR_BODY"
 ```
 
-**Untrusted fields** (attacker-controlled in fork PRs):
+[UNTRUSTED_FIELDS]: (attacker-controlled in fork PRs):
+
 - `github.event.pull_request.title`, `.body`, `.head.ref`
 - `github.event.comment.body`
 - `github.event.head_commit.message`, `.author.name`, `.author.email`
@@ -141,24 +143,24 @@ jobs:
 
 ## [07]-[GITHUB_OUTPUT]
 
-```yaml
+```yaml conceptual
 # Simple key-value
 - run: echo "version=1.2.3" >> "$GITHUB_OUTPUT"
 
 # Multi-line output (delimiter syntax)
 - run: |
-    {
-      echo "changelog<<EOF"
-      git log --oneline v1.1.0..HEAD
-      echo "EOF"
-    } >> "$GITHUB_OUTPUT"
+      {
+        echo "changelog<<EOF"
+        git log --oneline v1.1.0..HEAD
+        echo "EOF"
+      } >> "$GITHUB_OUTPUT"
 
 # JSON output (for fromJSON consumption)
 - run: echo "matrix=$(jq -c . matrix.json)" >> "$GITHUB_OUTPUT"
 ```
 
 | [INDEX] | [FILE]                     | [PURPOSE]                                              | [SIZE_LIMIT]                    |
-| :-----: | -------------------------- | ------------------------------------------------------ | ------------------------------- |
+| :-----: | :------------------------- | :----------------------------------------------------- | :------------------------------ |
 |  [01]   | **`$GITHUB_OUTPUT`**       | Step outputs — `steps.ID.outputs.KEY`.                 | 1 MiB/job, 50 MiB/workflow run. |
 |  [02]   | **`$GITHUB_STATE`**        | Step state — persisted between pre/main/post.          | —                               |
 |  [03]   | **`$GITHUB_ENV`**          | Environment variables — available to subsequent steps. | 48 KiB/variable.                |
@@ -167,12 +169,12 @@ jobs:
 
 ## [08]-[JOB_SUMMARIES]
 
-```yaml
+```yaml conceptual
 - run: |
-    echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
-    echo "| Suite | Passed | Failed |" >> "$GITHUB_STEP_SUMMARY"
-    echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-    echo "| Unit | 142 | 0 |" >> "$GITHUB_STEP_SUMMARY"
+      echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
+      echo "| Suite | Passed | Failed |" >> "$GITHUB_STEP_SUMMARY"
+      echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+      echo "| Unit | 142 | 0 |" >> "$GITHUB_STEP_SUMMARY"
 ```
 
 - GitHub-flavored Markdown: tables, badges, expandable `<details>` sections.
@@ -187,8 +189,8 @@ jobs:
 - Structured values (JSON) are masked as whole strings — individual fields may leak if extracted.
 - Short secrets (<4 chars) are NOT masked — use longer values.
 
-```yaml
+```yaml conceptual
 - run: echo "::add-mask::$DYNAMIC_TOKEN"
   env:
-    DYNAMIC_TOKEN: ${{ steps.auth.outputs.token }}
+      DYNAMIC_TOKEN: ${{ steps.auth.outputs.token }}
 ```

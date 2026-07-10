@@ -2,18 +2,18 @@
 
 Bash 5.2/5.3 feature exploitation. Fork-free substitution, REPLY-bound substitution, GLOBSORT pipelines, epoch instrumentation, monotonic clock, trap signal dispatch, loadable builtins (fltexpr, strptime, kv), shell options (array_expand_once, read -E, source -p), version gating. Minimum baseline is 5.2 — features below that threshold are unconditionally available.
 
-| [IDX] | [PATTERN]              |  [S]  | [VER] | [USE_WHEN]                                           |
-| :---: | :--------------------- | :---: | :---: | :--------------------------------------------------- |
-| [01]  | Fork-free substitution |  S1   |  5.3  | Tight loops, accumulator patterns, hot-path captures |
-| [02]  | REPLY-bound expansion  |  S2   |  5.3  | Result binding, structured side-effect separation    |
-| [03]  | GLOBSORT pipelines     |  S3   |  5.3  | File processing by size/mtime without sort(1)        |
-| [04]  | Epoch instrumentation  |  S4   | 5.2+  | Benchmarking, TTL caches, SRANDOM nonces             |
-| [05]  | Monotonic clock        |  S5   |  5.3  | Elapsed time immune to NTP drift, SLA enforcement    |
-| [06]  | Trap signal dispatch   |  S6   |  5.3  | Multi-signal handlers, graceful shutdown dispatch    |
-| [07]  | Loadable builtins      |  S7   |  5.3  | Float math, date/KV ops without awk/date forks       |
-| [08]  | Shell options (5.3)    |  S8   |  5.3  | array_expand_once, read -E, source -p PATH           |
-| [09]  | Wait primitives        |  S9   | 5.2+  | Bounded concurrency, PID tracking, job completion    |
-| [10]  | Version gating         |  S10  | 5.2+  | Feature dispatch across 5.2/5.3 fleet boundary       |
+| [INDEX] | [PATTERN]              | [S] | [VER] | [USE_WHEN]                                           |
+| :-----: | :--------------------- | :-: | :---: | :--------------------------------------------------- |
+|  [01]   | Fork-free substitution | S1  |  5.3  | Tight loops, accumulator patterns, hot-path captures |
+|  [02]   | REPLY-bound expansion  | S2  |  5.3  | Result binding, structured side-effect separation    |
+|  [03]   | GLOBSORT pipelines     | S3  |  5.3  | File processing by size/mtime without sort(1)        |
+|  [04]   | Epoch instrumentation  | S4  | 5.2+  | Benchmarking, TTL caches, SRANDOM nonces             |
+|  [05]   | Monotonic clock        | S5  |  5.3  | Elapsed time immune to NTP drift, SLA enforcement    |
+|  [06]   | Trap signal dispatch   | S6  |  5.3  | Multi-signal handlers, graceful shutdown dispatch    |
+|  [07]   | Loadable builtins      | S7  |  5.3  | Float math, date/KV ops without awk/date forks       |
+|  [08]   | Shell options (5.3)    | S8  |  5.3  | array_expand_once, read -E, source -p PATH           |
+|  [09]   | Wait primitives        | S9  | 5.2+  | Bounded concurrency, PID tracking, job completion    |
+|  [10]   | Version gating         | S10 | 5.2+  | Feature dispatch across 5.2/5.3 fleet boundary       |
 
 ## [01]-[FORK_FREE_SUBSTITUTION]
 
@@ -21,7 +21,7 @@ Bash 5.2/5.3 feature exploitation. Fork-free substitution, REPLY-bound substitut
 
 The performance gap is structural: `$()` forks a subshell (clone + pipe + exec), `${ }` runs inline. In a 10k-iteration loop, `${ printf '%s' x; }` completes ~5-8x faster than `$(printf '%s' x)` — fork/exec overhead dominates at scale.
 
-```bash
+```bash conceptual
 # Fork cost quantified: measure the gap directly
 _bench_fork_vs_insitu() {
     local -r iterations=10000
@@ -72,7 +72,7 @@ Use `${ }` for inline value construction in hot paths. Use `$()` when isolation 
 
 `${| cmd; }` executes `cmd` in the current shell, expands to the value of `REPLY`, and restores `REPLY` after expansion. It does not capture stdout. The command must assign `REPLY` directly; any stdout it writes still goes to the caller's stdout. Bind the expansion immediately when the value matters.
 
-```bash
+```bash conceptual
 # Sequential binding: each body sets REPLY, expansion reads that value
 get_system_profile() {
     local os kernel arch
@@ -93,24 +93,24 @@ disk_pct=${| REPLY="$(df --output=pcent / | tail -1 | tr -d '[:space:]%')"; }
 (( disk_pct > 90 )) && _warn "Disk usage critical: ${disk_pct}%"
 ```
 
-`${| }` vs `${ }`: `${ }` expands to captured stdout inline; `${| }` expands to `REPLY` set by the command body. Use `${ }` for stdout capture, `${| }` when a current-shell body should compute a value through `REPLY` while stdout remains independent.
+`${| }` vs `${ }`: `${ }` expands to captured stdout inline; `${| }` expands to `REPLY` set by the command body. Use `${ }` for stdout capture, `${| }` when a current-shell body computes a value through `REPLY` while stdout remains independent.
 
 ## [03]-[GLOBSORT_PIPELINES]
 
 GLOBSORT (5.3) controls pathname expansion order globally. `+` prefix = ascending (default), `-` = descending.
 
-| [IDX] | [SPECIFIER] | [SORTS_BY]                  |
-| :---: | :---------- | :-------------------------- |
-| [01]  | `name`      | Alphabetical (default)      |
-| [02]  | `size`      | File size (st_size)         |
-| [03]  | `mtime`     | Modification time           |
-| [04]  | `atime`     | Access time                 |
-| [05]  | `ctime`     | Inode change time           |
-| [06]  | `blocks`    | Allocated block count       |
-| [07]  | `numeric`   | Leading digits in filename  |
-| [08]  | `nosort`    | Raw readdir order (fastest) |
+| [INDEX] | [SPECIFIER] | [SORTS_BY]                  |
+| :-----: | :---------- | :-------------------------- |
+|  [01]   | `name`      | Alphabetical (default)      |
+|  [02]   | `size`      | File size (st_size)         |
+|  [03]   | `mtime`     | Modification time           |
+|  [04]   | `atime`     | Access time                 |
+|  [05]   | `ctime`     | Inode change time           |
+|  [06]   | `blocks`    | Allocated block count       |
+|  [07]   | `numeric`   | Leading digits in filename  |
+|  [08]   | `nosort`    | Raw readdir order (fastest) |
 
-```bash
+```bash conceptual
 # Process newest logs first — no ls/stat/sort pipeline
 GLOBSORT="-mtime"
 for log in /var/log/app/*.log; do
@@ -139,19 +139,19 @@ readonly file_count="${#files[@]}"
 
 ## [04]-[EPOCH_INSTRUMENTATION]
 
-Three builtin variables replace `date(1)` forks entirely. All are unconditionally available at the 5.2+ baseline:
+Three builtin variables replace `date(1)` forks entirely. All are unconditionally available at the `5.2+` baseline:
 
-| [IDX] | [VARIABLE]      | [PROVIDES]                     | [REPLACES]      |
-| :---: | :-------------- | :----------------------------- | :-------------- |
-| [01]  | `EPOCHSECONDS`  | Integer seconds since epoch    | `$(date +%s)`   |
-| [02]  | `EPOCHREALTIME` | Microsecond float (sec.usec)   | `$(date +%s%N)` |
-| [03]  | `SRANDOM`       | 32-bit getrandom(2)/getentropy | `$RANDOM`       |
+| [INDEX] | [VARIABLE]      | [PROVIDES]                     | [REPLACES]      |
+| :-----: | :-------------- | :----------------------------- | :-------------- |
+|  [01]   | `EPOCHSECONDS`  | Integer seconds since epoch    | `$(date +%s)`   |
+|  [02]   | `EPOCHREALTIME` | Microsecond float (sec.usec)   | `$(date +%s%N)` |
+|  [03]   | `SRANDOM`       | 32-bit getrandom(2)/getentropy | `$RANDOM`       |
 
 `SRANDOM` uses the kernel's getrandom(2) syscall — `RANDOM` is a predictable LCG (linear congruential generator). `SRANDOM` is suitable for nonces, session IDs, and jitter values but NOT for cryptographic key material (32-bit space). For keys: `head -c 32 /dev/urandom | base64`.
 
 `printf -v ts '%(%F %T)T' -1` is the fork-free timestamp — replaces `$(date '+%F %T')` entirely. `-1` means "now"; strftime format via `%(...)T`.
 
-```bash
+```bash conceptual
 # Microsecond benchmarking — pure integer arithmetic, no bc/awk
 _bench() {
     local -r label="$1"; shift
@@ -209,15 +209,15 @@ _rate_check() {
 }
 ```
 
-`10#${usec}` forces base-10 interpretation — microsecond strings like `09` would otherwise parse as invalid octal.
+`10#${usec}` forces base-10 interpretation — microsecond strings like `09` otherwise parse as invalid octal.
 
 ## [05]-[MONOTONIC_CLOCK]
 
-`BASH_MONOSECONDS` (5.3) reads the system monotonic clock — immune to NTP adjustments, leap seconds, and manual `date -s` changes that corrupt `EPOCHREALTIME`-based elapsed measurements. Integer seconds resolution. Availability depends on OS `clock_gettime(CLOCK_MONOTONIC)` support (Linux, macOS, BSDs — universally present on modern systems).
+`BASH_MONOSECONDS` (5.3) reads the system monotonic clock — immune to NTP adjustments, leap seconds, and manual `date -s` changes that corrupt `EPOCHREALTIME`-based elapsed measurements. Integer seconds resolution. Availability depends on OS `clock_gettime(CLOCK_MONOTONIC)` support (Linux, macOS, BSDs — universally present on `modern` systems).
 
 The critical distinction: `EPOCHREALTIME` measures wall-clock time (subject to NTP step corrections mid-measurement), `BASH_MONOSECONDS` measures elapsed time (monotonically increasing, never adjusted). Use `EPOCHREALTIME` for timestamps, `BASH_MONOSECONDS` for durations.
 
-```bash
+```bash conceptual
 # Elapsed-time measurement: NTP-immune, integer-resolution
 _elapsed() {
     local -r label="$1" start="$2"
@@ -267,7 +267,7 @@ _mono_now() {
 
 `BASH_TRAPSIG` (5.3) is set to the numeric signal number inside a trap handler. Before 5.3, a single handler shared across signals had no way to determine which signal fired — requiring separate handler functions per signal or wrapper hacks.
 
-```bash
+```bash conceptual
 # Dispatch-on-signal: one handler, differentiated cleanup
 _shutdown() {
     local -r sig="${BASH_TRAPSIG}"
@@ -312,7 +312,7 @@ Bash 5.3 ships loadable builtins as shared objects — `enable -f /path/to/built
 
 Key 5.3 additions: `kv` (in-process key-value store) and `strptime` (date string parsing). Combined with existing `fltexpr` (float arithmetic), these eliminate the three most common fork-to-external-tool patterns: `awk` for math, `date` for parsing, and temp files / associative arrays for lookup tables.
 
-```bash
+```bash conceptual
 # Bootstrap: load available builtins, set capability flags
 _load_builtins() {
     local -r lib="${BASH_LOADABLES_PATH:-/usr/local/lib/bash}"
@@ -379,9 +379,9 @@ _kv_get() {
 
 Three additions address distinct production needs: array expansion safety, interactive prompting, and library loading isolation.
 
-**array_expand_once** replaces `assoc_expand_once` (5.2) with broader scope — subscript expressions in assignment statements, `${name[sub]}` expansions, and `unset` are evaluated only once. Prevents double-evaluation bugs where a subscript containing command substitution or arithmetic side effects fires twice.
+[ARRAY_EXPAND_ONCE]: replaces `assoc_expand_once` (5.2) with broader scope — subscript expressions in assignment statements, `${name[sub]}` expansions, and `unset` are evaluated only once. Prevents double-evaluation bugs where a subscript containing command substitution or arithmetic side effects fires twice.
 
-```bash
+```bash conceptual
 # array_expand_once: prevent double-evaluation of subscript expressions
 shopt -s array_expand_once
 
@@ -394,9 +394,9 @@ counters[$(_next_key)]=1
 # call_count is now 1 (correct), not 2 (double-evaluation bug)
 ```
 
-**read -E** enables Readline with programmable completion during `read` — transforms `read -ep` from a bare prompt into a fully interactive input with tab completion, history, and key bindings. Production use: interactive CLIs that need domain-specific completions during user input.
+[READ_E]: enables Readline with programmable completion during `read` — transforms `read -ep` from a bare prompt into a fully interactive input with tab completion, history, and key bindings. Production use: interactive CLIs that need domain-specific completions during user input.
 
-```bash
+```bash conceptual
 # Interactive prompt with Readline completion (5.3)
 # Provides tab-completion and history editing during read
 _prompt_service() {
@@ -412,9 +412,9 @@ _prompt_service() {
 }
 ```
 
-**source -p PATH** specifies a custom search path for sourcing files — isolates library loading from the ambient `PATH`. Prevents accidental sourcing of same-named files from unexpected directories.
+[SOURCE_P_PATH]: specifies a custom search path for sourcing files — isolates library loading from the ambient `PATH`. Prevents accidental sourcing of same-named files from unexpected directories.
 
-```bash
+```bash conceptual
 # Controlled library loading: source only from approved paths
 _load_libs() {
     local -r lib_path="/opt/app/lib:/opt/app/vendor"
@@ -433,15 +433,15 @@ _source_lib() {
 }
 ```
 
-`array_expand_once` should be enabled globally in scripts using associative arrays with computed subscripts — it is strictly safer than the default. `read -E` is interactive-only (no effect in non-interactive scripts). `source -p` is the 5.3 equivalent of controlling `LD_LIBRARY_PATH` for shell libraries.
+Enable `array_expand_once` globally in scripts using associative arrays with computed subscripts — it is strictly safer than the default. `read -E` is interactive-only (no effect in non-interactive scripts). `source -p` is the 5.3 equivalent of controlling `LD_LIBRARY_PATH` for shell libraries.
 
 ## [09]-[WAIT_PRIMITIVES]
 
-`wait -n` (5.1+, unconditional at 5.2 baseline) blocks until ANY background job completes — the foundation for worker pools. `wait -n -p VARNAME` (5.2+) additionally stores the completed PID, enabling per-job result tracking. `wait -f PID` (5.2+) waits for a specific PID even outside job control — critical for scripts running under `set -m` restrictions.
+`wait -n` (`5.1+`, unconditional at 5.2 baseline) blocks until ANY background job completes — the foundation for worker pools. `wait -n -p VARNAME` (`5.2+`) additionally stores the completed PID, enabling per-job result tracking. `wait -f PID` (`5.2+`) waits for a specific PID even outside job control — critical for scripts running under `set -m` restrictions.
 
 `shopt -s patsub_replacement` (5.2) changes `${var//pat/rep}` behavior: `&` in the replacement expands to the matched text, mirroring sed's `\&`. Disabled by default for backwards compatibility — enable explicitly.
 
-```bash
+```bash conceptual
 # Bounded-concurrency pool with PID tracking (5.2+)
 _parallel_pool() {
     local -r max_workers="${1:-4}"; shift
@@ -486,13 +486,13 @@ readonly wrapped="${raw//error_code:[0-9]*/[&]}"
 shopt -u patsub_replacement   # restore default — scope carefully
 ```
 
-`wait -n` without `-p` is sufficient when you only need backpressure (throttle to N concurrent). Add `-p` when you need to correlate completion with the specific job that finished. `wait -f` is needed in non-job-control contexts where `wait PID` would fail silently.
+`wait -n` without `-p` is sufficient for backpressure alone (throttle to N concurrent). Add `-p` to correlate completion with the specific job that finished. `wait -f` is needed in non-job-control contexts where `wait PID` fails silently.
 
 ## [10]-[VERSION_GATING]
 
 Since the minimum baseline is 5.2, version gating discriminates only the 5.2 vs 5.3 boundary. Features at or below 5.2 (EPOCHSECONDS, EPOCHREALTIME, SRANDOM, `wait -n -p`, `wait -f`) are unconditionally available — no flags needed.
 
-```bash
+```bash conceptual
 # Packed version integer: single comparison per feature check
 readonly _BASH_V=$(( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] ))
 # Only 5.3 features need gating — 5.2 features are baseline
@@ -542,7 +542,7 @@ _features() {
 
 Version gating via packed integer eliminates nested `[[ ]]` chains. `_capture` uses eval (the only acceptable use — template-generated, not user-input derived) to select syntax at call site. Feature flags as `readonly` arithmetic — `(( _HAS_X ))` is zero-cost branching. `array_expand_once` is unconditionally enabled on 5.3 — it is strictly safer than the default and has no backwards-compatibility cost within a controlled script.
 
-## [RULES]
+## [11]-[RULES]
 
 - `${ cmd; }` for all captures in tight loops — fork overhead dominates at >100 iterations (~5-8x speedup).
 - `${| cmd; }` when stdout needs conditional processing or value crosses function boundary via REPLY.
@@ -550,7 +550,7 @@ Version gating via packed integer eliminates nested `[[ ]]` chains. `_capture` u
 - BASH_MONOSECONDS for elapsed-time measurement — immune to NTP drift. EPOCHREALTIME for timestamps only.
 - BASH_TRAPSIG for multi-signal handlers — dispatch on signal number via table, not per-signal trap registration.
 - SRANDOM for unpredictable identifiers and nonces — NEVER for cryptographic key material (32-bit).
-- EPOCHSECONDS/EPOCHREALTIME are baseline (5.2+) — use unconditionally, never gate.
+- EPOCHSECONDS/EPOCHREALTIME are baseline (`5.2+`) — use unconditionally, never gate.
 - `printf -v var '%(%F %T)T' -1` is THE fork-free timestamp — never `$(date)`.
 - EPOCHREALTIME microsecond diff via integer arithmetic with `10#` prefix — never float subtraction via bc.
 - `shopt -s array_expand_once` on 5.3 — unconditionally safer, prevents double-evaluation of subscripts.

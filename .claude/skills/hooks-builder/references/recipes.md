@@ -4,9 +4,9 @@ Proven hook implementations built on dispatch tables, frozen state, and `B: Fina
 
 ## [01]-[SECURITY_GATE]
 
-[EVENTS]: PreToolUse (Bash|Write|Read matcher)
+[EVENTS]: PreToolUse "Bash|Write|Read matcher"
 
-```python
+```python conceptual
 #!/usr/bin/env python3
 from typing import Callable, Final
 import json, sys, os, re
@@ -47,9 +47,9 @@ if __name__ == "__main__":
 
 ## [02]-[INPUT_TRANSFORMER]
 
-[EVENTS]: PreToolUse (Bash|Write matcher)
+[EVENTS]: PreToolUse "Bash|Write matcher"
 
-```python
+```python conceptual
 #!/usr/bin/env python3
 from typing import Callable, Final
 import json, sys, os
@@ -78,9 +78,9 @@ if __name__ == "__main__":
 
 ## [03]-[QUALITY_PIPELINE]
 
-[EVENTS]: PostToolUse (Write|Edit matcher)
+[EVENTS]: PostToolUse "Write|Edit matcher"
 
-```python
+```python conceptual
 #!/usr/bin/env python3
 from typing import Final
 import json, sys, subprocess
@@ -106,9 +106,9 @@ if __name__ == "__main__":
 
 ## [04]-[CONTEXT_BOOTSTRAP]
 
-[EVENTS]: SessionStart (startup|resume|compact matcher)
+[EVENTS]: SessionStart "startup|resume|compact matcher"
 
-```python
+```python conceptual
 #!/usr/bin/env python3
 from typing import Final
 import json, sys, subprocess, os
@@ -131,9 +131,9 @@ if __name__ == "__main__":
 
 ## [05]-[OBSERVABILITY]
 
-[EVENTS]: All (catch-all matcher)
+[EVENTS]: All "catch-all matcher"
 
-```python
+```python conceptual
 #!/usr/bin/env python3
 from dataclasses import dataclass, asdict
 from typing import Final
@@ -171,16 +171,20 @@ if __name__ == "__main__":
 
 [RESPONSE]: `{"ok": true}` permits the action; `{"ok": false, "reason": "..."}` blocks it. The prompt/agent eligibility roster lives in the schema reference.
 
-```json
+```json template
 {
-  "hooks": {
-    "Stop": [{
-      "hooks": [{
-        "type": "prompt",
-        "prompt": "Evaluate whether the task is complete: tests pass, types check, all requirements met. Return {\"ok\": true} if complete. Return {\"ok\": false, \"reason\": \"what is missing\"} if incomplete.",
-        "timeout": 30
-      }]
-    }]
-  }
+    "hooks": {
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "prompt",
+                        "prompt": "Evaluate whether the task is complete: tests pass, types check, all requirements met. Return {\"ok\": true} if complete. Return {\"ok\": false, \"reason\": \"what is missing\"} if incomplete.",
+                        "timeout": 30
+                    }
+                ]
+            }
+        ]
+    }
 }
 ```

@@ -1,12 +1,12 @@
 ---
 name: tavily-extract
 description: >-
-  Extract clean markdown or text from specific URLs via the Tavily CLI, up to 20 URLs per
-  call, including JavaScript-rendered pages, with query-focused chunking for targeted
-  retrieval. Use when one or more URLs are already in hand and their content is the need —
-  "extract", "grab the content from", "pull the text from", "get the page at", "read this
-  webpage". Finding pages without a URL belongs to tavily-dynamic-search; bulk extraction
-  across a whole site belongs to tavily-crawl.
+    Extract clean markdown or text from specific URLs via the Tavily CLI, up to 20 URLs per
+    call, including JavaScript-rendered pages, with query-focused chunking for targeted
+    retrieval. Use when one or more URLs are already in hand and their content is the need —
+    "extract", "grab the content from", "pull the text from", "get the page at", "read this
+    webpage". Finding pages without a URL belongs to tavily-dynamic-search; bulk extraction
+    across a whole site belongs to tavily-crawl.
 allowed-tools: Bash(uvx *)
 ---
 
@@ -16,7 +16,7 @@ Extract clean, LLM-optimized content from URLs already identified. Invocation ri
 
 ## [01]-[USAGE]
 
-```bash
+```bash template
 # Single URL
 uvx --from tavily-cli tvly extract "https://example.com/article" --json
 
@@ -46,7 +46,7 @@ uvx --from tavily-cli tvly extract "https://example.com/article" -o article.md
 |  [07]   | `-o, --output`        | Save output to file                                                           |
 |  [08]   | `--json`              | Structured JSON output                                                        |
 
-## [03]-[SELECTION]
+## [03]-[LANE_SELECTION]
 
 - `basic` depth runs first; `advanced` binds only when content comes back missing — it is slower and costs more.
 - `--query` plus `--chunks-per-source` returns only relevant chunks; full pages are the exception, not the default, when the result feeds an agent.

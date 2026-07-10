@@ -2,9 +2,7 @@
 
 ## [01]-[ACTIONLINT]
 
-**Current version:** 1.7.10 (December 30, 2025).
-
-```bash
+```bash copy-safe
 # Installation
 bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
@@ -16,50 +14,50 @@ actionlint -format '{{json .}}'              # JSON output
 actionlint -format sarif                     # SARIF (code scanning integration)
 ```
 
-**Validates:** YAML syntax, schema, expressions, runner labels, action inputs/outputs, job dependencies, CRON syntax, glob patterns, shell scripts (shellcheck integration), security vulnerabilities, YAML anchors/aliases, deprecated inputs, constant conditions.
+[VALIDATES]: YAML syntax, schema, expressions, runner labels, action inputs/outputs, job dependencies, CRON syntax, glob patterns, shell scripts (shellcheck integration), security vulnerabilities, YAML anchors/aliases, deprecated inputs, constant conditions.
 
-**Exit codes:** `0` = success, `1` = errors found, `2` = fatal error.
+[EXIT_CODES]: `0` = success, `1` = errors found, `2` = fatal error.
 
-### [1.1]-[CONFIGURATION]
+### [01.1]-[CONFIGURATION]
 
-```yaml
+```yaml copy-safe
 # .github/actionlint.yaml
 shellcheck:
-  enable: true
-  shell: bash
+    enable: true
+    shell: bash
 pyflakes:
-  enable: true
+    enable: true
 ignore:
-  - 'SC2086'                          # Ignore specific shellcheck rule
+    - "SC2086" # Ignore specific shellcheck rule
 self-hosted-runner:
-  labels: [my-custom-runner, gpu-runner]  # Declare custom labels
+    labels: [my-custom-runner, gpu-runner] # Declare custom labels
 ```
 
-### [1.2]-[CI_INTEGRATION]
+### [01.2]-[CI_INTEGRATION]
 
-```yaml
+```yaml conceptual
 name: Lint Workflows
 on:
-  pull_request:
-    paths: ['.github/workflows/**']
+    pull_request:
+        paths: [".github/workflows/**"]
 jobs:
-  actionlint:
-    runs-on: ubuntu-latest
-    permissions: {}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-      - run: ./actionlint -format sarif > actionlint.sarif
-      - uses: github/codeql-action/upload-sarif@45cbd0c69e560cd9e7cd7f8c32362050c9b7ded2 # v4.32.2
-        if: always()
-        with:
-          sarif_file: actionlint.sarif
+    actionlint:
+        runs-on: ubuntu-latest
+        permissions: {}
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+            - run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+            - run: ./actionlint -format sarif > actionlint.sarif
+            - uses: github/codeql-action/upload-sarif@45cbd0c69e560cd9e7cd7f8c32362050c9b7ded2 # v4.32.2
+              if: always()
+              with:
+                  sarif_file: actionlint.sarif
 ```
 
-### [1.3]-[KEY_CHECKS]
+### [01.3]-[KEY_CHECKS]
 
 | [INDEX] | [CHECK_CATEGORY]        | [WHAT_IT_VALIDATES]                                                 |
-| :-----: | ----------------------- | ------------------------------------------------------------------- |
+| :-----: | :---------------------- | :------------------------------------------------------------------ |
 |  [01]   | **Syntax**              | YAML structure, required fields, duplicate keys.                    |
 |  [02]   | **Expressions**         | Type correctness, context availability, injection detection.        |
 |  [03]   | **Actions**             | Input/output validation, deprecated inputs, runtime version.        |
@@ -73,9 +71,7 @@ jobs:
 
 ## [02]-[ACT]
 
-**Current version:** v0.2.84 (January 1, 2026).
-
-```bash
+```bash copy-safe
 # Installation
 brew install act                               # macOS
 curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | bash  # Linux
@@ -91,12 +87,12 @@ act -v                                         # Verbose output
 act workflow_dispatch --input version=1.2.3    # Trigger with inputs
 ```
 
-**Exit codes:** `0` = success, `1` = job failed, `2` = parse/execution error.
+[EXIT_CODES]: `0` = success, `1` = job failed, `2` = parse/execution error.
 
-### [2.1]-[OPTIONS]
+### [02.1]-[OPTIONS]
 
 | [INDEX] | [FLAG]                                     | [PURPOSE]                                    |
-| :-----: | ------------------------------------------ | -------------------------------------------- |
+| :-----: | :----------------------------------------- | :------------------------------------------- |
 |  [01]   | **`--container-architecture linux/amd64`** | Consistent platform (important on ARM Macs). |
 |  [02]   | **`-P ubuntu-latest=node:24-bookworm`**    | Custom Docker image for runner.              |
 |  [03]   | **`-s GITHUB_TOKEN=ghp_xxx`**              | Pass secret.                                 |
@@ -106,9 +102,9 @@ act workflow_dispatch --input version=1.2.3    # Trigger with inputs
 |  [07]   | **`--action-offline-mode`**                | Skip downloading actions (use cached).       |
 |  [08]   | **`--matrix os:ubuntu-latest`**            | Filter matrix to specific combination.       |
 
-### [2.2]-[CONFIGURATION_FILE]
+### [02.2]-[CONFIGURATION_FILE]
 
-```bash
+```bash copy-safe
 # .actrc (project root or $HOME)
 --container-architecture=linux/amd64
 --action-offline-mode
@@ -118,7 +114,7 @@ act workflow_dispatch --input version=1.2.3    # Trigger with inputs
 ## [03]-[LIMITATIONS]
 
 | [INDEX] | [TOOL]         | [LIMITATION]                        | [IMPACT]                                                   |
-| :-----: | -------------- | ----------------------------------- | ---------------------------------------------------------- |
+| :-----: | :------------- | :---------------------------------- | :--------------------------------------------------------- |
 |  [01]   | **actionlint** | No cross-file analysis              | Cannot validate reusable workflow caller/callee contracts. |
 |  [02]   | **actionlint** | Popular actions data may lag        | New action versions may not be in bundled metadata.        |
 |  [03]   | **act**        | Not 100% GitHub-compatible          | Some features behave differently than real runners.        |
@@ -131,7 +127,7 @@ act workflow_dispatch --input version=1.2.3    # Trigger with inputs
 ## [04]-[TROUBLESHOOTING]
 
 | [INDEX] | [ISSUE]                             | [SOLUTION]                                                    |
-| :-----: | ----------------------------------- | ------------------------------------------------------------- |
+| :-----: | :---------------------------------- | :------------------------------------------------------------ |
 |  [01]   | **Cannot connect to Docker daemon** | Start Docker Desktop or daemon.                               |
 |  [02]   | **Workflow file not found**         | Run from repo root or use `-W` flag.                          |
 |  [03]   | **Action not found locally**        | Use `-P` for alternative images or `--action-offline-mode`.   |
