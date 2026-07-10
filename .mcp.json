@@ -1,95 +1,92 @@
 {
-  "mcpServers": {
-    "postgres": {
-      "command": "forge-maghz-postgres-mcp",
-      "args": [],
-      "env": {
-        "MAGHZ_MCP__DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"
-      }
-    },
-    "google-workspace": {
-      "command": "forge-workspace-mcp",
-      "args": [
-        "--tool-tier",
-        "extended"
-      ],
-      "env": {
-        "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
-        "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
-        "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}"
-      }
-    },
-    "notebooklm": {
-      "command": "notebooklm-mcp",
-      "args": [],
-      "env": {}
-    },
-    "exa": {
-      "type": "http",
-      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa,web_search_advanced_exa,agent_tools",
-      "headers": {
-        "x-api-key": "${EXA_API_KEY}"
-      }
-    },
-    "perplexity": {
-      "command": "forge-perplexity-mcp",
-      "args": [],
-      "env": {
-        "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
-      }
-    },
-    "tavily": {
-      "command": "forge-tavily-mcp",
-      "args": [],
-      "env": {
-        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
-      }
-    },
-    "hostinger": {
-      "command": "forge-hostinger-mcp",
-      "args": [],
-      "env": {
-        "HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"
-      }
-    },
-    "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "headers": {
-        "Authorization": "Bearer ${GH_PROJECTS_TOKEN}"
-      }
-    },
-    "context7": {
-      "type": "http",
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${CONTEXT7_API_KEY}"
-      }
-    },
-    "greptile": {
-      "type": "http",
-      "url": "https://api.greptile.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${GREPTILE_API_KEY}"
-      }
-    },
-    "nuget": {
-      "command": "nuget-mcp",
-      "args": [],
-      "env": {}
-    },
-    "jupyter": {
-      "command": "forge-jupyter-mcp",
-      "args": [],
-      "env": {}
-    },
-    "doppler-remote": {
-      "command": "ssh",
-      "args": [
-        "maghz",
-        "DOPPLER_TOKEN=\"$(doppler configure get token --plain --scope /srv/maghz)\" docker exec -i -e DOPPLER_TOKEN maghz-mcp /opt/mcp/bin/doppler-mcp --read-only --project maghz --config prd_host"
-      ],
-      "env": {}
+    "mcpServers": {
+        "postgres": {
+            "command": "forge-maghz-postgres-mcp",
+            "args": [],
+            "env": {
+                "MAGHZ_MCP__DATABASE_URI": "${MAGHZ_MCP__DATABASE_URI}"
+            }
+        },
+        "google-workspace": {
+            "command": "forge-workspace-mcp",
+            "args": ["--tool-tier", "extended"],
+            "env": {
+                "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
+                "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
+                "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}"
+            }
+        },
+        "notebooklm": {
+            "command": "notebooklm-mcp",
+            "args": [],
+            "env": {}
+        },
+        "exa": {
+            "type": "http",
+            "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa,web_search_advanced_exa,agent_tools",
+            "headers": {
+                "x-api-key": "${EXA_API_KEY}"
+            }
+        },
+        "perplexity": {
+            "command": "forge-perplexity-mcp",
+            "args": [],
+            "env": {
+                "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
+            }
+        },
+        "tavily": {
+            "command": "forge-tavily-mcp",
+            "args": [],
+            "env": {
+                "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+            }
+        },
+        "hostinger": {
+            "command": "forge-hostinger-mcp",
+            "args": [],
+            "env": {
+                "HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"
+            }
+        },
+        "github": {
+            "type": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                "Authorization": "Bearer ${GH_PROJECTS_TOKEN}"
+            }
+        },
+        "context7": {
+            "type": "http",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {
+                "Authorization": "Bearer ${CONTEXT7_API_KEY}"
+            }
+        },
+        "greptile": {
+            "type": "http",
+            "url": "https://api.greptile.com/mcp",
+            "headers": {
+                "Authorization": "Bearer ${GREPTILE_API_KEY}"
+            }
+        },
+        "nuget": {
+            "command": "nuget-mcp",
+            "args": [],
+            "env": {}
+        },
+        "jupyter": {
+            "command": "forge-jupyter-mcp",
+            "args": [],
+            "env": {}
+        },
+        "doppler-remote": {
+            "command": "ssh",
+            "args": [
+                "maghz",
+                "DOPPLER_TOKEN=\"$(doppler configure get token --plain --scope /srv/maghz)\" docker exec -i -e DOPPLER_TOKEN maghz-mcp /opt/mcp/bin/doppler-mcp --read-only --project maghz --config prd_host"
+            ],
+            "env": {}
+        }
     }
-  }
 }
