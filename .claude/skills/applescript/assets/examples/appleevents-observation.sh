@@ -37,20 +37,20 @@ attribution() {
 main() {
     local verb=${1:-traffic}
     case $verb in
-    traffic) traffic ;;
-    taps)
-        [[ $# -eq 2 ]] || {
-            printf 'usage: taps <script>\n' >&2
+        traffic) traffic ;;
+        taps)
+            [[ $# -eq 2 ]] || {
+                printf 'usage: taps <script>\n' >&2
+                exit 64
+            }
+            taps "$2"
+            ;;
+        consent) consent ;;
+        attribution) attribution ;;
+        *)
+            printf 'usage: appleevents-observation.sh <traffic|taps <script>|consent|attribution>\n' >&2
             exit 64
-        }
-        taps "$2"
-        ;;
-    consent) consent ;;
-    attribution) attribution ;;
-    *)
-        printf 'usage: appleevents-observation.sh <traffic|taps <script>|consent|attribution>\n' >&2
-        exit 64
-        ;;
+            ;;
     esac
 }
 

@@ -260,38 +260,38 @@ _usage() {
 _parse_args() {
     while (($# > 0)); do
         case "$1" in
-        -h | --help)
-            _usage
-            exit 0
-            ;;
-        -p | --page-size)
-            PAGE_SIZE="${2:?--page-size requires N}"
-            [[ "${PAGE_SIZE}" =~ ^[1-9][0-9]*$ ]] || _die_usage "--page-size requires positive integer"
-            shift 2
-            ;;
-        -o | --offset)
-            PAGE_OFFSET="${2:?--offset requires N}"
-            [[ "${PAGE_OFFSET}" =~ ^[0-9]+$ ]] || _die_usage "--offset requires non-negative integer"
-            shift 2
-            ;;
-        -v | --verbose)
-            LOG_LEVEL=1
-            shift
-            ;;
-        -d | --debug)
-            LOG_LEVEL=0
-            shift
-            ;;
-        --self-test)
-            _self_test
-            exit 0
-            ;;
-        --)
-            shift
-            break
-            ;;
-        -*) _die_usage "Unknown option: $1" ;;
-        *) break ;;
+            -h | --help)
+                _usage
+                exit 0
+                ;;
+            -p | --page-size)
+                PAGE_SIZE="${2:?--page-size requires N}"
+                [[ "${PAGE_SIZE}" =~ ^[1-9][0-9]*$ ]] || _die_usage "--page-size requires positive integer"
+                shift 2
+                ;;
+            -o | --offset)
+                PAGE_OFFSET="${2:?--offset requires N}"
+                [[ "${PAGE_OFFSET}" =~ ^[0-9]+$ ]] || _die_usage "--offset requires non-negative integer"
+                shift 2
+                ;;
+            -v | --verbose)
+                LOG_LEVEL=1
+                shift
+                ;;
+            -d | --debug)
+                LOG_LEVEL=0
+                shift
+                ;;
+            --self-test)
+                _self_test
+                exit 0
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*) _die_usage "Unknown option: $1" ;;
+            *) break ;;
         esac
     done
     POSITIONAL_ARGS=("$@")

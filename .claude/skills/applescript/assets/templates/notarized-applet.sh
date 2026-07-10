@@ -30,8 +30,8 @@ main() {
     local source=$1 name=$2
     local lang app entitlements zip
     case $source in
-    *.jxa | *.js) lang=JavaScript ;;
-    *) lang=AppleScript ;;
+        *.jxa | *.js) lang=JavaScript ;;
+        *) lang=AppleScript ;;
     esac
     app="build/${name}.app"
     entitlements="build/${name}.entitlements.plist"

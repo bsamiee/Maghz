@@ -262,36 +262,36 @@ _usage() {
 _parse_flags() {
     while (($# > 0)); do
         case "$1" in
-        -h | --help)
-            _usage
-            exit 0
-            ;;
-        -V | --version)
-            printf '%s v%s (bash %s)\n' \
-                "${SCRIPT_NAME}" "${VERSION}" "${BASH_VERSION}"
-            exit 0
-            ;;
-        -v | --verbose)
-            LOG_LEVEL=1
-            shift
-            ;;
-        -q | --quiet)
-            LOG_LEVEL=3
-            shift
-            ;;
-        -j | --json)
-            _JSON_LOG=1
-            shift
-            ;;
-        --self-test)
-            _self_test
-            exit 0
-            ;;
-        --)
-            shift
-            break
-            ;;
-        -*) _die_usage "Unknown: $1" ;; *) break ;;
+            -h | --help)
+                _usage
+                exit 0
+                ;;
+            -V | --version)
+                printf '%s v%s (bash %s)\n' \
+                    "${SCRIPT_NAME}" "${VERSION}" "${BASH_VERSION}"
+                exit 0
+                ;;
+            -v | --verbose)
+                LOG_LEVEL=1
+                shift
+                ;;
+            -q | --quiet)
+                LOG_LEVEL=3
+                shift
+                ;;
+            -j | --json)
+                _JSON_LOG=1
+                shift
+                ;;
+            --self-test)
+                _self_test
+                exit 0
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*) _die_usage "Unknown: $1" ;; *) break ;;
         esac
     done
     (($# >= 2)) || {

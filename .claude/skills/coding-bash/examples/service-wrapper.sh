@@ -218,35 +218,35 @@ _usage() {
 _parse_args() {
     while (($# > 0)); do
         case "$1" in
-        -h | --help)
-            _usage
-            exit 0
-            ;;
-        --drain-sec)
-            DRAIN_SEC="${2:?--drain-sec requires integer}"
-            shift 2
-            ;;
-        --pid-file)
-            PID_FILE="${2:?--pid-file requires path}"
-            shift 2
-            ;;
-        --self-test)
-            _self_test
-            exit 0
-            ;;
-        -v | --verbose)
-            LOG_LEVEL=1
-            shift
-            ;;
-        --)
-            shift
-            break
-            ;;
-        -*)
-            _err "Unknown: $1"
-            exit "${EX_USAGE}"
-            ;;
-        *) break ;;
+            -h | --help)
+                _usage
+                exit 0
+                ;;
+            --drain-sec)
+                DRAIN_SEC="${2:?--drain-sec requires integer}"
+                shift 2
+                ;;
+            --pid-file)
+                PID_FILE="${2:?--pid-file requires path}"
+                shift 2
+                ;;
+            --self-test)
+                _self_test
+                exit 0
+                ;;
+            -v | --verbose)
+                LOG_LEVEL=1
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                _err "Unknown: $1"
+                exit "${EX_USAGE}"
+                ;;
+            *) break ;;
         esac
     done
     SERVICE_ARGS=("$@")

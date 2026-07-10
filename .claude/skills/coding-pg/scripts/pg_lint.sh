@@ -48,8 +48,8 @@ _emit_text() {
 }
 _emit() {
     case "${_FMT}" in
-    json) _emit_json "$@" ;;
-    text) _emit_text "$@" ;;
+        json) _emit_json "$@" ;;
+        text) _emit_text "$@" ;;
     esac
 }
 
@@ -177,40 +177,40 @@ declare -a _PATHS=()
 _parse() {
     while (($#)); do
         case "$1" in
-        -h | --help)
-            _usage
-            exit 0
-            ;;
-        -q | --quiet)
-            _QUIET=true
-            shift
-            ;;
-        --sql-only)
-            _TS=false
-            shift
-            ;;
-        --ts-only)
-            _SQL=false
-            shift
-            ;;
-        --json)
-            _FMT=json
-            shift
-            ;;
-        --self-test)
-            _self_test
-            exit $?
-            ;;
-        --)
-            shift
-            break
-            ;;
-        -*)
-            printf 'Unknown: %s\n' "$1" >&2
-            _usage >&2
-            exit "${_USAGE}"
-            ;;
-        *) break ;;
+            -h | --help)
+                _usage
+                exit 0
+                ;;
+            -q | --quiet)
+                _QUIET=true
+                shift
+                ;;
+            --sql-only)
+                _TS=false
+                shift
+                ;;
+            --ts-only)
+                _SQL=false
+                shift
+                ;;
+            --json)
+                _FMT=json
+                shift
+                ;;
+            --self-test)
+                _self_test
+                exit $?
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                printf 'Unknown: %s\n' "$1" >&2
+                _usage >&2
+                exit "${_USAGE}"
+                ;;
+            *) break ;;
         esac
     done
     _PATHS=("${@:-.}")

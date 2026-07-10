@@ -68,11 +68,11 @@ main() {
     verdict=$(printf '%s' "$verdict_json" | /usr/bin/plutil -extract verdict raw -o - - 2>/dev/null || printf 'failed')
 
     case $verdict in
-    granted) ;;
-    denied) die "consent" '"automation denied for target — route the user to System Settings > Privacy > Automation"' ;;
-    undecided) die "consent" '"automation undecided — trigger the explicit user-initiated permission lane"' ;;
-    target-not-running) die "consent" '"target application is not running — launch it before preflight"' ;;
-    *) die "consent" '"consent verdict unreadable"' ;;
+        granted) ;;
+        denied) die "consent" '"automation denied for target — route the user to System Settings > Privacy > Automation"' ;;
+        undecided) die "consent" '"automation undecided — trigger the explicit user-initiated permission lane"' ;;
+        target-not-running) die "consent" '"target application is not running — launch it before preflight"' ;;
+        *) die "consent" '"consent verdict unreadable"' ;;
     esac
 
     local result rc=0
