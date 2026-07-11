@@ -1,6 +1,10 @@
 # Review context — Maghz
 
-VPS second-brain repo: Python admin tooling, container topology, database schema, and workflow automation for the durable Hostinger VPS. Machine-level shell/PATH/tooling concerns belong to Parametric_Forge, never here.
+VPS second-brain repo: Python admin tooling, container topology, database schema, and workflow automation for the durable Hostinger VPS. Machine-level shell/PATH/tooling concerns belong to Parametric_Forge, never here. Repo-wide maintenance law lives under docs/laws/ (coupling topology, cross-surface patterns, scars); where a finding and the doctrine disagree, the doctrine wins.
+
+Cross-surface coupling is review law: docs/laws/topology.md maps which surfaces obligate which counterparts — a diff editing a listed SURFACE without its obligated counterparts in the same change is a finding naming the missing counterpart; docs/laws/patterns.md rows bind every surface they name; docs/laws/scars.md laws are standing review duty.
+
+Doctrine-surface diffs (docs/laws, docs/stacks, docs/standards, CLAUDE.md, AGENTS.md, the reviewer configs themselves) are judged against docs/laws/landing.md: hardening an existing clause beats extending a file beats minting one, and each move needs the prior proven insufficient; a new file under docs/standards is a defect, and docs/stacks pages mirror the Rasm masters — a local fork is a defect; run provenance, freshness tails, or process narration in a landed row is a defect; a doctrine addition without recurrence evidence or surface-spanning blast radius is spam — flag it, and flag equally the miss where a diff hardens a symptom clause while the neighboring owning clause stands untouched where the collapse belonged.
 
 ## [01]-[DESIGN_PARADIGMS]
 

@@ -57,6 +57,8 @@ Use the route-owned standard for the file being edited:
 
 Python has no route skill: the doctrine pair plus this manifest's `[05]` constraints own Python shape, and `ruff`/`ty` gate style and types.
 
+`docs/laws/` is the repo-wide maintenance-law corpus — coupling topology, cross-surface pattern rows, and the scar ledger; substantive passes read it at source (it stays small by law), a diff touching a `topology.md` `[SURFACE]` lands its obligated counterparts in the same change, and durable lessons land ONLY through a run's terminal doctrine stage under the `docs/laws/README.md` admission law: harden an existing clause before extending a file before minting one, `docgen` + `skill-writer` loaded for every landing, and landing nothing is a first-class verdict.
+
 ## [04]-[DEPENDENCY_POLICY]
 
 [IMPORTANT]: External libraries, manifests, and host APIs are implementation surfaces.

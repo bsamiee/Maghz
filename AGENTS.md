@@ -83,6 +83,8 @@ Gemini second-perspective and visual-judgment legs route through the `agy` skill
 
 Route README, ADR, architecture, design-note, API, reference, code documentation, how-to, runbook, and instruction-file work through `docs/`.
 
+`docs/laws/` is the repo-wide maintenance-law corpus — coupling topology, cross-surface pattern rows, and the scar ledger; read it at source in substantive passes (it stays small by law), and land a diff touching a `topology.md` `[SURFACE]` together with its obligated counterparts. `docs/laws/README.md` owns the admission law; the twin routing note lives in `CLAUDE.md` `[03]`.
+
 Keep generated documentation, prompts, skills, standards, examples, templates, and reusable guidance project-agnostic by default. Do not mention this project by name, repository-specific paths, local commands, local package names, project functions, concrete source files, or project-only docs unless the target file explicitly exists to describe this repository's own usage, routing, or implementation. Generic examples use neutral names, the placeholder alphabet, and code-safe shapes. Use concrete repository names, paths, functions, commands, versions, dates, IDs, or package facts only when the document's job is to describe that exact source-backed repository surface.
 
 Future-facing standards, plans, and target designs do not inherit current drift; remove stale paths, stale commands, compatibility prose, old-baseline caveats, partial-adoption apologies, and invented routes instead of preserving them.
