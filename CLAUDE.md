@@ -4,38 +4,30 @@ Operate as a senior developer building the tooling for a focused second brain. H
 
 ## [01]-[MODEL_DISPATCH]
 
-Rankings, higher = better. Cost reflects the operator's actual spend (OpenAI is near-free under a standing deal), not list price. Intelligence is how hard a problem the model absorbs unsupervised. Taste covers UI/UX, code quality, API design, and copy.
+Rankings, higher is better. Cost reflects actual operator spend, not list price. Intelligence is how hard a problem the model absorbs unsupervised. Taste covers UI/UX, code quality, API design, and copy.
 
-| [INDEX] | [MODEL]  | [COST] | [INTELLIGENCE] | [TASTE] |
-| :-----: | :------- | :----: | :------------: | :-----: |
-|  [01]   | gpt-5.5  |   9    |       8        |    5    |
-|  [02]   | sonnet-5 |   5    |       4        |    6    |
-|  [03]   | opus-4.8 |   4    |       7        |    7    |
-|  [04]   | fable-5  |   2    |       9        |    9    |
+| [INDEX] | [MODEL]       | [COST] | [INTELLIGENCE] | [TASTE] |
+| :-----: | :------------ | :----: | :------------: | :-----: |
+|  [01]   | gpt-5.6-terra |   9    |       7        |    6    |
+|  [02]   | gpt-5.6-sol   |   8    |       8        |    7    |
+|  [03]   | gpt-5.6-luna  |   10   |       5        |    5    |
+|  [04]   | sonnet-5      |   5    |       3        |    6    |
+|  [05]   | opus-4.8      |   4    |       7        |    7    |
+|  [06]   | fable-5       |   2    |       9        |    9    |
 
-How to apply:
-- These are defaults, not limits, with standing permission to override them: when a cheaper model's output misses the bar, rerun or redo the work with a smarter model without asking. Judge the output, not the price tag; escalating costs less than shipping mediocre work.
-- Cost never blocks the right model for the job; cheaper options gather information and trial runs before the work moves to a more expensive option.
-- Bulk/mechanical work (clear-spec implementation, data analysis, migrations): gpt-5.5 - it's effectively free.
-- Heavy exploration, investigation, and research legs: dispatch to gpt-5.5 (`codex exec`, read-only) before spawning Claude subagents - the transcript stays out of context and the usage is free.
-- Anything user-facing (UI, copy, API design) needs taste ≥ 7.
-- Reviews of plans/implementations: fable-5 or opus-4.8, optionally gpt-5.5 as an extra independent perspective. A fable agent never delegates to another fable: inline work first, and unavoidable delegation dispatches a single bounded opus (or below) sub-task, never a chain.
-- Mechanics: gpt-5.5 is only reachable through the Codex CLI - `codex exec` / `codex review` (`~/.codex/config.toml` defaults to gpt-5.5 at medium reasoning).
-- Load the codex skill `.claude/skills/codex/SKILL.md` whenever dispatching work to codex - delegation triggers, invocation mechanics, sandboxing, effort tiers, sessions, and review modes live there.
-- Reasoning effort defaults to medium; escalate a single run with `codex exec -c model_reasoning_effort="high"` (or `--profile xhigh`) for the hardest research, review, and design legs - multi-minute latency, reserve for depth over throughput.
-- Claude models (sonnet-5, opus-4.8, fable-5) run via the Agent/Workflow model parameter.
-- [NEVER]: use Haiku.
-
-Using gpt-5.5 inside workflows and subagents (the model parameter only takes Claude models, so use a wrapper):
-- Spawn a thin Claude wrapper agent with `model: 'sonnet', effort: 'low'` whose prompt instructs it to write a self-contained codex prompt, run `codex exec` via Bash, and return the report (use `schema` on the wrapper to get structured output back).
-- Always label these agents with a `gpt-5.5:` prefix, e.g. `{label: 'gpt-5.5:review-auth'}` - the workflow UI shows the wrapper's Claude model, so the label is the only indication the real worker is gpt-5.5.
-- A long run exceeds Bash's 10-minute cap: pass an explicit timeout, or launch detached against a `-o` report and poll by liveness — never relaunch a live run. Inside workflows wrappers are LAUNCH-ONLY — a subagent has no legal wait (foreground sleep is blocked, background tasks never notify it, idle no-ops trip no-progress enforcement): the wrapper returns a launch receipt in seconds, the orchestrator owns time between harvest rounds, and a short-lived harvester agent promotes finished reports from disk.
-- `codex exec -o <file>` writes the final message to a file (the report artifact to poll in background runs); `--output-schema <schema.json>` constrains the final message to a JSON Schema when the wrapper must return typed results.
-- Workflow token budgets only count Claude tokens; codex work is free and invisible to `budget.spent()`.
+- Terra is the default Codex worker for sweeps, research, migration, and clear-spec implementation; Sol owns ambiguous design, complex code, and the deepest review; Luna owns fixed-schema high-volume transformation.
+- Every Codex lane pins sandbox and the suffixed model slug; effort inherits the operator default (`xhigh` in `~/.codex/config.toml`) and is stated only to deviate.
+- Xhigh is the dispatch default for every model; low/medium serve bulk throughput, max deepens the single hardest leg. Subagent spawning is prompt-triggered at any tier; Ultra only biases Sol and Terra to self-decompose - redundant where the caller owns the fan-out - while Luna ends at max.
+- Fan-out lanes disable every unused MCP server, including `heptabase-mcp`, and never refan with Ultra. `forge-mcp doctor --network` and `forge-mcp drift` are the fleet gates.
+- User-facing surfaces require taste ≥ 7. Plan and implementation reviews use fable-5 or opus-4.8, with Terra or Sol as the independent Codex lineage.
+- Delegated agents inherit this table at every depth under the agent-dispatch placement law, never self-escalating beyond the brief.
+- Claude models run through the Agent/Workflow `model` parameter at effort `high`; Codex runs through the `codex` MCP tool or `codex exec` / `codex review` — the codex skill owns invocation. [NEVER]: Haiku.
+- A workflow codex leg is a thin wrapper labeled with the real worker (`terra:`/`sol:`/`luna:`/`gemini:`) making one blocking `codex` MCP call; the workflow-creator codex-lanes reference owns the wrapper and receipt contract.
 
 ## [02]-[WORKSPACE_LAW]
 
 [IMPORTANT]:
+
 - [ALWAYS]: Use `.claude/skills/workflow-creator` when creating a workflow.
 - [ALWAYS]: Treat tooling code as polymorphic, agnostic, and universal by default.
 - [ALWAYS]: Keep every surface agent-facing and agent-only: the CLI emits one JSON `Envelope` per call with no human-facing flags, prompts, or decorative output; agents and automations are the sole consumers, and automation is central design pressure even before the automations exist.
@@ -68,6 +60,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [04]-[DEPENDENCY_POLICY]
 
 [IMPORTANT]: External libraries, manifests, and host APIs are implementation surfaces.
+
 - [ALWAYS]: Treat dependencies declared in `pyproject.toml`, the lockfile, and equivalent manifests as first-class material.
 - [ALWAYS]: Mine admitted packages to their full useful capability before writing local kernels.
 - [ALWAYS]: Prefer ecosystem libraries that already own the domain concern over lower-level reinvention.
@@ -80,6 +73,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [05]-[IMPLEMENTATION_CONSTRAINTS]
 
 [CRITICAL]:
+
 - [NEVER]: Use weak, unbounded, or erased types where the language can express the domain precisely.
 - [NEVER]: Use exception-style control flow in domain logic; use typed error rails and the required route's recovery patterns.
 - [NEVER]: Use imperative branching when a bounded vocabulary, dispatch table, generated switch, match, fold, or monadic rail can own the variation.
@@ -92,6 +86,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 - [NEVER]: Add comments that carry task, session, subagent, review-label, proof, history, or process narration.
 
 [IMPORTANT]:
+
 - [ALWAYS]: Collapse related variants into one polymorphic surface before adding entrypoints.
 - [ALWAYS]: Drive logic with data, bounded vocabularies, discriminants, table rows, and reusable projections.
 - [ALWAYS]: Co-locate domain logic with its owner instead of scattering it into generic support files.
@@ -102,6 +97,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [06]-[BEHAVIOR]
 
 [IMPORTANT]:
+
 - [ALWAYS]: Tools over internal knowledge: read files, search code, verify assumptions through source, manifests, docs, and tool output.
 - [ALWAYS]: Parallelize independent searches, reads, and checks.
 - [ALWAYS]: Use bounded subagents for independent exploration, research, verification, and disjoint implementation when the user asks for subagents or parallel agent work.
@@ -109,6 +105,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [07]-[OWNER_ROUTING]
 
 [IMPORTANT]:
+
 - [ALWAYS]: Dependency graph facts live in `pyproject.toml`, the lockfile, and the tool owner that consumes them.
 - [ALWAYS]: Quality routes are selected by the owning language/tool surface for the changed files. Root policy owns intent, not command catalogs.
 - [ALWAYS]: For docs-only, catalog-only, read-only, declaration-order, move-only, and comment-only work, use text, path, table, link, owner, and preservation checks unless the user requests an executable quality rail.
@@ -125,7 +122,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 
 ## [08]-[TOOLING]
 
-Machine tooling is provisioned by `Parametric_Forge` (Nix, on `PATH`) for both hosts; inspect the Forge owner before patching local toolchain failures. `AGENTS.md [06]` carries the full per-tool inventory by group, including the 12-server MCP fleet whose typed owner is `admin/mcp.py`.
+Machine tooling and the complete MCP fleet are provisioned by `Parametric_Forge` for both hosts; inspect the Forge manifest, reconciliation rail, and health receipts before patching a local toolchain failure.
 
 Route each tooling concern through its owning skill:
 
@@ -148,6 +145,7 @@ Resolve any external library's current API through `context7` before internalizi
 ## [09]-[DOCUMENTATION_AND_OUTPUT]
 
 [IMPORTANT]:
+
 - [ALWAYS]: Use `backticks` for file paths, symbols, and CLI commands.
 - [ALWAYS]: Keep responses actionable and lead with what changed.
 - [ALWAYS]: Treat durable docs, prompts, standards, skills, examples, and templates as agent-facing declarative law.
@@ -161,11 +159,11 @@ Plans are decision-complete blueprints. Include context, critical files, impleme
 
 [IMPORTANT] Section separators: language comment marker + space + `---` + bracketed UPPERCASE snake label with no internal spaces + dash fill to the established language width.
 
-```python
+```python conceptual
 # --- [CONSTANTS] ------------------------------------------------------------------------
 ```
 
-```sql
+```sql conceptual
 -- --- [MODELS] --------------------------------------------------------------------------
 ```
 
@@ -183,6 +181,7 @@ Canonical order, omitting unused sections: `TYPES` -> `CONSTANTS` -> `MODELS` ->
 - `[EXPORTS]`: named exports, `__all__`, or language-equivalent public surface declarations.
 
 [IMPORTANT]:
+
 - [ALWAYS]: Apply ordering as `section` -> `owner block` -> `runtime/declaration dependency` -> `semantic rank` -> `kind` -> `smaller-to-larger` -> `alphabetical`.
 - [ALWAYS]: Prefer concept discovery order from stable declarations to composition: vocabulary, constants, models, failures, services, operations, wiring, exports.
 - [ALWAYS]: Treat one generated type, smart enum, value object, schema/model family, wire model family, kernel, registry, catalog, table, dispatcher, query family, or composition root as an owner block; sort inside the owner instead of flattening its members into unrelated top-level sections.
@@ -203,6 +202,7 @@ Canonical order, omitting unused sections: `TYPES` -> `CONSTANTS` -> `MODELS` ->
 - [NEVER]: Use alias or drift labels that merely rename core categories or hide complexity: `SCHEMA`, `FUNCTIONS`, `LAYERS`, `IMPORTS`, `INTERFACES`, `ENUMS`, `DTO`, `QUERIES`, `HELPERS`, `UTILS`, `COMMON`, `MISC`.
 
 Language overlays refine the canonical order by runtime semantics:
+
 - Python: imports, `TYPE_CHECKING`, and import-time gates precede ordinary sections. Runtime decoders, encoders, registries, and tables follow the models/functions they inspect because module-level assignments execute immediately and runtime annotation consumers such as `msgspec` and `beartype` resolve real objects. `Annotated` validator functions may use `[BOUNDARIES]` between immutable constants and dependent aliases when the aliases must reference the real validator object.
 - Bash: shebang, ShellCheck directives, `set`/`shopt`, and environment/path gates are `[RUNTIME_PRELUDE]`; `readonly` values are `[CONSTANTS]`; `declare -Ar` maps are `[TABLES]`; traps, dispatch, source guards, and `_main` are late `[COMPOSITION]` or `[ENTRY]`.
 - PostgreSQL: extensions, schemas, and search-path guards are `[RUNTIME_PRELUDE]`; domains and types are `[TYPES]`; tables, constraints, generated columns, and partitions are `[MODELS]`; functions split by service boundary or query operation; indexes, triggers, row-level security, and policies are `[COMPOSITION]`; grants and comments are late `[EXPORTS]`.

@@ -4,8 +4,7 @@
 
 ## [01]-[NAVIGATION]
 
-Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts.
-For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
+Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts. For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
 
 ## [02]-[TRUST_AND_PRESERVATION]
 
@@ -51,34 +50,34 @@ The `heptabase` CLI owns content read and write; the database is the ledger, not
 
 Pulumi owns infra state. The custom ParadeDB image and the service topology live in `admin/infra.py`, fed by the one `MaghzSettings` owner in `admin/settings.py`; direct `forge-provision`, `forge-scientific-env`, direct Docker/Compose, port, and credential work are Forge-level debugging, not campaign surfaces.
 
-MCP servers extend reach without owning truth. The 12-server fleet is owned by `admin/mcp.py`, which generates the committed Claude `.mcp.json` (`~/.codex/config.toml` is the sole Codex configuration home; the rail's residual Codex projection retires with the next fleet pass): `postgres` explores the live database, `google-workspace` reaches Google Workspace, `notebooklm` ingests sources, `exa`/`perplexity`/`tavily` run web search and cited research, `hostinger` manages the VPS, the HTTP remotes `github` (repository API), `context7` (live library docs), and `greptile` (whole-repo semantic code review) extend reach, the host-process `nuget` server surfaces NuGet package intelligence (latest version, vulnerability/deprecation, safe-upgrade sets, supply-chain review) wherever the .NET 10 SDK and `nuget-mcp` launcher exist, and the host-process `jupyter` server routes through the Forge-owned `forge-jupyter-mcp` launcher. Resolve any external library's current API through `context7` before its findings bind; the full web/docs tool-selection and chaining law is the user-global doctrine. All are exploration aids whose findings promote into schema, routines, or CLI behavior before they bind: deterministic work — schema apply, ledger mutations, stack lifecycle — always routes through the `maghz` CLI, never an MCP.
+MCP servers extend reach without owning truth. Forge's `mcp-fleet.nix` is the sole registration and projection owner; Maghz carries no `.mcp.json`, project `.codex`, MCP generator, or MCP CLI. The Forge fleet reaches Maghz through the global `postgres` and read-only `doppler-remote` rows, while `admin/infra.py` owns the remote `maghz-mcp` container. Resolve external APIs through their fleet tools before findings bind, then promote results into schema, routines, or CLI behavior: deterministic work — schema apply, ledger mutations, synchronization, and stack lifecycle — always routes through `maghz`, never an MCP.
 
 Remote Workspace automation uses `gws` with `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/maghz-agent/.config/gws/credentials.json`; the `google-workspace` MCP remains the interactive MCP surface, while `gws` owns batch/headless Workspace scripts.
 
-Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth remains local-first until an official portable/headless credential flow is verified. Do not copy opaque `~/.gemini` auth state to the VPS by default.
+Gemini second-perspective and visual-judgment legs route through the `agy` skill (`.claude/skills/agy`), strongest reasoning tier pinned; its review lanes are read-only, and a codex session reaches `agy` only under `-s danger-full-access`. Maghz remote may bootstrap the `agy` binary for parity, but Antigravity auth remains local-first until an official portable/headless credential flow is verified. Do not copy opaque `~/.gemini` auth state to the VPS by default.
 
 ## [06]-[TOOLING]
 
 `Parametric_Forge` provisions the machine toolchain through Nix and puts it on `PATH`; inspect the Forge owner before patching a local toolchain failure. Reach for the native tool that owns the concern instead of re-deriving its behavior in `admin/` Python. `fmt [--check] [target...]` is the universal formatter front door — every file type routes to its owning formatter, and project law (pyproject.toml, [tool.sqlfluff], .editorconfig) always outranks the machine defaults.
 
-| [INDEX] | [GROUP]          | [TOOLS]                                                                                                                                        |
-| :-----: | :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-|  [01]   | Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                                                            |
-|  [02]   | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                                                                 |
-|  [03]   | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb`                                   |
-|  [04]   | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`, `container` (Forge-approved OCI experiments only)                                                                                      |
-|  [05]   | Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                                                               |
-|  [06]   | Inference        | `ollama`                                                                                                                                       |
-|  [07]   | Content          | `heptabase`                                                                                                                                    |
-|  [08]   | HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                                                         |
-|  [09]   | Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                                                    |
-|  [10]   | Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                                                                 |
-|  [11]   | Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                                                          |
-|  [12]   | YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                                                  |
-|  [13]   | TOML             | `taplo`                                                                                                                                        |
-|  [14]   | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                                                             |
-|  [15]   | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                                                                 |
-|  [16]   | MCP              | `postgres`, `google-workspace`, `notebooklm`, `exa`, `perplexity`, `tavily`, `hostinger`, `github`, `context7`, `greptile`, `nuget`, `jupyter` |
+| [INDEX] | [GROUP]          | [TOOLS]                                                                                                      |
+| :-----: | :--------------- | :----------------------------------------------------------------------------------------------------------- |
+|  [01]   | Python           | `uv`, `ruff`, `ty`, `python` (3.15)                                                                          |
+|  [02]   | Postgres clients | `psql`, `pgcli`, `usql`, `sqlfluff`, `pgformatter`, `postgres-language-server`                               |
+|  [03]   | Postgres ops     | `pg_activity`, `pgmetrics`, `pgbadger`, `pgloader`, `pg_dump`/`pg_restore`/`pg_isready`, `createdb`/`dropdb` |
+|  [04]   | Containers/IaC   | `colima` (Docker runtime), `docker` (oci-tools), `pulumi`, `container` (Forge-approved OCI experiments only) |
+|  [05]   | Kubernetes       | `kubectl`, `k9s`, `helm`, `kustomize` (for the future cloud and frontend deploy)                             |
+|  [06]   | Inference        | `ollama`                                                                                                     |
+|  [07]   | Content          | `heptabase`                                                                                                  |
+|  [08]   | HTTP/API probes  | `xh`, `curlie`, `hurl`                                                                                       |
+|  [09]   | Data/format      | `jq`, `jnv`, `yq-go`, `duckdb`, `parquet-tools`, `miller`, `qsv`, `csvlens`                                  |
+|  [10]   | Search/nav       | `fd`, `rg` (ripgrep), `ast-grep`, `fzf`, `serpl`, `sd`, `bat`, `eza`, `zoxide`                               |
+|  [11]   | Shell            | `bash`, `shellcheck`, `shfmt`, `bash-language-server`                                                        |
+|  [12]   | YAML             | `yamlfmt`, `yamllint`, `yaml-language-server`                                                                |
+|  [13]   | TOML             | `taplo`                                                                                                      |
+|  [14]   | Git              | `git`, `gh`, `gitleaks`, `lazygit`                                                                           |
+|  [15]   | Files/misc       | `ouch`, `trash`, `watchexec`, `rsync`, `rclone`, `hyperfine`, `glow`, `pandoc`                               |
+|  [16]   | MCP              | `forge-mcp reconcile`, `forge-mcp doctor --network`, `forge-mcp drift`                                       |
 
 ## [07]-[DOCUMENTATION]
 

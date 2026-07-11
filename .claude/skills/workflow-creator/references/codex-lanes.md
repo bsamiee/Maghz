@@ -1,56 +1,74 @@
-# Codex Lanes
+# External Lanes
 
-Routing a workflow lane to gpt-5.5 through a thin Claude wrapper. The `model` option accepts only Claude models, so a self-contained codex lane (repo sweep, audit, research, mechanical edit) rides a wrapper agent whose ONLY job is dispatch-and-receipt. Dispatch mechanics — flags, config, MCP grading, signals, sessions, effort tiers — are the codex skill's law; this reference carries only the workflow-level composition.
+A workflow routes a leg to an external model through a thin Claude wrapper, because `agent()` accepts only Claude models: codex (gpt-5.6) carries self-contained work legs — repo sweeps, audits, research, mechanical edits — and agy (Gemini) carries the read-only review lane. A codex lane IS one `codex` MCP tool call: the prompt rides a tool argument, the blocking call is the wait, and the final message returns as the tool result — no prompt files, no report polling, no launch ceremony. Dispatch law — model and effort tiers, sandbox, MCP grading, sessions — is the codex skill's; the Gemini call contract is the agy skill's; this reference carries only the workflow-level composition.
 
 ## [01]-[WRAPPER]
 
-The wrapper runs `model: 'sonnet', effort: 'low'` with a label prefixed `gpt-5.5:` — the workflow UI shows the wrapper's Claude model, so the label is the only indication of the real worker. It writes the task and the product schema to run scratch with the Write tool, launches codex detached fleet-grade (`--json` events plus the notify sink — the codex skill's signals section owns the exact line), and returns the thin RECEIPT — the product stays on disk for the terminal reader. It never performs, edits, judges, softens, summarizes, or relays the work itself.
+The wrapper runs `model: 'sonnet', effort: 'low'` with a label prefixed by the real worker — `terra:`, `sol:`, `luna:`, or `gemini:` — because the workflow UI shows the wrapper's Claude model. Its whole job is call-write-receipt:
+
+When `forge-fleet-emit` resolves on PATH, the wrapper brackets its blocking call — `forge-fleet-emit --kind codex --model <model> --label <label> --state start` before, `--state stop` after — so the operator's live delegation roster names the real worker instead of inferring it from a process scan; a machine without the tool skips the bracket silently (`command -v forge-fleet-emit >/dev/null &&`). The same bracket serves a Gemini lane with `--kind agy`.
+
+1. Load the tool: `ToolSearch` with `select:mcp__codex__codex`.
+2. Call `codex` ONCE: the complete self-contained task as `prompt`, `model` pinned, `sandbox` by modality (`read-only` for investigation, `workspace-write` for edits), `cwd` at the repo root; effort inherits the operator config default (xhigh) — pass `config` (`{"model_reasoning_effort": "..."}`) only where the lane deviates.
+3. Parse the result envelope — the MCP tool result is `{threadId, content}` where `content` holds the final-message text. Write that CONTENT text to the lane's scratch report path with the Write tool, unmodified; writing the raw envelope double-encodes every downstream read. This write re-emits the whole product as the wrapper's own output tokens (~minutes for a 40-50KB product) — acceptable at report scale; a lane whose product is far larger flips the write to the CODEX side (workspace-write, the report path its sole write scope) so the wrapper returns only the receipt.
+4. Return the thin receipt `{ok, report, entries, headline, failure}` — mechanical counts and one tally headline, never a judgment or a lifted summary; add a `threadId` field when a later stage may continue the thread.
+
+The wrapper never performs, edits, re-judges, softens, or relays the work itself. On a tool error the receipt carries `ok: false` and the error text in `failure`; one retry with a sharpened prompt is the wrapper's whole recovery budget. Lane law rides the tool's `developer-instructions` parameter with a task-only `prompt` (the codex skill's prompt-contract law — battery-validated as the strongest architecture); the wrapper passes both verbatim, composing neither.
+
+QUOTA FALLBACK: usage exhaustion fails the call loudly with no partial output, so the receipt path already degrades safely — but a run that must FINISH re-dispatches the dead leg natively at the caller: the dispatch helper matches `/usage|quota|limit/i` in `failure` and re-runs the SAME task through its native branch at the role's Claude twin (terra→opus, sol→fable, luna→sonnet). The helper owns this, never the wrapper — a sonnet shell must never become the implicit executor:
 
 ```js conceptual
-// TWO schemas: codex gets the PRODUCT schema (via the --output-schema file); the wrapper's
-// own schema is the thin RECEIPT — the product body never crosses the wire.
-// The wrapper is LAUNCH-ONLY: it returns a launch receipt in seconds; the orchestrator's
-// setTimeout harvest loop owns the waiting and the promotion.
-const receipt = await agent(codexPrompt('audit-auth', task, PRODUCT_SCHEMA, /*writes*/ false), {
+const laneWithFallback = (task, o) => lane(task, o).then((r) =>
+    !r.ok && /usage|quota|limit/i.test(r.failure) ? lane(task, { ...o, native: true }) : r,
+);
+```
+
+Two option-plumbing laws on a parameterized dispatch helper: the wrapper's `stallMs` is sized at or above the effort tier's timeout ceiling (the xhigh default holds one silent blocking call up to 1200s, max/ultra 1800s; stall enforcement has been observed to spare an agent inside a live blocking call — a 12-minute call under a 5-minute window completed — but sizing the window above the ceiling costs nothing and removes the ambiguity), and the helper option carrying a deviated codex reasoning tier is named `codexEffort`, never `effort` — the workflow linter scans every `effort:` key in the file against the agent tier vocabulary, so a codex tier in a helper-option literal fails validation even though it never reaches `agent()`.
+
+```js conceptual
+// The wrapper's own schema is the thin RECEIPT — the product body never crosses the wire;
+// the blocking MCP call is legal waiting, so there is no launch receipt and no harvest loop.
+const receipt = await agent(codexLane('audit-auth', task, /*writes*/ false), {
     model: 'sonnet',
     effort: 'low',
-    label: 'gpt-5.5:audit-auth',
+    label: 'terra:audit-auth',
     schema: RECEIPT,
 });
 ```
 
-The task file is the quoting-proof prompt channel (`codex exec … "Do the task in <task>.md"` — long prompts through shell argv are the fragility); the `--output-schema` file is what makes codex's report typed JSON. Codex schemas run the OpenAI strict profile — the stricter row of the validator split in the api reference; design conditional fields as required-but-empty (`""`/`[]`). The wrapper writes the task and schema files with the Write tool at ABSOLUTE paths under the repo root (never a shell heredoc — cwd drift and quoting land files where codex cannot find them), and the launch call verifies both with `test -s` before starting codex.
+## [02]-[PRODUCTS]
 
-## [02]-[LAUNCH]
+The heavy product goes to disk through the wrapper's Write tool and only the receipt crosses the wire — the report-file pattern in the patterns reference owns the receipt-and-roster contract and the terminal reader's consumption protocol. The codex prompt states the product shape as a prose JSON contract ("Final message: ONLY a JSON object with keys …"); the wrapper's `schema` option is the validation boundary, so schema files do not exist on this path. Failure lives in the receipt envelope, never as sentinel values inside data rows. Codex tokens are invisible to `budget.spent()` — budget-gated loops meter only their Claude lanes.
 
-Wrappers never wait — a wrapper agent has no legal wait primitive: subagent Bash blocks foreground `sleep`, a blocking `until` loop dies with its one call, background Bash tasks never notify a workflow subagent, and idle no-op calls ("waiting" text, `sleep 1`, `true`) trip the runtime's no-progress enforcement — which force-returns the wrapper with a FALSE `ok:false` while codex runs on and the report lands with no promoter; `stallMs` does not license idling. The wrapper's ONLY job is the launch, finished in seconds:
+## [03]-[SCALE]
 
-1. Purge stale artifacts (`rm -f` its own prior `report`/`events`/`stderr` — a leftover report satisfies a poll instantly with LAST run's data).
-2. Write the task and schema files; verify with `test -s`.
-3. Launch codex DETACHED with a bare `&`, fleet-grade per the codex skill: `--json` stdout routed to the lane's `events.jsonl`, stderr to `stderr.log`, the report via `-o`, stdin closed — never `nohup`.
-4. Verify the process is alive (`pgrep -f "<report-basename>"`).
-5. Return the LAUNCH receipt `{ok:true, report:'', entries:0, headline:'launched', failure:''}`.
+Wrapper economics rule the lane count: every wrapper is a full context spin-up (~75k tokens) regardless of effort, so a wrapper per lane pays only when the leg fills it. Short legs batch — one wrapper makes several sequential `codex` calls and returns one combined receipt, and a batched call whose task depends on an earlier call's product is the same chain: the wrapper relays the product forward mechanically, or continues the thread. A row-shaped batch collapses into a single lane whose codex session runs `spawn_agents_on_csv`; an iterative chain continues one thread through `codex-reply` with the `structuredContent.threadId` the first call returned, never re-paying the exploration cost. A chain that spans wrappers carries `threadId` as an extra receipt field — live interpolation couples the later wrapper's resume key to the earlier receipt, so a replayed run stays coherent, and a reply against a dead thread fails into the `ok: false` envelope like any tool error. Concurrent lanes are concurrent wrapper agents — each holds its own blocking call, and the workflow's own concurrency cap is the scheduler.
 
-`</dev/null` is non-negotiable — `codex exec` blocks forever on open stdin; the stderr banner `Reading additional input from stdin...` prints even under `</dev/null` and is not a hang. Stderr goes to the lane's `stderr.log`, never a sink — a pre-thread death (config error, required-MCP init) emits ZERO JSONL, so the stderr tail is its only witness. Startup stderr noise that is never a crash reason: an rmcp `AuthRequired` fatal for any OAuth MCP server not logged in (fires whenever the fleet spawns), and a system-skills reinstall race (`Directory not empty (os error 66)`) under concurrent lane launches. `--ephemeral` suits fan-out lanes that never resume.
+Concurrent `workspace-write` lanes against overlapping paths collide — partition write scopes, or keep codex lanes read-only and let one Claude writer apply the edits.
 
-Sandbox is modality: `-s read-only` for investigation/research/response lanes; `-s workspace-write` when codex must author or edit files — partition write scopes across concurrent wrappers, or keep codex read-only and let a Claude writer apply the edits, because two workspace-write runs over one path collide. Set `-s` explicitly; the config default is not read-only.
+A read-only sandbox blocks `uv run` outright — uv cannot initialize its cache at `~/.cache/uv` — so a read-only lane can NEVER run repo Python tooling (assay, pytest, any `uv run` verb). A lane whose task depends on that tooling either dispatches `workspace-write` or its prompt names the non-executing fallback routes (catalogs, direct file reads) as the primary path; a prompt that instructs a read-only lane to "verify via uv run …" is instructing the impossible, and the lane's silent fallback masquerades as tool flakiness.
 
-A codex lane owns exactly the artifacts the CLI interface forces, under the run-scratch grammar in the patterns reference: `task.md` (the quoting-proof prompt channel), `schema.json` (`--output-schema` accepts only a file path), `report.json` (a detached run needs `-o`), `events.jsonl` (`--json` stdout — `turn.completed`/`turn.failed` is the completion signal, `thread.started.thread_id` the resume id), `stderr.log` (the crash reason for pre-thread deaths). Do not invent more; do not merge them.
+## [04]-[LIMITS]
 
-## [03]-[HARVEST]
+A lane expected to outrun the MCP tool timeout (the codex skill names the ceiling's owner; a multi-minute high-effort call fits inside one blocking call) is the one case that still runs the detached CLI form — from the MAIN loop as a `run_in_background` Bash keeper per the codex skill's signals ladder, never inside a workflow wrapper. The first resort is splitting the leg into a `codex-reply` chain of turns that each fit the timeout; the detached escape hatch is the last.
 
-Time lives in the orchestrator: `await new Promise((r) => setTimeout(r, INTERVAL_MS))` between rounds (`setTimeout` is an injected workflow global), then one short-lived harvester agent per round that classifies each pending lane by the codex skill's signals ladder — `turn.completed` in events plus a non-empty report → READY; `turn.failed` → FAILED with the event message; process gone plus an empty events file → DEAD carrying the stderr tail; process alive with no turn event → RUNNING — promotes READY reports mechanically (jq-validate, extract to the durable home, jq-count the receipt fields), relaunches a DEAD lane at most once, and returns `{promoted, dead, pending}`. The loop exits when pending empties or a round cap fires.
+An image-bearing leg (screenshot or diagram judgment) rides the CLI's `-i` — the MCP tool takes no image parameter — as ONE synchronous `codex exec -i <file> … </dev/null` inside the wrapper's single Bash call under the tier timeout: the blocking Bash call is the same legal wait, stdout capture is the product, and the rest of the call-write-receipt contract holds unchanged.
 
-- An absent report while the process is alive is NORMAL — the loop waits another round; never relaunch a live run.
-- A lane alive far past its expected wall (~20 minutes for a recon lane — concurrent lanes contend for the machine) is WEDGED: the harvester kills it (`pkill -f "<report-basename>"`) and treats it as DEAD.
-- The harvester's checks are a PRE-STAGED SCRIPT — one launch wrapper writes `harvest.sh` (the ladder, promote logic, exact pgrep patterns baked in) and every harvest round just executes it and relays its JSON verdict. Prose-described check mechanics get re-derived by each round's fresh agent and botched within a few rounds (empirical: a mis-expanded pgrep pattern declared four live lanes dead).
+## [05]-[WRITER_REVIEW_LANE]
 
-A short synchronous leg — comfortably inside its tier timeout — needs none of this: one Bash call, stdout capture, no detach.
+A review stage mid-chain (a critique between an implement and a red-team) can itself be a codex lane that WRITES — sol at the operator-default effort in a `workspace-write` sandbox, editing the unit's pages in place under the same review prompt a native agent would take. The composition contract that keeps the chain coherent:
 
-## [04]-[CONFIG]
+- The lane's product is its fixlog (files, verdict, deltas, deferred rows, index rows) written to the lane's report path; only the thin receipt crosses the wire, so the orchestrator never re-serializes review claims.
+- The NEXT Claude stage receives the fixlog as a report PATH framed as unverified prior claims ([20] handoff law), reads it in full from disk, and carries the FOLD-FORWARD DUTY: the fixlog's surviving `deferred`/`indexRows` rows are re-verified and folded into that stage's own return — the chain's terminal stage returns the unit's consolidated record, because the orchestrator cannot read the disk product itself.
+- A chain whose terminal stage dies leaves an ORPHANED fixlog: the orchestrator collects `{critReport, rtLanded}` per unit and hands orphaned report paths to the run's terminal fixer to drain — a fold-forward contract with no orphan drain silently loses every row a dead stage was carrying.
+- Write scopes stay disjoint by construction (the lane edits only its unit's pages); cross-unit needs ride the deferral rows, never a foreign edit.
 
-MCP on fan-out lanes is GRADED — the codex skill's MCP-selection section owns the full law. Every codex process spawns the full `~/.codex/config.toml` MCP fleet as children: N concurrent lanes start N fleets, and a `required = true` server that misses its startup handshake KILLS the lane at session creation (exit 1, no turn, no report, zero JSONL — the stderr tail is the only witness). File-only lanes pass `--ignore-user-config` AND restate the effort tier (`-c model_reasoning_effort="medium"` — the medium default lives in config.toml and resets to none without it; auth, the gpt-5.5 default, and skills survive; restate other needed config as flags, e.g. `-c web_search="live"`). Lanes that call some MCP disable the rest surgically — `-c 'mcp_servers.<name>.enabled=false'`, required servers first. `-c 'mcp_servers={}'` is a NO-OP — table overrides deep-merge, the fleet still spawns. But a codex lane cannot CALL an external MCP tool at all: `codex exec` runs at `approval: never`, so an approval-gated tool call is cancelled mid-flight and the model may fabricate a result instead of surfacing it (the codex skill's MCP-selection section carries the proof). A lane's callable tools are the model's reasoning, sandboxed shell, `web_search`, and file ops — design lanes around those; when a step must invoke an MCP tool, keep it in a Claude `agent()` (native fleet), never a codex lane.
+## [06]-[GEMINI_REVIEW_LANE]
 
-## [05]-[RECEIPT]
+The agy lane is the third perspective in a critique or red-team stage, beside the fable/opus reviewer and a codex lane: a sonnet wrapper labeled `gemini:<label>` — the label is the only signal the real worker is Gemini, since the workflow UI shows the wrapper's Claude model — whose whole job is ONE blocking Bash call to the agy skill's wrapper:
 
-The receipt is MECHANICAL. On READY the harvester never relays the report body: it jq-counts the product's primary array for `entries` and jq-builds `headline` (per-class/kind tallies, top file) — never its own judgment or a lifted summary sentence — so the terminal reader meets every product cold. Failure lives in the envelope (`ok: false` + `failure` = the stderr tail or `turn.failed` message in one line), never as sentinel values inside data rows. Codex tokens are invisible to `budget.spent()` — budget-gated loops meter only their Claude lanes; `turn.completed.usage` summed across lanes' events files is the fleet's own token ledger. The receipt-and-roster contract, the product schemas, and the terminal reader's consumption protocol are the report-file pattern in the patterns reference.
+```sh conceptual
+uv run <repo>/.claude/skills/agy/scripts/agy.py prompt "<frozen-evidence review prompt>" --add-dir <evidence-dir> --timeout 5m
+```
+
+The lane is read-only by CONTRACT — agy print mode can write, so the prompt forbids edits and the wrapper treats any evidence mutation as lane failure (`ok: false`) — which is why the lane still takes no write partition, never collides with concurrent `workspace-write` lanes, and never repairs: the wrapper returns the typed findings array as its receipt (findings are small enough to cross the wire; no report file, no polling), and the consuming Claude stage adjudicates each finding against disk before applying any fix. The prompt shape — frozen evidence in, falsifiable `{severity, invariant, evidence, failure_path, minimal_fix}` findings out — and the model policy are the agy skill's law; the wrapper adds nothing beyond the call and the receipt.
