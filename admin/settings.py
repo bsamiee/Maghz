@@ -64,7 +64,7 @@ class Remote(StrEnum):
 
 # --- [CONSTANTS] -----------------------------------------------------------------------
 
-_GROUP = ConfigDict(frozen=True, extra="forbid")
+_GROUP = ConfigDict(frozen=True, extra="forbid", validate_default=True)  # defaults pass AfterValidators: AnchoredPath rows anchor without env ingress
 _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
     "CODERABBIT_API_KEY": ("integrations", "coderabbit_api_key"),
     "CONTEXT7_API_KEY": ("integrations", "context7_api_key"),
@@ -262,11 +262,9 @@ class ObservabilityConfig(BaseModel):
 class IntegrationsConfig(BaseModel):
     """External agent-tool surfaces: the `agy` Antigravity CLI, Workspace OAuth, and remote agent token projection.
 
-    The OAuth keys and forwarded agent tokens arrive bare and `_BareEnvSource` folds them into this
-    canonical group. The Workspace MCP token cache path is machine-owned by Forge as
-    `WORKSPACE_MCP_CREDENTIALS_DIR`; the Google Workspace CLI credential-file path is remote-machine
-    material minted by `admin.remote`. `SecretStr` keeps credentials out of `repr`/logs; `.get_secret_value()`
-    is read only at the injection edge.
+    The OAuth keys and forwarded agent tokens arrive bare and `_BareEnvSource` folds them into this canonical group. The Google Workspace CLI
+    credential-file path is remote-machine material minted by `admin.remote`; MCP client state remains wholly Forge-owned. `SecretStr` keeps
+    credentials out of `repr` and logs, and `.get_secret_value()` is read only at the injection edge.
     """
 
     model_config = _GROUP
@@ -286,26 +284,8 @@ class IntegrationsConfig(BaseModel):
     op_service_account_token: SecretStr | None = Field(default=None, repr=False)
     perplexity_api_key: SecretStr | None = Field(default=None, repr=False)
     tavily_api_key: SecretStr | None = Field(default=None, repr=False)
-    workspace_oauth_redirect_uri: str | None = None
     agy_binary: Path = Path("agy")
     agy_process_timeout_s: float = Field(default=120.0, gt=0)
-
-
-class McpServerSettings(BaseModel):
-    """The MCP-exclusive secret references whose field *names* back the `admin.mcp` `${MAGHZ_MCP__<KEY>}` placeholder rows.
-
-    Only `McpServerSettings.model_fields` (the name set) is read — `mcp/ops.py` emits each placeholder as a
-    literal `${MAGHZ_MCP__<KEY>}` (never resolved) and VALIDATE asserts every committed placeholder backs a
-    name here, so the `.mcp.json` carries no secret and no field *value* is consumed. `database_uri` is one
-    such name-backing declaration, not a second DSN mint: `DatabaseConfig.dsn` is the sole DSN owner and the
-    rendered file substitutes `${MAGHZ_MCP__DATABASE_URI}` at `op run` time. The Google OAuth credentials are
-    not duplicated — `IntegrationsConfig` owns them and the Google Workspace overlay emits them bare. n8n has
-    no MCP/API token configured yet, so it declares no secret-backed field here.
-    """
-
-    model_config = _GROUP
-
-    database_uri: SecretStr | None = Field(default=None, repr=False)
 
 
 class AutomationConfig(BaseModel):
@@ -466,7 +446,6 @@ class MaghzSettings(BaseSettings):
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
-    mcp: McpServerSettings = Field(default_factory=McpServerSettings)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     log: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -541,7 +520,6 @@ __all__ = [
     "LogFormat",
     "LogLevel",
     "MaghzSettings",
-    "McpServerSettings",
     "N8nConfig",
     "ObservabilityConfig",
     "OllamaConfig",

@@ -9,7 +9,7 @@ import os
 from os import fspath, PathLike
 from subprocess import CompletedProcess  # noqa: S404
 import sys
-from typing import assert_never, Final, final, Literal, NewType, NotRequired, overload, Protocol, runtime_checkable, TypedDict
+from typing import assert_never, Final, final, Literal, NewType, NotRequired, overload, Protocol, runtime_checkable, TYPE_CHECKING, TypedDict
 
 import anyio
 from anyio import CapacityLimiter, move_on_after, WouldBlock
@@ -622,7 +622,10 @@ type Draining[**P] = Callable[P, Awaitable[DrainReceipt[object]]]
 type ProcessorEvent = structlog.typing.EventDict
 type Processor = structlog.typing.Processor
 type WrappedLogger = structlog.typing.WrappedLogger
-type BoundLogger = structlog.typing.FilteringBoundLogger
+if TYPE_CHECKING:
+    type BoundLogger = structlog.typing.FilteringBoundLogger  # checkers keep the level-method protocol surface
+else:
+    type BoundLogger = structlog.BoundLoggerBase  # structlog 26 protocols fail isinstance on 3.15, so the claw validates the nominal base
 
 
 @runtime_checkable
