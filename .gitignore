@@ -1,6 +1,7 @@
 .DS_Store
 .env*
 .vscode/
+mise.local.toml
 .planning/
 .venv/
 __pycache__/

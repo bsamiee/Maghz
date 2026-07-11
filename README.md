@@ -1,17 +1,17 @@
 # Maghz
 
-An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — the n8n workflows ride infrastructure (the schema, the embed pipeline, the rails, the MCP fleet, the VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
+An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — the n8n workflows ride infrastructure (the schema, embed pipeline, rails, and VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
 
 ## [01]-[LAYOUT]
 
-| [INDEX] | [PATH]         | [OWNS]                                                                                                                                                     |
-| :-----: | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|  [01]   | `admin/`       | The `maghz` cyclopts CLI as flat single-concern modules; `admin/README.md` is the per-module charter.                                                      |
-|  [02]   | `db/`          | `schema.sql`, `routines.sql`, `cron.sql`, the `search/` text-search dictionaries, and `init/n8n.sql`. Declarative and idempotent — no numbered migrations. |
-|  [03]   | `image/`       | The custom ParadeDB-plus-extensions Postgres image (`Dockerfile`), its apt block generated from `admin/profile.py`.                                        |
-|  [04]   | `workflows/`   | Committed n8n workflow files; `maghz n8n export`/`import` move them in and out of the container.                                                           |
-|  [05]   | `docs/`        | Durable law: `docs/standards/` (the doctrine pair plus the prose owners) and `docs/stacks/` language atlases.                                              |
-|  [06]   | `.claude/`     | Agent configuration: skills, workflows, the `setup-env.sh` secret-forwarding hook, and `bootstrap-cli-tools.sh`.                                           |
+| [INDEX] | [PATH]       | [OWNS]                                                       |
+| :-----: | :----------- | :----------------------------------------------------------- |
+|  [01]   | `admin/`     | `maghz` CLI modules and the package charter                  |
+|  [02]   | `db/`        | Declarative SQL, search dictionaries, and n8n bootstrap      |
+|  [03]   | `image/`     | ParadeDB-derived Postgres image and generated apt projection |
+|  [04]   | `workflows/` | Committed n8n workflow files                                 |
+|  [05]   | `docs/`      | Doctrine, prose standards, and language stacks               |
+|  [06]   | `.claude/`   | Mirrored skills, hooks, scripts, and agent configuration     |
 
 `admin/infra.py` `StackOp` owns the full service topology on both hosts: `MAGHZ_INFRA__STAGE` selects `local` (Colima) or `prd` (the VPS system daemon over the derived `ssh://` endpoint), and one Pulumi program serves both stacks.
 
@@ -19,7 +19,7 @@ An agent-operated second brain. Heptabase owns note content, the PostgreSQL `mag
 
 The `admin/` package is functional Railway-Oriented Programming over one closed `BoundaryFault` family. Every domain operation returns a `RuntimeRail[Envelope]`; the CLI lowers it to one stdout `Envelope` at the edge. `admin/runtime.py` is the substrate — the rail, the fault classifier, the bounded `drain` lane, retry policies, and structured receipts — and every consumer module composes it rather than re-deriving spawn, retry, or fault handling.
 
-Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infra lifecycle. The MCP fleet owns live exploration: an agent reaches the database, web research, and the VPS through MCP when it is investigating, not committing. `postgres` and `n8n` are deliberately dual-surface — the rail is the deterministic owner (schema and ledger through the CLI; n8n workflow files on disk), and the MCP is the live agent lens over the same system. Deterministic work goes through the `maghz` CLI; exploratory work goes through MCP; never the reverse. n8n is container-plane only: workflows move by file export/import, status is the unauthenticated `/healthz` liveness plus the on-disk census, and no n8n API key exists — API-managed workflow ownership is an admission decision (credential row plus real consumer), never a pending fault.
+Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infrastructure lifecycle. The MCP fleet owns live exploration: an agent reaches the database, web research, and the VPS through MCP when it is investigating, not committing. PostgreSQL is deliberately dual-surface: schema and ledger mutation stay on the CLI rail, while the Forge fleet exposes a live read lens. Deterministic work goes through `maghz`; exploratory work goes through MCP; never the reverse. n8n remains container-plane only: workflows move by file export/import, status is the unauthenticated `/healthz` liveness plus the on-disk census, and no n8n API key or MCP row exists. API-managed workflow ownership requires an explicit credential and consumer admission.
 
 Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW cosine (semantic), and `pg_trgm`/FTS (fuzzy) fused through Reciprocal Rank Fusion in `maghz.search()`. Embeddings are produced in the database — `pg_net` posts each concept to local Ollama `nomic-embed-text` and the response writes back as `vector(768)` — on a two-step `pg_cron` sweep, with no application round-trip and no embedding API key.
 
@@ -27,40 +27,22 @@ Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW
 
 `maghz <command> [subcommand] [args]` (invoked as `uv run python -m admin …`). Each command discriminates on a closed verb and returns one typed `Envelope`; `maghz --help` is the live verb census.
 
-| [INDEX] | [COMMAND]                | [DOES]                                                                                                                                                      |
-| :-----: | :----------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|  [01]   | `up` / `down` / `status` | Pulumi stack lifecycle for the `MAGHZ_INFRA__STAGE`-selected daemon: build the image and start the db/ollama/n8n services, tear them down, or preview.      |
-|  [01a]  | `health`                 | Probe the service plane (postgres, ollama, n8n, atuin) through the loopback ports; a down service grades `failed`, never a fault.                           |
-|  [02]   | `schema apply`           | Idempotent apply in dependency order: stage the `db/search/` dictionaries, then `psql` the three SQL files; a replay is a clean no-op.                      |
-|  [03]   | `schema doctor`          | Parse the declarative SQL into an object census and assert the live `pg_extension` census equals the `admin/profile.py` catalog.                            |
-|  [04]   | `ledger <kind>`          | Read projections over the ledger: `coverage`, `gaps`, `stale`, `next`, `owner`.                                                                             |
-|  [05]   | `sync`                   | Reconcile Heptabase cards against the ledger (`diff` the drift, `generate` the writes).                                                                     |
-|  [06]   | `cloud`                  | rclone off-site backup: `pg_dump` plus bisync to the configured remotes, and restore.                                                                       |
-|  [07]   | `n8n`                    | n8n workflow file export/import and a container-liveness probe.                                                                                              |
-|  [08]   | `mcp`                    | The MCP fleet as IaC: `generate`, `validate` (every `${MAGHZ_MCP__*}` placeholder is backed), `diff`, `watch`, and `converge` for docker-run server images. |
-|  [09]   | `exec`                   | Remote agent shell work over asyncssh: push the working tree, run one command in the workroot, pull artifacts back.                                         |
-|  [10]   | `automation run`         | Drive one automation spec (`--spec`); the `trigger` selects the watch/schedule/manual lane over the notify/embed/sync actions.                              |
+| [INDEX] | [COMMAND]                | [DOES]                                                     |
+| :-----: | :----------------------- | :--------------------------------------------------------- |
+|  [01]   | `up` / `down` / `status` | Stage-selected Pulumi lifecycle for db, Ollama, and n8n    |
+|  [02]   | `health`                 | Loopback service census; down services grade `failed`      |
+|  [03]   | `schema apply`           | Stage dictionaries and idempotently apply the SQL surfaces |
+|  [04]   | `schema doctor`          | Parse SQL and assert the live extension catalog            |
+|  [05]   | `ledger <kind>`          | Read one ledger projection                                 |
+|  [06]   | `sync`                   | Diff or generate Heptabase-backed concepts                 |
+|  [07]   | `cloud`                  | Dump, bisync, or restore configured cloud remotes          |
+|  [08]   | `n8n`                    | Export, import, or census committed workflows              |
+|  [09]   | `exec`                   | Push, execute, and pull through the scoped SSH rail        |
+|  [10]   | `automation run`         | Dispatch one typed trigger-action specification            |
 
-## [04]-[MCP_FLEET]
+## [04]-[MCP_BOUNDARY]
 
-`admin/mcp.py` is the typed owner of the 12-server fleet and generates the committed `${VAR}`-placeholder Claude `.mcp.json`; secrets resolve from environment variables and are never written to the file. `maghz mcp validate` proves every placeholder is backed; health resolves from live calls, never from prose.
-
-| [INDEX] | [SERVER]           | [REACH]                         | [TRANSPORT]                                                    |
-| :-----: | :----------------- | :------------------------------ | :------------------------------------------------------------- |
-|  [01]   | `postgres`         | live database exploration       | `forge-maghz-postgres-mcp` over `MAGHZ_MCP__DATABASE_URI`      |
-|  [02]   | `exa`              | web search                      | HTTP remote                                                    |
-|  [03]   | `perplexity`       | cited research                  | `forge-perplexity-mcp`                                         |
-|  [04]   | `tavily`           | web search                      | `forge-tavily-mcp`                                             |
-|  [05]   | `hostinger`        | VPS provider lifecycle          | `forge-hostinger-mcp`                                          |
-|  [06]   | `google-workspace` | Google Workspace                | `forge-workspace-mcp`; first-use OAuth consent per account     |
-|  [07]   | `notebooklm`       | source ingestion                | `notebooklm-mcp`, local cookie auth                            |
-|  [08]   | `github`           | repository API                  | HTTP remote                                                    |
-|  [09]   | `context7`         | live library docs               | HTTP remote                                                    |
-|  [10]   | `greptile`         | whole-repo semantic code review | HTTP remote                                                    |
-|  [11]   | `nuget`            | NuGet package intelligence      | `nuget-mcp`; binds only where the .NET SDK exists              |
-|  [12]   | `jupyter`          | notebook research               | `forge-jupyter-mcp`; binds only where a JupyterLab server runs |
-
-[SEAM]: the rail's Codex projection still renders `.codex/config.toml`; the repo carries no `.codex/` directory because `~/.codex/config.toml` is the sole Codex configuration home, and the projection retires with the next fleet-rail pass.
+`Parametric_Forge/modules/home/programs/shell-tools/mcp-fleet.nix` is the sole MCP registration owner for Claude, Codex, and VS Code. This repository publishes no client configuration and exposes no MCP provisioning verb. The Forge manifest carries the Maghz-backed `postgres` lens through `forge-maghz-postgres-mcp` and the read-only `doppler-remote` lens through the VPS `maghz-mcp` container; `forge-mcp reconcile`, `doctor`, and `drift` own projection, health, and parity. MCP remains exploratory: schema, ledger, synchronization, and service lifecycle mutations enter through `maghz`.
 
 ## [05]-[HOSTS_AND_ACCESS]
 
@@ -95,13 +77,15 @@ The connection string is `MAGHZ_DATABASE_DSN`, default `postgresql://maghz@127.0
 
 Secret flow: Doppler is the sole backend — the canonical `.claude/hooks/setup-env.sh` resolves each Doppler source row live (encrypted snapshot on fetch failure, per-source verdicts) and writes the selected keys into each agent's environment; the `maghz` Doppler project's `prd_host` config owns the stack secrets, and 1Password holds only operator-personal items. Doppler topology — projects, configs, service tokens — mutates only through Forge `services/` Pulumi rows.
 
-| [INDEX] | [CONCERN]            | [FORGE_OWNER]                                                                                                                       |
-| :-----: | :------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
-|  [01]   | VPS operating system | `hosts/context.nix` (the `maghz` host row) + `modules/nixos/` (users, network, firewall, system Docker)                             |
-|  [02]   | SSH access + tunnels | `modules/home/programs/shell-tools/ssh.nix` (the `vpsTunnels` registry: interactive hosts, forwards, launchd tunnel agent)          |
-|  [03]   | Secret custody       | `services/topology.ts` (Doppler rows) + the canonical `.claude/hooks/setup-env.sh` injection hook                                   |
-|  [04]   | GitHub repo settings | `services/topology.ts` (`@pulumi/github` rows — merge hygiene, rulesets); the services driver preview verifies, never the GitHub UI |
-|  [05]   | Python toolchain     | `modules/home/programs/languages/python-tools.nix` (`uv`, `ruff`, `ty`), `…/scientific-tools.nix` (native build env)                |
-|  [06]   | Postgres clients     | `modules/home/programs/languages/db-tools.nix` (`psql`, `pgcli`, `pg_dump`/`pg_restore`)                                            |
-|  [07]   | Container runtime    | `modules/home/programs/container-tools/` (`colima`, `docker`), `modules/home/environments/containers.nix` (session vars)            |
-|  [08]   | Pulumi / Node / Git  | `…/languages/dev-tools.nix` (`pulumi`), `…/languages/node-tools.nix` (`node`/`npx`), `…/git-tools/` (`git`, `gh`)                   |
+All owner paths below resolve from `Parametric_Forge`.
+
+| [INDEX] | [CONCERN]            | [FORGE_OWNER]                                 |
+| :-----: | :------------------- | :-------------------------------------------- |
+|  [01]   | VPS operating system | `hosts/context.nix` and `modules/nixos/`      |
+|  [02]   | SSH access + tunnels | `modules/home/programs/shell-tools/ssh.nix`   |
+|  [03]   | Secret custody       | `services/topology.ts` and the session hook   |
+|  [04]   | GitHub repo settings | `services/topology.ts`                        |
+|  [05]   | Python toolchain     | `python-tools.nix` and `scientific-tools.nix` |
+|  [06]   | Postgres clients     | `db-tools.nix`                                |
+|  [07]   | Container runtime    | `container-tools/` and `containers.nix`       |
+|  [08]   | Pulumi / Node / Git  | Language and git-tool modules                 |

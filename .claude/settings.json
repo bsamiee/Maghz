@@ -35,7 +35,8 @@
             "mcp__context7__*",
             "mcp__greptile__*",
             "mcp__nuget__*",
-            "mcp__jupyter__*"
+            "mcp__jupyter__*",
+            "mcp__doppler-remote__*"
         ],
         "deny": [
             "Bash(git push --force:*)",

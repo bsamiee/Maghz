@@ -2,27 +2,26 @@
 
 VPS second-brain repo: Python admin tooling, container topology, database schema, and workflow automation for the durable Hostinger VPS. Machine-level shell/PATH/tooling concerns belong to Parametric_Forge, never here.
 
-## Design paradigms
+## [01]-[DESIGN_PARADIGMS]
 
 - Python rides the local docs/stacks/python law: typed rails, expression-shaped logic, dispatch surfaces over helper spam, uv-only custody. Version movement is forward-only; a downgrade or stale pin without a recorded reason is a defect.
 - Infrastructure state is declarative: the Pulumi stack in admin/infra.py is the sole VPS topology owner — the image build and the db/ollama/n8n service rows behind StackOp. Imperative one-off scripts that mutate the VPS outside these owners are defects. Numbered migrations and up/down pairs are defects; canonical schema files replay to no-op.
 - Ops rails per docs/standards/ops-doctrine.md: thin CLI lowerers, one settings owner, typed operation receipts, one scoped SSH rail for remote work.
 - Doppler owns secrets end to end; the repo carries references, never values.
-- Generated projections (.mcp.json, .codex/) re-render from their generator; hand edits are defects.
 - Formatters and gates own mechanics (ruff, ty, sqlfluff, hadolint, shellcheck) — never restate their law as findings; flag suppressions and bypasses. A `noqa`, `type: ignore`, or shellcheck directive in a diff demands the ownership justification; suppression-as-fix is the defect.
 - Fix-to-root completeness: a change that patches a symptom while its root cause stands, leaves a known defect unfixed because it sits outside the diff's scope, or defers a residual for a later pass is a defect — the root fix belongs in the same change, and a genuinely blocked item is an explicit unreachable naming its owner, never a silent residual.
 
-## Universal bar
+## [02]-[UNIVERSAL_BAR]
 
-Anticipate 10x functionality growth: surfaces absorb new modalities as rows, cases, or dispatch arms — never as new files, flags, or knobs. Defects: knob/param/flag spam, hardcoded values, fragile string plumbing, naive happy-path logic, hand-rolled reimplementations of capability the ecosystem already provides. External packages are first-class implementation material at full power, newest stable versions. Everything ships agent-first: composable, receipt-bearing, self-describing. Collapse spam relentlessly.
+Anticipate 10x functionality growth: surfaces absorb new modalities as rows, cases, or dispatch arms — never as new files, flags, or knobs. Defects: knob/param/flag spam, hardcoded values, fragile string plumbing, naive happy-path logic, hand-rolled reimplementations of capability already shipped by the ecosystem. External packages are first-class implementation material at full power, newest stable versions. Everything ships agent-first: composable, receipt-bearing, self-describing. Collapse spam relentlessly.
 
-## Review priorities
+## [03]-[REVIEW_PRIORITIES]
 
 1. Secret leakage and custody violations outrank everything.
 2. Doctrine regressions (rails, receipts, dispatch, uv custody, declarative SQL) outrank style.
 3. Cross-repo boundary breaches (machine config creeping in from Forge territory) are defects.
 
-## Load-bearing exceptions
+## [04]-[LOAD_BEARING_EXCEPTIONS]
 
 Code that violates generic best practice on purpose — do not flag:
 
@@ -33,7 +32,7 @@ Code that violates generic best practice on purpose — do not flag:
 - Declarative schema files that drop and recreate objects on replay are the migration-free idiom, not destructive operations.
 - A large file that owns one full concern is sanctioned; never recommend splitting by size.
 
-## Durable prose and skill detection
+## [05]-[DURABLE_PROSE_AND_SKILL_DETECTION]
 
 Durable markdown — docs, standards, skills, prompts — is agent-facing law. Flag:
 
@@ -46,14 +45,15 @@ Durable markdown — docs, standards, skills, prompts — is agent-facing law. F
 - Closing checklists with no machine-checkable gate.
 - Process ledgers: ship-status markers, decision tags, freshness stamps, session narration in durable prose.
 - Meta-commentary: sentences whose subject is the document itself (this skill, this file, this section) outside routing rows.
-- Defensive caveats: hedges (may, might, generally, usually, when possible) softening settled rules; contract qualifiers (optional, if present, where supported, unless) survive.
+- Defensive caveats: hedging auxiliaries and frequency qualifiers softening settled rules; contract qualifiers (`optional`, `if present`, `where supported`, `unless`) survive.
 - Bare abstractions: three or more abstract guidance bullets with no paired rejected/accepted example, template, or gate.
 - Fixed output skeletons: one mandated report shape (summary, findings, recommendations, next steps) regardless of consumer.
-- Skill bundles (.claude/skills/\*\*): first/second-person frontmatter descriptions — quoted user-utterance trigger phrases are not voice; over-broad or keyword-stuffed trigger descriptions; SKILL.md over 500 lines or carrying reference banks inline; references that only route to other references; deterministic multi-step procedures narrated in prose where a bundled script belongs; instructed network fetches or global installs inside skill bodies, except an owned install surface naming exact source, scope, and verification.
+- Skill bundles (`.claude/skills/**`): first/second-person frontmatter descriptions, over-broad trigger catalogs, `SKILL.md` over 500 lines, inline reference banks, references that only route onward, or scripted procedures narrated in prose.
+- Skill execution: instructed network fetches or global installs inside skill bodies, except an owned install surface naming exact source, scope, and verification.
 - Mirror sentences: prose a fresh agent regenerates from disk plus the document's stated invariants — restated topology, member rosters, tool inventories — is a stale copy, deleted or demoted to a regenerable fence.
 - Table teardowns: a table converted to cards, lists, or prose when in-place relief (header hoists, lead-sentence relief, row splits) was available; conversion is earned only by rows sharing no comparison question or a type-standard-owned shape.
 - File-kind drift: sibling files of one kind (a bundle's references, templates, doc pages) diverging in section vocabulary, card field sets, or marker tokens — consistency across the kind outranks local optimization.
 
-## Comment discipline
+## [06]-[COMMENT_DISCIPLINE]
 
 A comment exists only for the in-situ constraint the code cannot show — the why, the invariant, the trap. One line is the target; a short comment inlines onto its statement; two lines is the usual ceiling, and three-plus survives only when truly irreplaceable. Flag: what-comments restating the adjacent code, narration and process residue, comments coupling to paths, sessions, or sibling docs, and multi-line blocks whose payload compresses to one line. Every pass that touches a file prunes its stale or drifted comments in the same pass — comment hygiene is a standing obligation, not a separate cleanup.

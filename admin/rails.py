@@ -625,10 +625,8 @@ async def _doctor(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
 
     def _report(result: db.QueryResult) -> Envelope:
         extensions = tuple(Row(key=str(name), text="v" + str(version)) for name, version in result.rows)
-        # The census-diff gate (the `mcp validate` analog for extensions): the live `pg_extension` census
-        # must equal the declared `profile` catalog. A declared-but-absent extension (apply gap) or an
-        # installed-but-undeclared one (profile drift) folds to one `census:<name>` drift row and grades the
-        # doctor `FAILED`, so a drifted profile surfaces as a reported defect rather than a silent skew.
+        # The live `pg_extension` census must equal the declared profile catalog.
+        # Either drift direction folds to `census:<name>` and grades the doctor `FAILED`.
         diff = census_diff(str(name) for name, _ in result.rows)
         drift_rows = tuple(Row(key=f"census:{name}", text="declared, not installed") for name in diff.missing) + tuple(
             Row(key=f"census:{name}", text="installed, not declared") for name in diff.undeclared
@@ -691,6 +689,8 @@ class SyncOp(StrEnum):
 
 
 _SYNC_LIST_LIMIT: Final[str] = "100"
+_HEPTABASE_READY_TIMEOUT_MS: Final[str] = "30000"
+_HEPTABASE_OPERATION_TIMEOUT_S: Final[float] = 45.0
 
 
 class SyncDetail(Detail, frozen=True, tag="sync"):
@@ -724,9 +724,28 @@ def _sync_graded[T: msgspec.Struct](run: CompletedProcess[bytes], decoder: msgsp
     return Error(BoundaryFault(boundary=("heptabase", detail)))
 
 
+def _heptabase_ready(run: CompletedProcess[bytes]) -> RuntimeRail[None]:
+
+    if run.returncode == 0:
+        return Ok(None)
+    detail = run.stderr.decode(errors="replace").strip() or f"heptabase start exited {run.returncode}"
+    return Error(BoundaryFault(boundary=("heptabase.start", detail)))
+
+
 async def _heptabase[T: msgspec.Struct](decoder: msgspec.json.Decoder[T], *argv: str) -> RuntimeRail[T]:
 
-    return (await spawn(("heptabase", *argv), subject="heptabase", retry_class=RetryClass.PROC)).bind(lambda run: _sync_graded(run, decoder, argv))
+    ready = (
+        await spawn(("heptabase", "start", "--timeout-ms", _HEPTABASE_READY_TIMEOUT_MS), subject="heptabase.start", retry_class=RetryClass.PROC)
+    ).bind(_heptabase_ready)
+    match ready:
+        case Result(tag="ok"):
+            with anyio.move_on_after(_HEPTABASE_OPERATION_TIMEOUT_S) as scope:
+                outcome = await spawn(("heptabase", *argv), subject="heptabase", retry_class=RetryClass.PROC)
+            if scope.cancelled_caught:
+                return Error(BoundaryFault(deadline=("heptabase", _HEPTABASE_OPERATION_TIMEOUT_S)))
+            return outcome.bind(lambda run: _sync_graded(run, decoder, argv))
+        case Result(error=fault):
+            return Error(fault)
 
 
 async def _diff(cfg: MaghzSettings, _concept: str | None) -> RuntimeRail[Envelope]:

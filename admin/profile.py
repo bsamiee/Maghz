@@ -14,7 +14,7 @@ re-renders from it — never a fifth hand-edited site.
 `census_diff` is the catalog's verify projection (the `pg_extension`-vs-declared assertion the schema
 `doctor` verb folds): it takes the live `pg_extension` census the DB probe returns and reports the
 declared-but-absent and installed-but-undeclared sets against the `target_db == maghz` membership, the
-extension analog of the `.mcp.json` `mcp validate` placeholder-coverage gate. `auto_explain` and `pg_cron`
+extension catalog's live coverage gate. `auto_explain` and `pg_cron`
 are excluded from the maghz census by construction — `auto_explain` registers no `pg_extension` row and
 `pg_cron` lives only in the `postgres` maintenance DB — so the diff compares the maghz catalog membership
 against the maghz `pg_extension` rows exactly.
@@ -22,8 +22,8 @@ against the maghz `pg_extension` rows exactly.
 This module is pure data and pure projection — no rail, no validated-settings handle, and I/O only inside
 the `regenerate` seam. The `infra` runner
 reads `shared_preload_libraries()` for the container command, and the three committed surfaces are
-GENERATED from `schema_prelude()`/`cron_prelude()`/`dockerfile_apt_block()` (committed artifacts, like
-`.mcp.json`), so the catalog is imported by the generator and the runner, never the reverse.
+GENERATED from `schema_prelude()`/`cron_prelude()`/`dockerfile_apt_block()`, so the catalog is imported by
+the generator and the runner, never the reverse.
 """
 
 from collections.abc import Callable, Iterable
@@ -347,7 +347,7 @@ def regenerate() -> tuple[Path, ...]:
     is replaced with the row's projection (the apt block, the maghz `CREATE EXTENSION` prelude, the cron
     pg_cron line), preserving the sentinel comment lines and everything outside the region. So a profile edit
     is one `_PROFILE` change plus one `regenerate()` call, and the three committed artifacts re-derive from
-    the one catalog — the `.mcp.json`-style generate cycle for the extension surfaces. A file written with no
+    the one catalog through a single generate cycle. A file written with no
     interior change is rewritten byte-identically (idempotent).
 
     Returns:

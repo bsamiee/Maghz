@@ -52,9 +52,6 @@ reviews:
         - path: "image/**"
           instructions: >-
             Container image on the declared Postgres base with a generated extension block: hand edits drifting from the generator, base changes without a recorded reason, and secret material in build args are defects. hadolint-clean.
-        - path: "{.mcp.json,.codex/**}"
-          instructions: >-
-            Generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders. Server entries carry env references only, never inline secret values.
         - path: "**/*.sh"
           instructions: >-
             Standalone shell including .claude hooks: set -euo pipefail, shellcheck-clean without directives, no `|| true` failure masks, no embedded repo paths, usernames, or magic values. Hooks never pass secret values through shell parsing, logs, or receipts. Service or container lifecycle mutation in an ad hoc script is a defect — the admin/ rails and their typed receipts own VPS mutation.

@@ -73,13 +73,6 @@
             "severity": "high",
             "scope": ["admin/**"],
             "enabled": true
-        },
-        {
-            "id": "generated-projections",
-            "rule": ".mcp.json and .codex/ are generated projections from admin/mcp.py: hand edits are defects — the generator changes first, then the projection re-renders.",
-            "severity": "medium",
-            "scope": [".mcp.json", ".codex/**"],
-            "enabled": true
         }
     ]
 }

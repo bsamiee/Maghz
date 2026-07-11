@@ -11,11 +11,8 @@ resolve at dispatch, not import, so a config fault surfaces as a fault envelope 
 traceback. The runtime `Signals` service owns the structlog pipeline and `install(RetryMode.EMIT)`
 routes boundary-retry receipts onto stderr once at startup. The `stack`, `ledger`, `schema`, `sync`,
 `cloud`, `n8n`, `health`, and `remote` (`exec`) rails return the domain `RuntimeRail[Envelope]`, so
-their handlers lower it to the stdout `Envelope` through the one `runtime.lower` seam — which spreads
-a surviving `BoundaryFault` into a `fault` envelope at the single CLI edge. Only `mcp` self-lowers:
-`mcp(op, cfg)` grades its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
-`completed`/`fault` boundary, so its handler returns it without that lowering; `mcp` mounts
-`generate`/`validate`/`diff`/`watch`/`converge`.
+their handlers lower it to the stdout `Envelope` through the one `runtime.lower` seam, which spreads a
+surviving `BoundaryFault` into a `fault` envelope at the single CLI edge.
 The stack verbs (`up`/`down`/`status`) are stage-polymorphic through `MAGHZ_INFRA__STAGE` — the prd
 stage converges the VPS system daemon over the derived `ssh://` endpoint, so there is no separate
 deploy verb. `exec` derives one `RemoteTarget.from_config(settings().remote)` and awaits the
@@ -35,7 +32,7 @@ from cyclopts import App, CycloptsError, Group, Parameter
 from pydantic import ValidationError
 import structlog
 
-from admin import automation, infra, mcp, rails, remote
+from admin import automation, infra, rails, remote
 from admin.core import Envelope, fault
 from admin.runtime import install, lower, RetryMode, Signals
 from admin.settings import LogFormat, LogLevel, settings
@@ -53,8 +50,7 @@ _SYNC = Group("Sync", sort_key=40)
 _N8N = Group("n8n", sort_key=45)
 _AUTOMATION = Group("Automation", sort_key=48)
 _CLOUD = Group("Cloud", sort_key=50)
-_MCP = Group("MCP", sort_key=60)
-_REMOTE = Group("Remote", sort_key=70)
+_REMOTE = Group("Remote", sort_key=60)
 _GLOBAL = Group("Global", sort_key=99)
 
 
@@ -75,10 +71,9 @@ _sync = App(name="sync", help="Reconcile canonical concepts with their Heptabase
 _n8n = App(name="n8n", help="Manage n8n automation workflows: export, import, and container liveness.", group=_N8N)
 _automation = App(name="automation", help="Drive the trigger/action automation engine: watch, schedule, or one-shot.", group=_AUTOMATION)
 _cloud = App(name="cloud", help="Replicate the ledger dump and content tree to the cloud remotes, and restore.", group=_CLOUD)
-_mcp = App(name="mcp", help="Generate and round-trip-validate the committed `.mcp.json` MCP-server-fleet artifact.", group=_MCP)
 # Each sub-app mounts onto the root once; the verb-bearing command bodies below register through the
 # named handle's own `@<app>.command` decorator, so the handles stay bound and registration folds here.
-for _subapp in (_schema, _sync, _n8n, _automation, _cloud, _mcp):
+for _subapp in (_schema, _sync, _n8n, _automation, _cloud):
     app.command(_subapp)
 
 
@@ -178,8 +173,7 @@ async def _automation_run(*, spec: Annotated[automation.AutomationSpec, Paramete
     on a `msgspec.DecodeError` or an unknown lane. cyclopts wraps that into a `--spec` `CoercionError`,
     so a malformed or unadmitted spec faults at the CLI edge (exit 2) through `main()`'s `CycloptsError`
     arm instead of reaching the engine. `drive` grades its `BoundaryFault` rail to an `Envelope` at its
-    own `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering,
-    exactly like the `mcp` rail.
+    own `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering.
 
     Returns:
         The single `Envelope` `drive` emits for the resolved trigger lane, lowered at the engine edge.
@@ -199,38 +193,6 @@ async def _cloud_sync() -> Envelope:
 async def _cloud_restore() -> Envelope:
     """Restore the ledger from the latest remote dump and bisync the content tree back."""
     return lower(await rails.cloud(rails.CloudOp.RESTORE, settings()))
-
-
-@_mcp.command(name="generate")
-async def _mcp_generate() -> Envelope:
-    """Render the typed server fleet to the committed `.mcp.json` with `${VAR}` placeholders."""
-    # The mcp rail lifts its internal `RuntimeRail[McpConfigDetail]` to an `Envelope` at its own
-    # `completed`/`fault` boundary, so it threads straight through without the `runtime.lower` lowering.
-    return await mcp.mcp(mcp.McpOp.GENERATE, settings())
-
-
-@_mcp.command(name="validate")
-async def _mcp_validate() -> Envelope:
-    """Round-trip-decode the committed `.mcp.json` and assert every placeholder backs a settings field."""
-    return await mcp.mcp(mcp.McpOp.VALIDATE, settings())
-
-
-@_mcp.command(name="diff")
-async def _mcp_diff() -> Envelope:
-    """Render the fleet in memory and report every committed server entry that drifts from it (`failed` on drift)."""
-    return await mcp.mcp(mcp.McpOp.DIFF, settings())
-
-
-@_mcp.command(name="watch")
-async def _mcp_watch() -> Envelope:
-    """Regenerate `.mcp.json` on every settings/source change until SIGINT; one `watchfiles.awatch` stream."""
-    return await mcp.mcp(mcp.McpOp.WATCH, settings())
-
-
-@_mcp.command(name="converge")
-async def _mcp_converge() -> Envelope:
-    """Materialize every docker-run MCP server image as Pulumi desired-state so a session never cold-pulls."""
-    return await mcp.mcp(mcp.McpOp.CONVERGE, settings())
 
 
 @app.command(name="exec", group=_REMOTE)
