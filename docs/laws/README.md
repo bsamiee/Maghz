@@ -1,6 +1,6 @@
 # [LAWS_CORPUS]
 
-Repo-wide maintenance law: the coupling topology every cross-surface edit obeys, the pattern rows binding more than one execution surface, and the scar ledger of regression-proven laws. Heavy workflow runs (`estate`) land their generalizable findings here through one terminal doctrine stage; this corpus is the system of record only for facts no other owner carries.
+Repo-wide maintenance law: the coupling topology every cross-surface edit obeys, the pattern rows binding more than one execution surface, and the scar ledger of regression-proven laws. Heavy workflow runs (`.claude/workflows/`) land their generalizable findings here through one terminal doctrine stage; this corpus is the system of record only for facts no other owner carries.
 
 ## [01]-[PAGES]
 
