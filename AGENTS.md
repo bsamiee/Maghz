@@ -1,7 +1,5 @@
 # [ROOT_AGENTS]
 
-[REQUIRED]: Read and follow `CLAUDE.md` before this file.
-
 ## [01]-[NAVIGATION]
 
 Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts. For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
@@ -90,3 +88,8 @@ Keep generated documentation, prompts, skills, standards, examples, templates, a
 Future-facing standards, plans, and target designs do not inherit current drift; remove stale paths, stale commands, compatibility prose, old-baseline caveats, partial-adoption apologies, and invented routes instead of preserving them.
 
 Durable docs, prompts, standards, skills, examples, and reusable templates are agent-facing declarative law, not reports, walkthroughs, origin logs, or checklist tails.
+
+## [08]-[REVIEW_GUIDELINES]
+
+- Report only demonstrated P0 or P1 correctness, security, data-loss, concurrency, or contract defects introduced by the diff; omit summaries, praise, style-only comments, speculative risks, and findings already present on the pull request.
+- Anchor each finding to the smallest changed range and state the triggering execution path, violated invariant, and concrete consequence.

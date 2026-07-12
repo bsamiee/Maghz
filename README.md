@@ -4,14 +4,17 @@ An agent-operated second brain. Heptabase owns note content, the PostgreSQL `mag
 
 ## [01]-[LAYOUT]
 
-| [INDEX] | [PATH]       | [OWNS]                                                       |
-| :-----: | :----------- | :----------------------------------------------------------- |
-|  [01]   | `admin/`     | `maghz` CLI modules and the package charter                  |
-|  [02]   | `db/`        | Declarative SQL, search dictionaries, and n8n bootstrap      |
-|  [03]   | `image/`     | ParadeDB-derived Postgres image and generated apt projection |
-|  [04]   | `workflows/` | Committed n8n workflow files                                 |
-|  [05]   | `docs/`      | Doctrine, prose standards, and language stacks               |
-|  [06]   | `.claude/`   | Mirrored skills, hooks, scripts, and agent configuration     |
+The codemap is a regenerable projection of the repository root.
+
+```text codemap
+Maghz/
+├── admin/      maghz CLI modules and package charter
+├── db/         declarative SQL, search dictionaries, and n8n bootstrap
+├── image/      ParadeDB-derived Postgres image and apt projection
+├── workflows/  committed n8n workflow files
+├── docs/       doctrine, prose standards, and language stacks
+└── .claude/    skills, hooks, scripts, and agent configuration
+```
 
 `admin/infra.py` `StackOp` owns the full service topology on both hosts: `MAGHZ_INFRA__STAGE` selects `local` (Colima) or `prd` (the VPS system daemon over the derived `ssh://` endpoint), and one Pulumi program serves both stacks.
 
