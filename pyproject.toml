@@ -215,7 +215,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py"                     = ["F401", "RUF067"]  # admin/__init__.py runs the beartype_this_package claw — a required init-time bootstrap, not a re-export
-"**/.claude/skills/**/scripts/**" = ["ANN001", "ANN401", "E501", "ERA001", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "S603", "S607", "TRY300"]
+# RUF100 admits the byte-copied hooks-builder file-level noqa whose codes this repo's stricter select never flags.
+"**/.claude/**" = [
+    "TC003", "ANN001", "ANN401", "B905", "C901", "E501", "ERA001", "EXE001", "FBT001", "PLC0415",
+    "PLC2701", "PLC3002", "PLR0911", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR6201", "PLW1510",
+    "PTH109", "RUF100", "S105", "S310", "S404", "S603", "S607", "TID251", "TRY300",
+]
 "hook/**"                         = ["TID251"]  # container-standalone stdlib payload: the python:alpine runtime carries no msgspec/pydantic, env is its only ingress
 
 [tool.ruff.lint.flake8-annotations]

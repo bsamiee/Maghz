@@ -4,7 +4,7 @@ VPS second-brain repo: Python admin tooling, container topology, database schema
 
 Cross-surface coupling is review law: docs/laws/topology.md maps which surfaces obligate which counterparts — a diff editing a listed SURFACE without its obligated counterparts in the same change is a finding naming the missing counterpart; docs/laws/patterns.md rows bind every surface they name; docs/laws/scars.md laws are standing review duty.
 
-Doctrine-surface diffs (docs/laws, docs/stacks, docs/standards, CLAUDE.md, AGENTS.md, the reviewer configs themselves) are judged against docs/laws/landing.md: hardening an existing clause beats extending a file beats minting one, and each move needs the prior proven insufficient; a new file under docs/standards is a defect, and docs/stacks pages mirror the Rasm masters — a local fork is a defect; run provenance, freshness tails, or process narration in a landed row is a defect; a doctrine addition without recurrence evidence or surface-spanning blast radius is spam — flag it, and flag equally the miss where a diff hardens a symptom clause while the neighboring owning clause stands untouched where the collapse belonged.
+Doctrine-surface diffs (docs/laws, docs/stacks, docs/standards, CLAUDE.md, AGENTS.md, the reviewer configs themselves) are judged against docs/laws/README.md: hardening an existing clause beats extending a file beats minting one, and each move needs the prior proven insufficient; a new file under docs/standards is a defect, and docs/stacks pages mirror the Rasm masters — a local fork is a defect; run provenance, freshness tails, or process narration in a landed row is a defect; a doctrine addition without recurrence evidence or surface-spanning blast radius is spam — flag it, and flag equally the miss where a diff hardens a symptom clause while the neighboring owning clause stands untouched where the collapse belonged.
 
 ## [01]-[DESIGN_PARADIGMS]
 
@@ -28,7 +28,6 @@ Anticipate 10x functionality growth: surfaces absorb new modalities as rows, cas
 ## [04]-[LOAD_BEARING_EXCEPTIONS]
 
 Code that violates generic best practice on purpose — do not flag:
-
 - Aggressive API breaks with every call site updated in the same change are the sanctioned rename path, not regressions.
 - Dense single-expression bodies and heavy polymorphic dispatch are the bar, not obfuscation.
 - Absent defensive guards inside domain logic reflect admission-once boundaries, not missing error handling.
@@ -39,7 +38,6 @@ Code that violates generic best practice on purpose — do not flag:
 ## [05]-[DURABLE_PROSE_AND_SKILL_DETECTION]
 
 Durable markdown — docs, standards, skills, prompts — is agent-facing law. Flag:
-
 - No-op intensifiers: quality adjectives (careful, high-quality, robust, thorough) in a sentence with no owner, action, trigger, or gate.
 - Filler lead-ins: "it is important to note", "note that", "make sure to", "be sure to", "remember to", "keep in mind".
 - Restated harness obligations: telling an agent to follow CLAUDE.md/AGENTS.md, use available tools, or obey system instructions.

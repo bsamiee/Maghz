@@ -1,51 +1,48 @@
 {
-    "$schema": "https://json.schemastore.org/claude-code-settings.json",
-    "effortLevel": "xhigh",
-    "claudeMdExcludes": [
-        "**/.cache/**/CLAUDE.md",
-        "**/node_modules/**/CLAUDE.md",
-        "**/bin/**/CLAUDE.md",
-        "**/obj/**/CLAUDE.md",
-        "**/.artifacts/**/CLAUDE.md"
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "effortLevel": "xhigh",
+  "claudeMdExcludes": [
+    "**/.cache/**/CLAUDE.md",
+    "**/node_modules/**/CLAUDE.md",
+    "**/bin/**/CLAUDE.md",
+    "**/obj/**/CLAUDE.md",
+    "**/.artifacts/**/CLAUDE.md"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-env.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "mcp__postgres__*",
+      "mcp__google-workspace__*",
+      "mcp__notebooklm__*",
+      "mcp__exa__*",
+      "mcp__perplexity__*",
+      "mcp__tavily__*",
+      "mcp__hostinger__*",
+      "mcp__github__*",
+      "mcp__context7__*",
+      "mcp__greptile__*",
+      "mcp__nuget__*",
+      "mcp__jupyter__*",
+      "mcp__doppler-remote__*"
     ],
-    "hooks": {
-        "SessionStart": [
-            {
-                "matcher": "startup|resume|compact",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-env.sh",
-                        "timeout": 10
-                    }
-                ]
-            }
-        ]
-    },
-    "permissions": {
-        "allow": [
-            "mcp__postgres__*",
-            "mcp__google-workspace__*",
-            "mcp__notebooklm__*",
-            "mcp__exa__*",
-            "mcp__perplexity__*",
-            "mcp__tavily__*",
-            "mcp__hostinger__*",
-            "mcp__github__*",
-            "mcp__context7__*",
-            "mcp__greptile__*",
-            "mcp__nuget__*",
-            "mcp__jupyter__*",
-            "mcp__doppler-remote__*"
-        ],
-        "deny": [
-            "Bash(git push --force:*)",
-            "Bash(git push -f:*)",
-            "Bash(git reset --hard:*)",
-            "Bash(maghz down:*)",
-            "Bash(pulumi destroy:*)",
-            "Bash(dropdb:*)",
-            "Bash(docker volume rm:*)"
-        ]
-    }
+    "deny": [
+      "Bash(maghz down:*)",
+      "Bash(pulumi destroy:*)",
+      "Bash(dropdb:*)",
+      "Bash(docker volume rm:*)"
+    ]
+  }
 }

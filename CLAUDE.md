@@ -27,7 +27,6 @@ Rankings, higher is better. Cost reflects actual operator spend, not list price.
 ## [02]-[WORKSPACE_LAW]
 
 [IMPORTANT]:
-
 - [ALWAYS]: Use `.claude/skills/workflow-creator` when creating a workflow.
 - [ALWAYS]: Treat tooling code as polymorphic, agnostic, and universal by default.
 - [ALWAYS]: Keep every surface agent-facing and agent-only: the CLI emits one JSON `Envelope` per call with no human-facing flags, prompts, or decorative output; agents and automations are the sole consumers, and automation is central design pressure even before the automations exist.
@@ -57,12 +56,11 @@ Use the route-owned standard for the file being edited:
 
 Python has no route skill: the doctrine pair plus this manifest's `[05]` constraints own Python shape, and `ruff`/`ty` gate style and types.
 
-`docs/laws/` is the repo-wide maintenance-law corpus — coupling topology, cross-surface pattern rows, and the scar ledger; substantive passes read it at source (it stays small by law), a diff touching a `topology.md` `[SURFACE]` lands its obligated counterparts in the same change, and durable lessons land ONLY through a run's terminal doctrine stage under the `docs/laws/README.md` admission law: harden an existing clause before extending a file before minting one, `docgen` + `skill-writer` loaded for every landing, and landing nothing is a first-class verdict.
+`docs/laws/` is the repo-wide maintenance-law corpus — coupling topology, cross-surface pattern rows, and the scar ledger; substantive passes read it at source (it stays small by law), a diff touching a `topology.md` `[SURFACE]` lands its obligated counterparts in the same change, and durable lessons land ONLY through a run's terminal doctrine stage under the `docs/laws/README.md` admission law, with the `docgen` and `skill-writer` skills loaded.
 
 ## [04]-[DEPENDENCY_POLICY]
 
 [IMPORTANT]: External libraries, manifests, and host APIs are implementation surfaces.
-
 - [ALWAYS]: Treat dependencies declared in `pyproject.toml`, the lockfile, and equivalent manifests as first-class material.
 - [ALWAYS]: Mine admitted packages to their full useful capability before writing local kernels.
 - [ALWAYS]: Prefer ecosystem libraries that already own the domain concern over lower-level reinvention.
@@ -75,7 +73,6 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [05]-[IMPLEMENTATION_CONSTRAINTS]
 
 [CRITICAL]:
-
 - [NEVER]: Use weak, unbounded, or erased types where the language can express the domain precisely.
 - [NEVER]: Use exception-style control flow in domain logic; use typed error rails and the required route's recovery patterns.
 - [NEVER]: Use imperative branching when a bounded vocabulary, dispatch table, generated switch, match, fold, or monadic rail can own the variation.
@@ -88,7 +85,6 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 - [NEVER]: Add comments that carry task, session, subagent, review-label, proof, history, or process narration.
 
 [IMPORTANT]:
-
 - [ALWAYS]: Collapse related variants into one polymorphic surface before adding entrypoints.
 - [ALWAYS]: Drive logic with data, bounded vocabularies, discriminants, table rows, and reusable projections.
 - [ALWAYS]: Co-locate domain logic with its owner instead of scattering it into generic support files.
@@ -99,7 +95,6 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [06]-[BEHAVIOR]
 
 [IMPORTANT]:
-
 - [ALWAYS]: Tools over internal knowledge: read files, search code, verify assumptions through source, manifests, docs, and tool output.
 - [ALWAYS]: Parallelize independent searches, reads, and checks.
 - [ALWAYS]: Use bounded subagents at the agent's discretion when independent exploration, research, verification, or disjoint implementation materially improves the result; never force them as lifecycle ceremony.
@@ -107,7 +102,6 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [07]-[OWNER_ROUTING]
 
 [IMPORTANT]:
-
 - [ALWAYS]: Dependency graph facts live in `pyproject.toml`, the lockfile, and the tool owner that consumes them.
 - [ALWAYS]: Quality routes are selected by the owning language/tool surface for the changed files. Root policy owns intent, not command catalogs.
 - [ALWAYS]: For docs-only, catalog-only, read-only, declaration-order, move-only, and comment-only work, use text, path, table, link, owner, and preservation checks unless the user requests an executable quality rail.
@@ -147,7 +141,6 @@ Resolve any external library's current API through `context7` before internalizi
 ## [09]-[DOCUMENTATION_AND_OUTPUT]
 
 [IMPORTANT]:
-
 - [ALWAYS]: Use `backticks` for file paths, symbols, and CLI commands.
 - [ALWAYS]: Keep responses actionable and lead with what changed.
 - [ALWAYS]: Treat durable docs, prompts, standards, skills, examples, and templates as agent-facing declarative law.
@@ -183,7 +176,6 @@ Canonical order, omitting unused sections: `TYPES` -> `CONSTANTS` -> `MODELS` ->
 - `[EXPORTS]`: named exports, `__all__`, or language-equivalent public surface declarations.
 
 [IMPORTANT]:
-
 - [ALWAYS]: Apply ordering as `section` -> `owner block` -> `runtime/declaration dependency` -> `semantic rank` -> `kind` -> `smaller-to-larger` -> `alphabetical`.
 - [ALWAYS]: Prefer concept discovery order from stable declarations to composition: vocabulary, constants, models, failures, services, operations, wiring, exports.
 - [ALWAYS]: Treat one generated type, smart enum, value object, schema/model family, wire model family, kernel, registry, catalog, table, dispatcher, query family, or composition root as an owner block; sort inside the owner instead of flattening its members into unrelated top-level sections.
