@@ -1,19 +1,20 @@
 export const meta = {
     name: 'estate',
     description:
-        'Per-surface estate tracks over the Maghz operator - two gpt-5.6-terra recon lanes per track (codex wrappers, split charges: the estate-scope dossier and the coupling dossier, both written to scratch) then initial/critique/redteam fable passes. The T-passes stay native fable because their acceptance gates run network-bound toolchains (uv sync, uv lock) a codex sandbox cannot reach. Every pass nominates generalizable findings and reports deliberately-left residuals; a terminal doctrine lander pools both across all tracks and adjudicates the nominations into docs/laws, the constitution, the READMEs, and the reviewer rules, while the pooled residuals ride the run return untouched - estate residuals are deliberate deferrals, not a drain backlog.',
+        'Per-language estate tracks - two gpt-5.6-terra recon lanes per track (codex wrappers, split charges: the estate-scope dossier and the libs-complexity dossier, both written to scratch) then initial/critique/redteam fable passes - closing with a monorepo final track. The T-passes stay native fable because their acceptance gates run network-bound toolchains (dotnet restore, uv sync, pnpm install) a codex sandbox cannot reach. Every pass nominates generalizable findings and reports deliberately-left residuals; a terminal doctrine lander pools both across all tracks and adjudicates the nominations into docs/laws, the constitution, the test/tool READMEs, and the reviewer rules, while the pooled residuals ride the run return untouched - estate residuals are deliberate deferrals, not a drain backlog.',
     whenToUse:
-        'Full estate improvement over the admin package, the SQL/schema surfaces, and the docs/skill mirrors; passes run on fable, then a terminal doctrine lander lands generalizable findings.',
+        'Full estate improvement over tests/tools/root configs per language, then polyglot alignment; passes run on fable, then a terminal doctrine lander lands generalizable findings.',
     phases: [
         {
             title: 'Recon',
-            detail: 'per track: two read-only gpt-5.6-terra lanes via codex wrappers (sonnet shells) with split charges - estate-scope facts and the cross-surface coupling map - each writing its dossier to scratch; CODEX=false restores native opus lanes',
+            detail: 'per track: two read-only gpt-5.6-terra lanes via codex wrappers (sonnet shells) with split charges - estate-scope facts and the libs-complexity map - each writing its dossier to scratch; CODEX=false restores native opus lanes',
             model: 'sonnet',
         },
         { title: 'Estate' },
+        { title: 'Final' },
         {
             title: 'Doctrine',
-            detail: 'one fable lander pools harvest nominations and deliberately-left residuals across every track pass, then adjudicates the nominations against the live doctrine surfaces; residuals ride the return untouched; fires only when a nomination exists',
+            detail: 'one fable lander pools harvest nominations and deliberately-left residuals across every track pass plus the final track, then adjudicates the nominations against the live doctrine surfaces; residuals ride the return untouched; fires only when a nomination exists',
             model: 'fable',
         },
     ],
@@ -21,77 +22,106 @@ export const meta = {
 
 // --- [CONSTANTS] -----------------------------------------------------------------------
 
-const SCRATCH = '.claude/scratch/estate';
+const CORE_PAGES = 4;
 const STALL = 300000;
-const CODEX_STALL = 1500000; // wrapper stall sits above the xhigh blocking-call ceiling (1200s): a silent live MCP call is legal waiting, never a stall
+const CODEX_STALL = 1500000; // wrapper stall sits above the codex effort tier's blocking-call ceiling: a silent live MCP call is legal waiting, never a stall
 const CODEX = true; // recon lanes run on gpt-5.6-terra via the codex wrapper; false restores native opus lanes
 
 const TRACKS = {
+    csharp: {
+        docs: 'docs/stacks/csharp',
+        docsNote: 'ignore the domain/ folder entirely',
+        scope:
+            'Directory.Packages.props organization: every row homed truthfully — a transitive-only row lives under Transitive Floors with a one-line comment ' +
+            'naming what pulls it (verify via dotnet nuget why or lockfiles), a directly-consumed row lives under its consumer-domain label; alphabetical within ' +
+            'groups, aligned columns, one-line comments only. The bidirectional props<->csproj<->README<->.api audit across libs/csharp + tools + tests/csharp: ' +
+            'every mismatch fixed at the truthful end; substrate truthfulness (a branch-substrate registry row needs 2+ consumers, a single-consumer package ' +
+            'relocates to the folder registry + folder .api tier, both ends). tests/csharp shared infrastructure: _testkit, _scenariokit, _architecture, ' +
+            '_benchmarks, scenarios, tools, README — world-class, discovery-driven, zero hardcoded package lists; tests/csharp/.api is a first-class test-stack ' +
+            'catalog tier (mirror tests/python/.api and tests/typescript/.api) with a member-verified catalog per testing package. tools/rhino-bridge scenarios ' +
+            'and universal scenario kits; tools/cs-analyzer; .config C# tooling plus NuGet.config and global.json where improvement is justified; ' +
+            'Directory.Build.props/targets and Workspace.slnx coherence chasing every csproj ' +
+            'in the monorepo. LAW, not drift: Rasm.Rhino and Rasm.Grasshopper stay OUT of Workspace.slnx under the HOST_BOUNDARY_REENTRY gate in ' +
+            'tests/csharp/_architecture/AssemblyBoundaries.spec.cs.',
+        gates:
+            'dotnet restore Workspace.slnx clean; dotnet build Workspace.slnx with zero errors AND zero warnings (analyzer findings fixed at the shape, never ' +
+            'suppressed); dotnet format Workspace.slnx --verify-no-changes conformant with .editorconfig; dotnet test tests/csharp/_architecture green; prose ' +
+            'gate zero FAILs on every touched .md; rg proof of zero stale references to relocated or deleted files.',
+    },
     python: {
-        doctrine:
-            'CODE DOCTRINE: read docs/stacks/python/README.md IN FULL — its routing table orders the corpus; read IN FULL the first 4 pages that table ' +
-            'lists and consult the remaining pages on demand while editing. Then read docs/standards/design-doctrine.md and docs/standards/ops-doctrine.md ' +
-            'IN FULL — a design finding cites the doctrine card it breaks. ',
+        docs: 'docs/stacks/python',
+        docsNote: '',
         scope:
-            'The admin/ package as one estate: all eleven owners (core, db, infra, profile, rails, remote, runtime, settings, automation, __main__, ' +
-            '__init__) pushed to the docs/stacks/python bar — typed Result rails, expression-shaped dispatch, one polymorphic entry per concern, every ' +
-            'admitted dependency mined to operator depth, zero hand-rolled reimplementation of shipped capability. hook/server.py hardened as the ' +
-            'container-standalone stdlib consumer it is. pyproject.toml coherence: dependency rows lean and unpinned with truthful one-line comments, ' +
-            'ruff/ty/mypy sections aligned with the live tree, dependency admissions on merit through the admission procedure. Never mutate the stack or ' +
-            'the VPS: no maghz up/down/exec, no stage-prd invocation, no docker against live services — schema and rail truth is proven statically and ' +
-            'through import-time gates.',
+            'tests/python/.api: a member-verified catalog per test-stack package (verify via installed distributions and assay). _testkit + conftest topology: ' +
+            'the root conftest as the single shared composition owner, per-suite conftests compose and never duplicate; SUT auto-registration derived from disk ' +
+            'shape; sentinel-based repo-root discovery (never a fixed parents[N] depth); one truthful marker taxonomy across pyproject, README, and policy code. ' +
+            'pytest extension admissions on merit — wired into required_plugins and the kit the moment they land, or rejected; no duplicate paradigms. pyproject ' +
+            'test-config optimization: markers, addopts, coverage/mutation coherence, stale exclusions, one-line comments. tests/python/libs + tests/python/tools ' +
+            'unified against the improved kit, spam collapsed, naivety reduced per the doctrine.',
         gates:
-            'uv lock and uv sync clean; uv run ruff check clean; uv run ruff format --check clean; uv run ty check clean; uv run mypy clean; ' +
-            'uv run python -c "import admin.rails" clean (ledger projections parse at import under ErrorLevel.RAISE); prose gate zero FAILs on every ' +
-            'touched .md. Zero-error law: findings fixed correctly root/ground-up — never type-ignore, suppressions, or bandaids.',
+            'uv lock and uv sync clean; uv run ruff check clean; uv run ty check clean; uv run mypy clean; uv run pytest tests/python green (targeted suites ' +
+            'when the full run exceeds ten minutes, stating what ran); prose gate zero FAILs on every touched .md. Zero-error law: findings fixed correctly ' +
+            'root/ground-up — never type-ignore, suppressions, or bandaids.',
     },
-    sql: {
-        doctrine:
-            'CODE DOCTRINE: load the coding-pg skill via the Skill tool before editing any .sql; read docs/standards/ops-doctrine.md IN FULL (its [03] ' +
-            'owns the SQL surfaces) plus docs/standards/design-doctrine.md IN FULL. ',
+    typescript: {
+        docs: 'docs/stacks/typescript',
+        docsNote: '',
         scope:
-            'The declarative SQL estate: db/schema.sql (extension census, maghz schema, kb_english configuration, enums, tables, plain indexes), ' +
-            'db/routines.sql (function, trigger, exotic-index, view, and IMMV bodies), db/cron.sql (pg_cron registration), db/init/n8n.sql, and the ' +
-            'db/search/ dictionaries — every object idempotent so replay is a clean no-op, hybrid-search (BM25 + pgvector + trigram RRF) and the ' +
-            'in-database embed pipeline owned by routines, never application loops. admin/profile.py catalog alignment: the [CATALOG:<tag>] sentinel ' +
-            'blocks in db/schema.sql, db/cron.sql, and image/Dockerfile regenerate only through admin.profile.regenerate() — a hand edit inside a block ' +
-            'is drift fixed at the catalog. NEVER create migration files, numbered scripts, or up/down pairs; NEVER run maghz schema apply or any ' +
-            'mutating rail against a live database — coherence is proven statically.',
+            'tests/typescript/e2e as one parameterized, polymorphic multi-project harness serving many future projects from config-driven targets — zero ' +
+            'fragility, full modern Playwright surface (projects matrix, fixture composition, trace/video policy rows, webServer lifecycle). ' +
+            'playwright.config.ts, vite.config.ts, vite.factory.ts, and vitest.config.ts evolve as one factory system with vite.factory.ts the parameterization ' +
+            'owner. _testkit + _architecture extended discovery-driven with no hardcoded package lists. tests/typescript/.api completed for the test stack; ' +
+            'tooling admissions via the pnpm catalog on merit, wired or rejected. tools/biome modernized and extended (justified biome/nx plugins admitted; ' +
+            'assay stays the operator boundary). Root TS config coherence: tsconfig.base.json, tsconfig.json, biome.json, nx.json.',
         gates:
-            'sqlfluff lint db clean under the pyproject [tool.sqlfluff] law; uv run python -c "from admin.profile import regenerate; regenerate()" then ' +
-            'git diff --exit-code db image proves zero generated-block drift; uv run python -c "import admin.rails" clean (ledger projections parse ' +
-            'against the schema spellings); hadolint image/Dockerfile clean when touched; prose gate zero FAILs on every touched .md. Zero-error law: ' +
-            'fixed root/ground-up, never suppressed.',
+            'pnpm install clean; pnpm run typecheck (tsgo AND tsc) fully clean; pnpm run check fully clean on touched files (never biome-ignore); pnpm run ' +
+            'test and pnpm run e2e green for tests/typescript suites; prose gate zero FAILs on every touched .md. Zero-error law: findings fixed correctly ' +
+            'root/ground-up — never any-casts, suppressions, or bandaids.',
     },
-    docs: {
-        doctrine:
-            'PROSE DOCTRINE: load the docgen skill via the Skill tool before any durable edit; docs/standards/style-guide.md, formatting.md, and ' +
-            'information-structure.md bind all prose. ',
-        scope:
-            'The documentation and mirror estate: root README.md, admin/README.md, and .claude/README.md truthful against the live tree (verb tables, ' +
-            'owner tables, apply mechanics); docs/.api catalogs verified against current code — stale paths, phantom members, and drifted charters fixed ' +
-            'at the truthful end; docs/laws rows re-proven against the live tree per the topology charter. Skill mirrors under .claude/skills/ are ' +
-            'byte-identical copies of the Parametric_Forge harness masters and the Rasm methodology masters at ~/Documents/99.Github/ — detect drift ' +
-            'with diff -r, sync FROM the master only, and route a defect found in mirror content to the master tree as a reported residual; never invent ' +
-            'local skill edits.',
-        gates:
-            'prose gate zero FAILs on every touched .md; rg proof of zero stale references to relocated or deleted files in every touched doc; every ' +
-            'touched skill mirror proven byte-identical to its master via diff -r. Zero-error law: fixed root/ground-up, never suppressed.',
-    },
+};
+
+const FINAL_TRACK = {
+    docs: '',
+    docsNote: '',
+    scope:
+        'Monorepo/polyglot alignment at every level: cross-language gaps, oversights, and asymmetries in tests/, tools/, root config files, routing/pathing, ' +
+        'and libs/ registries; fragility, hardcoding, hardscoping, and naivety patterns fixed for universal future use so nothing needs re-adjustment later; ' +
+        'removal-biased prose cleanup per the docgen register — tombstones, weak or fragile prose, dead references and citations, unnecessary coupling — ' +
+        'reduce the prose maintenance mountain, never add to it. The three language estates are settled input state: align them, close their seams, and fix ' +
+        'what they missed.',
+    gates:
+        'dotnet restore Workspace.slnx clean; dotnet build Workspace.slnx zero errors and warnings; dotnet format Workspace.slnx --verify-no-changes clean; ' +
+        'dotnet test tests/csharp/_architecture green; uv run ruff check + ty check + mypy all clean; pnpm run typecheck and pnpm run check clean; prose ' +
+        'gate zero FAILs on every touched .md. Zero-error law: fixed root/ground-up, never suppressed.',
 };
 
 // --- [INPUTS] --------------------------------------------------------------------------
 
-const NAMES = Array.isArray(args)
+const LANGS = Array.isArray(args)
     ? args
     : typeof args === 'string' && args
       ? [args]
-      : Array.isArray(args?.tracks)
-        ? args.tracks
-        : ['python', 'sql', 'docs'];
-const ACTIVE = NAMES.filter((t) => TRACKS[t]);
+      : Array.isArray(args?.languages)
+        ? args.languages
+        : ['csharp', 'python', 'typescript'];
+const WANT_FINAL = args?.final !== false;
+const ACTIVE = LANGS.filter((l) => TRACKS[l]);
 
-// --- [MODELS] ----------------------------------------------------------------------------
+// Per-instance scratch dir — recon dossiers + pass report files. Minted deterministically from the normalized active-track set
+// (clock/randomness would break resume): one FLAT dir under .claude/scratch/, a human-readable basename slug plus an FNV-1a tail
+// so distinct track sets never share a directory and a resume of the same run rehydrates the same one.
+const fnv1a = (s) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    return (h >>> 0).toString(16).padStart(8, '0').slice(0, 6);
+};
+const SCRATCH =
+    '.claude/scratch/' +
+    ('estate-' + ACTIVE.map((l) => l.toLowerCase()).join('-')).replace(/[^a-z0-9.-]+/g, '-').slice(0, 60) +
+    '-' +
+    fnv1a(JSON.stringify(ACTIVE));
+
+// --- [MODELS] --------------------------------------------------------------------------
 
 const DOSSIER_RECEIPT = {
     type: 'object',
@@ -111,10 +141,10 @@ const HARVEST = {
     items: {
         type: 'object',
         additionalProperties: false,
-        required: ['altitude', 'track', 'claim', 'anchors', 'existingClause'],
+        required: ['altitude', 'lang', 'claim', 'anchors', 'existingClause'],
         properties: {
-            altitude: { type: 'string', enum: ['stacks', 'reviewer', 'constitution', 'readme', 'laws'] },
-            track: { type: 'string' },
+            altitude: { type: 'string', enum: ['stacks', 'reviewer', 'constitution', 'planning', 'readme', 'laws'] },
+            lang: { type: 'string' },
             claim: { type: 'string' },
             anchors: { type: 'array', items: { type: 'string' } },
             existingClause: { type: 'string' },
@@ -157,47 +187,52 @@ const DOCTRINE_SCHEMA = {
     },
 };
 
-// --- [DOCTRINE] --------------------------------------------------------------------------
+// --- [DOCTRINE] ------------------------------------------------------------------------
 
 const MODEL_LAW =
     'MODEL LAW: you execute every file write and every judgment yourself. Delegate read-only reconnaissance roughly 50/50 between codex ' +
-    '(Bash: codex exec -s read-only --skip-git-repo-check --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=xhigh ' +
+    '(Bash: codex exec -s read-only --skip-git-repo-check --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high ' +
+    '-c project_doc_max_bytes=65536 ' +
     '"<self-contained scoped question>" </dev/null 2>/dev/null — synchronous, ' +
     'one bounded question per leg) and opus subagents (Agent tool, model opus, explicit READ-ONLY mandate; fall back to codex if Agent is unavailable). ' +
     'Recon returns facts, locations, inventories, and verified member lists — never instructions, prescriptions, or edits; recon agents use exa/tavily, ' +
-    'Context7, PyPI, and fd/rg/loc/tree, with read-only shell probes only.';
+    'the nuget MCP, Context7, uv run python -m tools.assay, and fd/rg/loc/tree.';
 
 const GUARDRAILS =
-    'HARD GUARDRAILS: never git commit; never run a mutating rail — no maghz up/down/exec, no schema apply, no stage-prd invocation, no docker or pulumi ' +
-    'against live services; the VPS operating system belongs to the Forge flake and never changes from this repo. Durable prose follows the docgen ' +
-    'register (.claude/skills/docgen/SKILL.md + references/defects.md): no weak, defensive, or process prose, no context poisoning, no tombstones. Every ' +
-    'touched .md passes uv run .claude/skills/docgen/scripts/prose_gate.py with zero FAILs.';
+    'HARD GUARDRAILS: never modify any IDEAS.md or TASKLOG.md; never redesign code-fence interiors in libs planning pages (fence comments may tighten per ' +
+    'the comment law); never git commit. Durable prose follows the docgen register (.claude/skills/docgen/SKILL.md + references/defects.md): no weak, ' +
+    'defensive, or process prose, no context poisoning, no tombstones. Every touched .md passes ' +
+    'uv run .claude/skills/docgen/scripts/prose_gate.py with zero FAILs.';
 
 const ADMISSION =
-    'ADMISSION PROCEDURE (any new package you add): the admission lands COMPLETE in this pass — the pyproject.toml row hand-edited with its truthful ' +
-    'one-line comment, the uv lock/sync gate green, a docs/.api catalog at mined operator depth when the package joins the automation substrate ' +
-    '(the automation-substrate coupling row in docs/laws/topology.md), and the owning README row where a registry carries it. ' +
-    'Gather the catalog facts through ONE delegated read-only ' +
-    'recon agent mining verified members (installed distribution, Context7, PyPI); author the file yourself per the docgen api-catalog template. ' +
-    'Surgical prose updates only — touch the rows the admission changes, nothing else.';
+    'ADMISSION PROCEDURE (any new tool/package you add): the admission lands COMPLETE in this pass — central manifest row hand-edited ' +
+    '(Directory.Packages.props / pyproject.toml / pnpm-workspace.yaml catalog + package.json), consumer wiring (csproj row for C#), a folder README ' +
+    'registry row, and a full .api catalog at the correct tier (language-shared tier only for 2+ consumers, folder tier otherwise, tests/<lang>/.api for ' +
+    'test-stack tooling). Gather the catalog facts through ONE delegated read-only recon agent mining verified members (assay api, installed ' +
+    'distributions, nuget MCP, type declarations); author the file yourself per the docgen api-catalog template ' +
+    '(.claude/skills/docgen/templates/api-catalog.template.md); the restore/lock gate proves the admission. Surgical prose updates only — touch the rows ' +
+    'the admission changes, nothing else.';
 
 const REVIEWER_LAW =
     'REVIEWER-CONFIG ENRICHMENT (opportunistic, never a mandated deliverable): .greptile/rules.md + config.json + files.json and .coderabbit.yaml are the ' +
-    'standing reviewer doctrine. When your pass surfaces a high-signal implicit pattern those files do not already state — a quality shape, a rail or ' +
-    'schema construction law, an agent-framed prose norm, or existing guidance now wrong or weaker than the estate practices — land it there in the same ' +
-    'pass: harden or correct the owning instruction where one exists, add a new one only when no owner covers it, and mirror every ruling across both ' +
-    'surfaces (the rules.md section and the matching .coderabbit.yaml path_instructions block move together). Admission bar: consistent across the ' +
-    'estate, doctrine-derived (docs/stacks, docs/standards, docs/laws), and invisible to the machine gates — never restate what formatters/gates ' +
-    'enforce, never duplicate an existing line, never add speculative or one-off rules. yamllint proves .coderabbit.yaml, jq proves the .greptile JSON ' +
-    'files, and rules.md rides the prose gate like any touched .md.';
+    'standing reviewer doctrine. When your pass surfaces a high-signal implicit pattern those files do not already state — a quality shape, a testkit/infra ' +
+    'construction law, test/tool code discipline, a libs/ standards nuance, an agent-framed prose norm, or existing guidance now wrong or weaker than the ' +
+    'estate practices — land it there in the same pass: harden or correct the owning instruction where one exists, add a new one only when no owner covers ' +
+    'it, and mirror every ruling across both surfaces (the rules.md section and the matching .coderabbit.yaml path_instructions block move together). ' +
+    'Admission bar: consistent across the estate, doctrine-derived (docs/stacks/<language>, docs/standards), and invisible to the machine gates — never ' +
+    'restate what formatters/gates/analyzers enforce, never duplicate an existing line, never add speculative or one-off rules. Write the guidance as ' +
+    'durable law over the finished system: never couched in the planning phase, campaign state, or session narration. yamllint proves .coderabbit.yaml, jq ' +
+    'proves the .greptile JSON files, and rules.md rides the prose gate like any touched .md.';
 
-const TOPOLOGY_LAW =
-    'COUPLING PRIMACY: the cross-surface couplings are the estate CENTER, never a side item. A pass touching any docs/laws/topology.md [SURFACE] lands ' +
-    'its obligated counterparts in the SAME pass — the [CATALOG:<tag>] blocks regenerate only through admin.profile.regenerate(), schema spellings ' +
-    'propagate into routines and the rails projections, verb-surface changes land at the README and AGENTS readers, and a host-side counterpart ' +
-    '(a Forge vpsTunnels or nixosConfigurations.maghz row) is reported as a residual naming the Forge owner, never patched here. Build intelligent, ' +
-    'universal, polymorphic owners that make future capability land as one row inside the existing surface; beyond alignment, improve outright — add ' +
-    'the capability the estate is missing, admitting new packages through the admission procedure whenever they raise the bar.';
+const INFRA_LAW =
+    'SHARED-INFRA PRIMACY: the shared test infrastructure is the estate CENTER, never a side item — csharp: tests/csharp/_testkit, _scenariokit, ' +
+    '_architecture, _benchmarks, scenarios; python: tests/python/_testkit + the conftest topology; typescript: tests/typescript/_testkit, _architecture, ' +
+    'and e2e PLUS nx.json, biome.json, tools/biome, playwright.config.ts, vite.factory.ts, and vitest.config.ts as one system. FIRST explore your ' +
+    'language libs/ planning corpus in depth — every package folder: domains, owners, seams, receipt families, wire shapes — to understand the extreme ' +
+    'complexity arriving when every folder goes live; the infra must anticipate ALL of it NOW. Build intelligent, universal, polymorphic foundations that ' +
+    'make future tests near-trivial to write and REDUCE total test code — declarative gauges, law tables, fixture algebras, discovery-driven ' +
+    'registration — never naive or simple scaffolding, never replace-in-place minimalism. Beyond anticipation, improve in isolation: add the capabilities ' +
+    'the infra is missing outright, admitting new packages through the admission procedure whenever they raise the bar.';
 
 const TIER_LAW = {
     T1: 'PASS T1 (INITIAL): realize the whole mandate with full write authority — implement, extend, and collapse; this is build work, not cleanup.',
@@ -208,37 +243,49 @@ const TIER_LAW = {
         'every hit is a fix, never a note; extend, expand, and ripple wherever you find value.',
     T3:
         'PASS T3 (REDTEAM): everything critique does AND the terminal attack — counterfactual on core owners/algebras/dispatch, diff-of-the-next-feature ' +
-        '(the next verb, trigger, extension, or service lands as one row with consumers untouched or loudly broken), long-tail and failure-mode attack, ' +
-        'boundary and ownership integrity, surface sprawl and phantom members, domain completeness — plus a full cold re-review of every dimension. The ' +
-        'estate ends objectively denser and more capable than the prior pass left it.',
+        '(the next case, project, or package lands as one row with consumers untouched or loudly broken), long-tail and failure-mode attack, boundary and ' +
+        'strata integrity, surface sprawl and phantom members, domain completeness — plus a full cold re-review of every dimension. The estate ends ' +
+        'objectively denser and more capable than the prior pass left it.',
 };
 
 const LAWS_READ =
     'LAWS: read docs/laws/ IN FULL (README + topology + patterns + scars; short registry pages) — a topology row whose [SURFACE] your pass touches binds ' +
-    'its obligated counterparts into the SAME pass, and every patterns row binds each surface it names. ';
+    'its obligated counterparts into the SAME pass, and every patterns row binds each branch it names. ';
 
 const HARVEST_LAW =
     'HARVEST (required key, usually empty): nominate ONLY findings that generalize beyond this pass — a construction law reusable across the estate, a ' +
-    'rail/schema pattern no doctrine clause names, a review rule that would have caught a defect BEFORE review, a cross-surface coupling discovered the ' +
-    'hard way. Each row: altitude (stacks|reviewer|constitution|readme|laws), track, claim (the generalized law, one sentence), anchors (file:line ' +
+    'testkit/infra pattern no doctrine clause names, a review rule that would have caught a defect BEFORE review, a cross-surface coupling discovered the ' +
+    'hard way. Each row: altitude (stacks|reviewer|constitution|planning|readme|laws), lang, claim (the generalized law, one sentence), anchors (file:line ' +
     'evidence), existingClause (the exact doctrine or reviewer clause it would harden, quoted with its path — or "absent" plus the surfaces searched). A ' +
     'pass-local fix never nominates; an empty array is the normal verdict — the terminal doctrine lander refutes weak rows, so nominate substance, never volume.';
 
-// --- [OPERATIONS] ------------------------------------------------------------------------
+// --- [OPERATIONS] ----------------------------------------------------------------------
+
+const docsOrder = (t) =>
+    (t.docs
+        ? 'CODE DOCTRINE: read ' +
+          t.docs +
+          '/README.md IN FULL — its numbered routing table orders the corpus. Read IN FULL the first ' +
+          CORE_PAGES +
+          ' pages that table lists' +
+          (t.docsNote ? ' (' + t.docsNote + ')' : '') +
+          '; know the remaining pages exist and consult them on demand while ' +
+          'editing, never wholesale. '
+        : 'CODE DOCTRINE: each file you touch follows its language doctrine under docs/stacks/<language>/ — consult the owning pages on demand. ') +
+    LAWS_READ;
 
 const dossierPath = (name, lane) => SCRATCH + '/' + name + '-recon-' + lane + '-report.md';
 
-// Split recon charges: the two lanes never duplicate a read — scope owns the estate facts, coupling owns the cross-surface map.
+// Split recon charges: the two lanes never duplicate a read — scope owns the estate facts, libs owns the complexity map.
 const LANE_CHARGE = {
     scope:
-        'Build a factual dossier of the estate scope below: file inventories with one-line states, dependency/consumer matrices from ' +
-        'pyproject.toml and the lockfile, config cross-references, upstream versions where staleness is suspected (PyPI, Context7), ' +
+        'Build a factual dossier of the estate scope below: file inventories with one-line states, package/consumer matrices from ' +
+        'manifests and lockfiles, config cross-references, upstream versions where staleness is suspected (the nuget MCP, PyPI, npm), ' +
         'and exact file:line anchors for everything notable.',
-    coupling:
-        'Build the COUPLING dossier for the estate scope below: map every cross-surface seam the scope touches — the [CATALOG:<tag>] sentinel blocks ' +
-        'and their admin/profile.py generator, schema spellings composed by db/routines.sql and the admin/rails.py projections, verb surfaces mirrored ' +
-        'in admin/README.md and AGENTS.md, docs/.api charters versus live code, and skill-mirror drift versus the Forge/Rasm master trees — each with ' +
-        'exact file:line anchors on BOTH ends.',
+    libs:
+        'Build the LIBS-COMPLEXITY dossier for the estate scope below: map the relevant libs/ planning corpus in depth — every package ' +
+        'folder with its domains, owners, seams, receipt families, and wire shapes, each with exact file:line anchors — as facts the ' +
+        'shared test infrastructure must anticipate when every folder goes live.',
 };
 
 const reconPrompt = (t, name, lane) =>
@@ -261,21 +308,26 @@ const reconPrompt = (t, name, lane) =>
 // that receipt, no product write, no relay hop. Lane law rides developer-instructions; the prompt carries only the task.
 const fileTag = (label) => label.replace(/[^A-Za-z0-9_.-]+/g, '-');
 const laneLaw = (schema, o) =>
-    '<context_gathering>\nTerritory: the exact files and directories the task names. Do not open files outside it, ' +
-    'including skill or instruction files (.claude/, CLAUDE.md, AGENTS.md).\nBudget: at most ' +
-    (o.calls || 60) +
-    ' tool calls total. Read in small batches (a handful of files per command, line-capped); never concatenate the whole ' +
-    'territory into one command - tool output truncates and the data is lost.\nStop as soon as the product is complete. ' +
-    'If something is still uncertain at the budget, proceed and record the residue in the product gap/unverified field ' +
-    'instead of re-reading.\n</context_gathering>\n\n<verification>\nBefore the final message, confirm every cited ' +
-    'spelling appears verbatim in the cited file; anything unconfirmed is recorded as a gap, never asserted.\n' +
-    '</verification>' +
+    (o.fix
+        ? '<persistence>\nComplete every named move before yielding; do not stop at analysis or a partial edit. If the chosen ' +
+          'approach resists, pick the next-best one and proceed. Return without an applied edit only if the territory genuinely ' +
+          'admits none.\n</persistence>\n\n<verification>\nAfter editing, re-read each changed file and confirm it is coherent ' +
+          'and nothing it carried was lost. Fix what fails before yielding.\n</verification>'
+        : '<context_gathering>\nTerritory: the exact files and directories the task names. Do not open files outside it, ' +
+          'including skill or instruction files (.claude/, CLAUDE.md, AGENTS.md).\nBudget: at most ' +
+          (o.calls || 60) +
+          ' tool calls total. Read in small batches (a handful of files per command, line-capped); never concatenate the whole ' +
+          'territory into one command - tool output truncates and the data is lost.\nStop as soon as the product is complete. ' +
+          'If something is still uncertain at the budget, proceed and record the residue in the product gap/unverified field ' +
+          'instead of re-reading.\n</context_gathering>\n\n<verification>\nBefore the final message, confirm every cited ' +
+          'spelling appears verbatim in the cited file; anything unconfirmed is recorded as a gap, never asserted.\n' +
+          '</verification>') +
     '\n\n<output_contract>\nYour final message is a single JSON object with exactly this shape: ' +
     JSON.stringify(schema) +
     '\n- JSON only: no prose before or after it, no code fences, no markdown.\n- Every key shown is required.\n' +
     '- Use null for a value you could not determine and [] for an empty list; never guess.\n</output_contract>';
 const codexRecon = (task, o) => {
-    const root = '/Users/bardiasamiee/Documents/99.Github/Maghz';
+    const root = '/Users/bardiasamiee/Documents/99.Github/Rasm';
     const model = o.model || 'gpt-5.6-terra';
     return [
         'DISPATCH ROLE: ' +
@@ -294,8 +346,13 @@ const codexRecon = (task, o) => {
         'LANE LAW:\n\n' + laneLaw(o.schema, o),
         'TASK:\n\n' + task,
         '(3) The tool result is a JSON envelope {threadId, content} whose content field holds the final-message text — the ' +
-            'receipt JSON the lane earns by writing its dossier to disk. Parse that content and return it VERBATIM as your ' +
-            'structured output.',
+            'receipt JSON the lane earns by writing its dossier to disk. Parse that content, then verify the dossier landed with ' +
+            'one Bash call: test -s ' +
+            o.product +
+            '. A missing or empty file means the dossier write was lost behind an ok receipt — return ok=false, entries=0, report ' +
+            'and headline empty, and failure="dossier missing or empty at ' +
+            o.product +
+            '"; otherwise return the parsed receipt VERBATIM as your structured output.',
         '(4) On a second tool error return ok=false, entries=0, report and headline empty, and failure equal to the error ' + 'text VERBATIM.',
     ].join('\n\n');
 };
@@ -314,7 +371,16 @@ const nativeLane = (task, o) =>
     });
 const reconLane = (t, name, lane, ph) => {
     const task = reconPrompt(t, name, lane);
-    const o = { label: 'recon-' + lane + ':' + name, phase: ph, model: 'gpt-5.6-terra', schema: DOSSIER_RECEIPT, calls: 100, stallMs: STALL };
+    // The estate sweep spans whole test/tool/config trees plus the libs planning corpus — a wider call budget than a bounded page batch.
+    const o = {
+        label: 'recon-' + lane + ':' + name,
+        phase: ph,
+        model: 'gpt-5.6-terra',
+        schema: DOSSIER_RECEIPT,
+        product: dossierPath(name, lane),
+        calls: 120,
+        stallMs: STALL,
+    };
     const dead = () => ({ ok: false, report: dossierPath(name, lane), entries: 0, headline: '', failure: 'lane died' });
     return (
         CODEX
@@ -337,14 +403,13 @@ const passPrompt = (t, name, tier, reconRows) =>
     name +
     ' ESTATE ' +
     tier +
-    ' agent for this repository (the Maghz second-brain operator: Heptabase owns content, PostgreSQL owns the durable ledger, ' +
-    'the admin/ maghz CLI is the sole provisioning rail). Work the whole mandate to completion. ' +
+    ' agent for this repository (a design/planning-phase polyglot monorepo; test/tool/config infrastructure ' +
+    'is live code you improve for real). Work the whole mandate to completion. ' +
     TIER_LAW[tier] +
     ' ' +
-    TOPOLOGY_LAW +
+    INFRA_LAW +
     ' ' +
-    t.doctrine +
-    LAWS_READ +
+    docsOrder(t) +
     MODEL_LAW +
     ' ' +
     GUARDRAILS +
@@ -366,58 +431,62 @@ const passPrompt = (t, name, tier, reconRows) =>
     'reasons), harvest (per the harvest law below). ' +
     HARVEST_LAW;
 
-// Doctrine lander: adjudicates pooled harvest nominations against the live doctrine surfaces; an estate run owns the
-// operator, schema, and doc/mirror estates, so its routing weighs toward the constitution, the READMEs, and the reviewer rules.
+// Doctrine lander: adjudicates pooled harvest nominations against the live doctrine surfaces; an estate run owns test/tool/config
+// infrastructure and monorepo alignment, so its routing weighs toward the constitution, the test/tool READMEs, and the reviewer rules.
 const doctrinePrompt = (rows, residuals) =>
-    'TASK: DOCTRINE LANDER — the durable-learning terminal of an estate run over the admin package, the SQL surfaces, and the doc/mirror estate. Read ' +
-    '`docs/laws/README.md` FIRST — it owns the corpus admission and page-shape law; obey it over any restatement. Load the `docgen` skill AND the `skill-writer` skill ' +
-    'via the Skill tool BEFORE any durable edit; load `mermaid-diagramming` before touching any diagram. ' +
-    "NOMINATIONS (unverified, biased toward their authors' own work — refute by default): " +
+    'TASK: DOCTRINE LANDER — the durable-learning terminal of an estate run over tests/tools/root config across every ' +
+    'language plus the monorepo final track. Read `docs/laws/README.md` FIRST — it owns the corpus admission and page-shape ' +
+    'law; obey it over any restatement. ROUTING EMPHASIS (orders where you look first, never overrides the ' +
+    'admission bar): an estate run owns test/tool/config infrastructure and monorepo alignment, so its lessons weigh toward ' +
+    'the constitution at the acting reader, the tests/tools/root READMEs, and the reviewer rules first. Load the `docgen` ' +
+    'skill AND the `skill-writer` skill via the Skill tool BEFORE any durable edit; load `mermaid-diagramming` before ' +
+    "touching any diagram. NOMINATIONS (unverified, biased toward their authors' own work — refute by default): " +
     JSON.stringify(rows) +
-    '\nPOOLED RESIDUALS (deliberately-left estate items with reasons — CONTEXT only, never a drain queue: a residual recurring across tracks may itself be ' +
-    'a durable law worth nominating, but you never mechanically clear one here): ' +
+    '\nPOOLED RESIDUALS (deliberately-left estate items with reasons — CONTEXT only, never a drain queue: a residual ' +
+    'recurring across tracks may itself be a durable law worth nominating, but you never mechanically clear one here): ' +
     JSON.stringify(residuals) +
-    '\nADJUDICATE each nomination per the admission bar: cold-read its target surface IN FULL, verify its anchors on CURRENT disk; LAND NOTHING is a ' +
-    'first-class verdict.\n' +
-    'TOPOLOGY RE-PROOF: re-verify every `docs/laws/topology.md` row whose [SURFACE] this run touched — cull a row whose coupling no longer holds, land a ' +
-    'coupling this run proved.\n' +
-    'GATE: run `uv run .claude/skills/docgen/scripts/prose_gate.py <every touched .md>` and repair to zero FAILs before returning; yamllint proves ' +
-    '`.coderabbit.yaml` and jq proves the `.greptile` JSON files if you touch them. Return landed/refined/rejected (each rejection with its reason)/files/summary.';
+    '\nADJUDICATE each row per the admission bar: cold-read its target surface IN FULL, verify its anchors on CURRENT disk; ' +
+    'LAND NOTHING is a first-class verdict.\n' +
+    'TOPOLOGY RE-PROOF: re-verify every `docs/laws/topology.md` row whose [SURFACE] this run touched — cull a row whose ' +
+    'coupling no longer holds, land a coupling this run proved.\n' +
+    'GATE: run `uv run .claude/skills/docgen/scripts/prose_gate.py <every touched .md>` and repair to zero FAILs before ' +
+    'returning; yamllint proves `.coderabbit.yaml` and jq proves the `.greptile` JSON files if you touch them. Return ' +
+    'landed/refined/rejected (each rejection with its reason)/files/summary.';
 
-// --- [COMPOSITION] -------------------------------------------------------------------------
+// --- [COMPOSITION] ---------------------------------------------------------------------
 
 // --- [RECON_AND_TRACKS]
-const trackRows = ACTIVE.map((name) => ({ name, ...TRACKS[name] }));
-log('estate tracks: ' + (ACTIVE.join(', ') || 'none (no-op)'));
+const trackRows = ACTIVE.map((lang) => ({ lang, ...TRACKS[lang] }));
+log('estate tracks: ' + ACTIVE.join(', ') + (WANT_FINAL ? ' + final' : ''));
 
 const results = await pipeline(
     trackRows,
-    (t) => parallel([() => reconLane(t, t.name, 'scope', 'Recon'), () => reconLane(t, t.name, 'coupling', 'Recon')]),
+    (t) => parallel([() => reconLane(t, t.lang, 'scope', 'Recon'), () => reconLane(t, t.lang, 'libs', 'Recon')]),
     (recon, t) =>
-        agent(passPrompt(t, t.name, 'T1', (recon || []).filter(Boolean)), {
+        agent(passPrompt(t, t.lang, 'T1', (recon || []).filter(Boolean)), {
             model: 'fable',
             effort: 'high',
             phase: 'Estate',
-            label: 't1:' + t.name,
+            label: 't1:' + t.lang,
             schema: PASS_RECEIPT,
         }).then((r) => ({ t1: r })),
     (acc, t) =>
-        agent(passPrompt(t, t.name, 'T2', null), {
+        agent(passPrompt(t, t.lang, 'T2', null), {
             model: 'fable',
             effort: 'high',
             phase: 'Estate',
-            label: 't2:' + t.name,
+            label: 't2:' + t.lang,
             schema: PASS_RECEIPT,
         }).then((r) => ({
             ...acc,
             t2: r,
         })),
     (acc, t) =>
-        agent(passPrompt(t, t.name, 'T3', null), {
+        agent(passPrompt(t, t.lang, 'T3', null), {
             model: 'fable',
             effort: 'high',
             phase: 'Estate',
-            label: 't3:' + t.name,
+            label: 't3:' + t.lang,
             schema: PASS_RECEIPT,
         }).then((r) => ({
             ...acc,
@@ -425,12 +494,47 @@ const results = await pipeline(
         })),
 );
 
+// --- [FINAL]
+let final = null;
+if (WANT_FINAL && ACTIVE.length) {
+    phase('Final');
+    const f = { lang: 'monorepo', ...FINAL_TRACK };
+    const fRecon = (await parallel([() => reconLane(f, 'monorepo', 'scope', 'Final'), () => reconLane(f, 'monorepo', 'libs', 'Final')])).filter(
+        Boolean,
+    );
+    const f1 = await agent(passPrompt(f, 'monorepo FINAL', 'T1', fRecon), {
+        model: 'fable',
+        effort: 'high',
+        phase: 'Final',
+        label: 'final:t1',
+        schema: PASS_RECEIPT,
+    });
+    const f2 = await agent(passPrompt(f, 'monorepo FINAL', 'T2', null), {
+        model: 'fable',
+        effort: 'high',
+        phase: 'Final',
+        label: 'final:t2',
+        schema: PASS_RECEIPT,
+    });
+    const f3 = await agent(passPrompt(f, 'monorepo FINAL', 'T3', null), {
+        model: 'fable',
+        effort: 'high',
+        phase: 'Final',
+        label: 'final:t3',
+        schema: PASS_RECEIPT,
+    });
+    final = { t1: f1, t2: f2, t3: f3 };
+}
+
 // --- [DOCTRINE]
-// Pool harvest nominations and deliberately-left residuals across every track pass. RULING: estate residuals are
-// string-shaped DELIBERATE deferrals with reasons, not a mechanical {files, claim} backlog, and each T-pass already
-// holds full write authority behind network-bound gates a fresh drain pass cannot re-run — so NO drain loop fits;
+// Pool harvest nominations and deliberately-left residuals across every track pass plus the final track. RULING: estate
+// residuals are string-shaped DELIBERATE deferrals with reasons, not a mechanical {files, claim} backlog, and each T-pass
+// already holds full write authority behind network-bound gates a fresh drain pass cannot re-run — so NO drain loop fits;
 // the pooled residuals ride the run return untouched and feed the lander only as recurrence signal.
-const allPasses = results.flatMap((r) => [r && r.t1, r && r.t2, r && r.t3]).filter(Boolean);
+const allPasses = results
+    .flatMap((r) => [r && r.t1, r && r.t2, r && r.t3])
+    .concat(final ? [final.t1, final.t2, final.t3] : [])
+    .filter(Boolean);
 const HARVEST_ROWS = allPasses.flatMap((p) => p.harvest || []);
 const RESIDUALS = allPasses.flatMap((p) => p.residuals || []);
 let doctrine = null;
@@ -455,7 +559,8 @@ log(
 );
 
 return {
-    tracks: Object.fromEntries(trackRows.map((t, i) => [t.name, results[i]])),
+    tracks: Object.fromEntries(trackRows.map((t, i) => [t.lang, results[i]])),
+    final,
     residuals: RESIDUALS,
     doctrine: doctrine && {
         nominated: HARVEST_ROWS.length,
@@ -465,5 +570,5 @@ return {
         files: doctrine.files || [],
         summary: doctrine.summary,
     },
-    note: 'Agents never commit; the orchestrator commits once after all estate tracks close, then after the doctrine lander.',
+    note: 'Agents never commit; the orchestrator commits once after all estate tracks close (pre-final), then after each final pass, then after the doctrine lander.',
 };
