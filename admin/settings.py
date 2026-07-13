@@ -27,6 +27,12 @@ type LogLevel = Literal["debug", "info", "warning", "error"]
 # The one repo-root anchor every module reads; resolved from this file, never from the CWD.
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 
+# The Ollama embed contract: one owner for the model, dimension, and in-network endpoint the health probe, model pull, and committed SQL
+# producers all share. profile.regenerate asserts the SQL literals against these rows, so a contract edit that skips the SQL fails the seam.
+EMBED_MODEL: Final = "nomic-embed-text"
+EMBED_DIM: Final = 768
+EMBED_ENDPOINT: Final = "http://ollama:11434/api/embed"
+
 
 def _anchored(path: Path) -> Path:
     """Anchor a relative path row onto the repo root; an absolute ingress wins unchanged."""
@@ -151,8 +157,7 @@ class OllamaConfig(BaseModel):
     model_config = _GROUP
 
     base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:11434")
-    embed_model: str = "nomic-embed-text"
-    embed_dim: int = Field(default=768, ge=1)
+    embed_model: str = EMBED_MODEL
     request_timeout: float = Field(default=30.0, gt=0)
 
 

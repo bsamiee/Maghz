@@ -34,7 +34,7 @@ import re
 from frozendict import frozendict
 import msgspec
 
-from admin.settings import REPO_ROOT
+from admin.settings import EMBED_DIM, EMBED_ENDPOINT, EMBED_MODEL, REPO_ROOT
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -134,6 +134,7 @@ class Extension(StrEnum):
 # catalog projection, so the four downstream surfaces are GENERATED from `_PROFILE` rather than hand-kept.
 _SCHEMA_SQL = REPO_ROOT / "db/schema.sql"
 _CRON_SQL = REPO_ROOT / "db/cron.sql"
+_ROUTINES_SQL = REPO_ROOT / "db/routines.sql"
 _DOCKERFILE = REPO_ROOT / "image/Dockerfile"
 
 # Extensions present in every maghz database outside the curated profile: `plpgsql` is the built-in
@@ -352,6 +353,9 @@ def regenerate() -> tuple[Path, ...]:
 
     Returns:
         The paths whose region content changed, empty when every committed region already matched the catalog.
+
+    Raises:
+        ValueError: A committed SQL artifact contradicts the embed contract after regeneration.
     """
     changed: list[Path] = []
     for path, tag, project in _REGIONS:
@@ -364,7 +368,24 @@ def regenerate() -> tuple[Path, ...]:
         if rewritten != original:
             path.write_text(rewritten, encoding="utf-8")
             changed.append(path)
+    drift = _embed_drift()
+    if drift:
+        msg = "; ".join(drift)
+        raise ValueError(f"embed contract drift: {msg}")
     return tuple(changed)
+
+
+def _embed_drift() -> tuple[str, ...]:
+    """Assert the committed SQL carries the embed contract; one row per mismatched surface, empty when aligned."""
+    routines = _ROUTINES_SQL.read_text(encoding="utf-8")
+    schema = _SCHEMA_SQL.read_text(encoding="utf-8")
+    dims = set(re.findall(r"vector\((\d+)\)", routines + schema))
+    checks = (
+        (f"'{EMBED_ENDPOINT}'" in routines, f"routines.sql embed endpoint is not {EMBED_ENDPOINT}"),
+        (f"'{EMBED_MODEL}'" in routines, f"routines.sql embed model is not {EMBED_MODEL}"),
+        (dims == {str(EMBED_DIM)}, f"vector dimension sites {sorted(dims)} are not all {EMBED_DIM}"),
+    )
+    return tuple(message for aligned, message in checks if not aligned)
 
 
 def census_diff(installed: Iterable[str]) -> CensusDiff:

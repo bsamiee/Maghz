@@ -279,8 +279,8 @@ def _define(cfg: MaghzSettings) -> None:
                 memory=row.db_memory_mb,
                 ulimits=[nofile],
                 labels=labels("maghz-db", "db"),
-                # Trust auth on the 127.0.0.1-only port: maghz is the superuser, agents and MCP servers
-                # auto-authenticate with no password. The DSN is passwordless by design (TODO secrets).
+                # Trust auth on the 127.0.0.1-only port: maghz is the superuser, agents and MCP servers auto-authenticate; the DSN is
+                # passwordless by design — SSH custody of the tunnel is the auth boundary.
                 envs=["POSTGRES_USER=maghz", "POSTGRES_DB=maghz", "POSTGRES_HOST_AUTH_METHOD=trust"],
                 command=[
                     "postgres",

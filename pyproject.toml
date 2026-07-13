@@ -30,15 +30,18 @@ dependencies = [
 [dependency-groups]
 dev = [
     "coloraide", # coloraide through xxhash: mirrored skill scripts import them; the env resolves every skill import for ty
+    "defusedxml",
     "lxml",
     "mypy",
     "networkx",
     "ruamel-yaml",
     "ruff>=0.15.20,<0.16",
+    "svgelements",
     "tinycss2",
     "tree-sitter",
     "tree-sitter-typescript",
     "ty",
+    "types-defusedxml",
     "types-lxml",
     "types-networkx",
     "types-psutil",

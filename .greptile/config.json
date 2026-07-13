@@ -1,8 +1,11 @@
 {
-    "strictness": 2,
-    "commentTypes": ["logic", "syntax"],
+    "strictness": 1,
+    "commentTypes": [
+        "logic",
+        "syntax"
+    ],
     "triggerOnUpdates": true,
-    "triggerOnDrafts": true,
+    "triggerOnDrafts": false,
     "statusCheck": true,
     "statusCommentsEnabled": true,
     "updateExistingSummaryComment": true,
@@ -32,7 +35,10 @@
     },
     "ignorePatterns": "uv.lock",
     "context": {
-        "repos": ["bsamiee/Parametric_Forge", "bsamiee/Rasm"]
+        "repos": [
+            "bsamiee/Parametric_Forge",
+            "bsamiee/Rasm"
+        ]
     },
     "rules": [
         {
@@ -45,7 +51,10 @@
             "id": "python-doctrine",
             "rule": "Python follows docs/stacks/python law in this repo: typed result rails, ruff and ty clean, polymorphic dispatch over function proliferation, uv-only package custody, version floor per pyproject.toml. Version movement is forward-only: a downgrade or stale pin without a recorded reason is a defect.",
             "severity": "high",
-            "scope": ["**/*.py", "pyproject.toml"],
+            "scope": [
+                "**/*.py",
+                "pyproject.toml"
+            ],
             "enabled": true
         },
         {
@@ -58,21 +67,36 @@
             "id": "ops-receipts",
             "rule": "Ops rails per docs/standards/ops-doctrine.md: CLI handlers are thin lowerers, one settings owner feeds adapters, and every operation emits a typed receipt with route, resource changes, diagnostics, counts, and timings. Domain logic in handlers, direct os.environ reads, and generic envelope abstractions replacing operation-specific receipts are defects.",
             "severity": "high",
-            "scope": ["admin/**"],
+            "scope": [
+                "admin/**"
+            ],
             "enabled": true
         },
         {
             "id": "sql-declarative",
             "rule": "SQL is declarative and idempotent: canonical schema files replay to no-op; numbered migrations and up/down pairs are defects. Search and ranking logic lives in database-owned routines, never application loops.",
             "severity": "high",
-            "scope": ["db/**"],
+            "scope": [
+                "db/**"
+            ],
             "enabled": true
         },
         {
             "id": "infra-topology-owner",
             "rule": "The Pulumi stack in admin/infra.py is the sole VPS topology owner — the image build and the db/ollama/n8n service rows behind StackOp, driven by the settings owner. Imperative provider calls or one-off scripts mutating the VPS outside its verbs, an inline credential, or a resolved DSN are defects.",
             "severity": "high",
-            "scope": ["admin/**"],
+            "scope": [
+                "admin/**"
+            ],
+            "enabled": true
+        },
+        {
+            "id": "workflow-determinism",
+            "rule": "Workflow scripts are deterministic orchestration: schema-typed agent outputs, bounded loops, stage products written to disk with path receipts. Bare promises, unbounded polling, wall-clock branching, and subagents instructed to wait are defects.",
+            "severity": "medium",
+            "scope": [
+                ".claude/workflows/**"
+            ],
             "enabled": true
         }
     ]

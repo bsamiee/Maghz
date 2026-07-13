@@ -45,6 +45,22 @@
             "path": "docs/standards/information-structure.md",
             "description": "Information architecture law: structure, density, tables vs prose",
             "scope": ["**/*.md"]
+        },
+        {
+            "path": "docs/laws/topology.md",
+            "description": "Edit-coupling map: which surfaces obligate which counterparts in the same change"
+        },
+        {
+            "path": "docs/laws/patterns.md",
+            "description": "Pattern law rows binding every branch they name"
+        },
+        {
+            "path": "docs/laws/scars.md",
+            "description": "The trap ledger: paid-for failures and the rules that foreclose them - standing review duty"
+        },
+        {
+            "path": "docs/laws/README.md",
+            "description": "Admission law for the docs/laws corpus: what earns a law page and how findings land"
         }
     ]
 }

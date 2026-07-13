@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: en-US
 tone_instructions: "Senior-to-senior register. Findings name the defect class and the line. No praise, no emojis, no hedging. Doctrine (docs/stacks, docs/standards, docs/laws) outranks generic convention; violations are defects. Prefer collapse over additive patches."
 early_access: false
@@ -61,6 +62,12 @@ reviews:
         - path: "**/*.md"
           instructions: >-
             Review prose and structure against docs/standards/style-guide.md, docs/standards/formatting.md, and docs/standards/information-structure.md — the docgen discipline. Defects: no-op sentences that change no reader decision, leading filler words, meta-commentary, provenance/freshness tails, checklist tails, heading proliferation for short content, tables carrying explanations instead of enumerable facts, duplicated content an owning doc already carries, drift from the [UPPER_CASE] label convention, quality ladders (good/better/best tiers) where a contract gate belongs, restated obligations the instruction chain already carries (follow CLAUDE.md, use available tools), and defensive caveats softening settled rules. Table repair preserves the grid — hoist repeats into headers, relieve clause tails into the lead or a note, split overloaded rows — and conversion to cards or lists is earned only when rows share no comparison question or a type standard owns the shape; cell width alone never converts a table. Apply the regeneration test: a sentence a fresh agent regenerates from disk plus the document's stated invariants is a mirror and is deleted. Sibling files of one kind (references of one bundle, templates, doc pages) share one structural schema — section vocabulary, card field sets, marker tokens — and a locally-optimized deviation is a defect even when it reads better in isolation.
+        - path: ".claude/workflows/**"
+          instructions: >-
+            Workflow scripts are deterministic orchestration: plain control flow, schema-typed agent outputs, bounded loops and harvest rounds, every stage writing its product to disk and returning a path receipt. Defects: bare promises without await ownership, unbounded polling, branching on wall clock, subagents asked to wait — codex wrappers are launch-only and the orchestrator owns time.
+        - path: ".claude/**"
+          instructions: >-
+            Agent-facing declarative artifacts: implicit agentic prose, active voice, 1-2 line comments. Defects: meta-commentary, provenance or freshness tails, checklist noise, restating obligations the instruction chain already carries, project-coupled content in reusable surfaces.
         - path: ".claude/skills/**"
           instructions: >-
             Skill bundles under the docgen skill-craft law. Defects: first- or second-person voice in frontmatter descriptions — quoted user-utterance trigger phrases are not voice; over-broad triggers spanning unrelated domains or keyword-stuffed synonym lists; SKILL.md over 500 lines or carrying reference banks, troubleshooting ledgers, or example floods that belong one hop down; references that only route to other references; no-op intensifiers with no owner, action, or gate; filler lead-ins (note that, make sure to, remember to); good/better/best quality ladders instead of contract gates; command catalogs without task triggers; generic think/plan/implement lifecycle steps; closing checklists with no machine-checkable gate; deterministic multi-step procedures narrated in prose where a bundled script belongs; three or more abstract guidance bullets with no paired rejected/accepted example or gate; one mandated output skeleton regardless of consumer; instructed network fetches or global installs inside skill bodies, except an owned install surface naming exact source, scope, and verification. The SKILL.md root follows the declared schema: H1 is the bare [SKILL_TOKEN], routable bundles open with [01]-[ROUTING] router cards (- [NN]-[TOKEN](path): phrase), group labels are [TOKEN]: lines never bold, and a body rule that would change no agent output if deleted is dead weight regardless of its register.
@@ -68,7 +75,7 @@ reviews:
         enabled: true
         auto_incremental_review: true
         auto_pause_after_reviewed_commits: 0
-        drafts: true
+        drafts: false
     finishing_touches:
         docstrings:
             enabled: false
@@ -221,7 +228,7 @@ knowledge_base:
         filePatterns:
             - "docs/laws/*.md"
             - "docs/standards/*.md"
-            - "docs/stacks/*/README.md"
+            - "docs/stacks/python/**/*.md"
     learnings:
         scope: local
         approval_delay: 0
