@@ -29,13 +29,11 @@
       "mcp__notebooklm__*",
       "mcp__exa__*",
       "mcp__perplexity__*",
-      "mcp__tavily__*",
       "mcp__hostinger__*",
       "mcp__github__*",
       "mcp__context7__*",
       "mcp__greptile__*",
       "mcp__nuget__*",
-      "mcp__jupyter__*",
       "mcp__doppler-remote__*"
     ],
     "deny": [

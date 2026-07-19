@@ -4,7 +4,7 @@
 
 ## [01]-[SCHEMA_AND_LIMITS]
 
-A real JSON Schema (Draft 2020-12) validates the file: `https://coderabbit.ai/integrations/schema.v2.json`, mirrored at `https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json`. Validate with `ajv` against the pinned URL or a `# yaml-language-server: $schema=<url>` modeline, never a vendored copy.
+A real JSON Schema validates the file: `https://coderabbit.ai/integrations/schema.v2.json`. Validate with `npx ajv-cli` — no `ajv` sits on PATH — against the pinned URL or a `# yaml-language-server: $schema=<url>` modeline, never a vendored copy.
 
 | [INDEX] | [FIELD]                                         | [LIMIT]     |
 | :-----: | :---------------------------------------------- | :---------- |
@@ -15,20 +15,15 @@ A real JSON Schema (Draft 2020-12) validates the file: `https://coderabbit.ai/in
 
 `tone_instructions` is a top-level key, a sibling of `reviews` — nesting it under `reviews` fails the schema.
 
-## [02]-[DISTILL_GRAIN]
-
-A fact lands as one clause inside its owning `reviews.path_instructions` block — `{path, instructions}` with `path` a minimatch glob — never as a per-fact path row; a new block is earned by a new territory (a language branch, a doctrine surface, a test or tooling tree), and the 20000-char ceiling prices clause density per block.
-
-## [03]-[GUIDANCE_CHANNELS]
+## [02]-[GUIDANCE_CHANNELS]
 
 Four channels, routed by durability and origin:
-
-- [PATH_INSTRUCTIONS]: durable reviewer law versioned in the repo — the DISTILL surface above.
+- [PATH_INSTRUCTIONS]: durable reviewer law versioned in the repo — the distill surface below.
 - [GUIDELINE_FILES]: `knowledge_base.code_guidelines.filePatterns` absorbs doctrine files wholesale — plain globs or `{files, applyTo}` objects whose comma-separated `applyTo` globs scope a guideline set to the paths it governs; defaults cover the `CLAUDE.md`/`AGENTS.md` agent-rule family.
-- [RUN_CONTEXT]: `-c <files...>` on `coderabbit review` attaches per-run instruction files.
+- [RUN_CONTEXT]: `-c <files...>` on `coderabbit review` attaches per-run instruction files — the focus channel.
 - [LEARNINGS]: hosted-PR chat-taught facts (`@coderabbitai remember`) stored server-side; `learnings.scope` picks `local`/`global`/`auto`, `approval_delay` gates auto-apply, and `opt_out: true` erases stored data irrevocably.
 
-## [04]-[HIGH_LEVERAGE_FIELDS]
+## [03]-[HIGH_LEVERAGE_FIELDS]
 
 - `reviews.profile`: `quiet` | `chill` | `assertive`.
 - `reviews.path_filters`: include/exclude globs, `!` prefixing excludes.
@@ -38,8 +33,19 @@ Four channels, routed by durability and origin:
 - `knowledge_base.mcp.usage`: `auto`/`enabled`/`disabled` plus `disabled_servers[]`.
 - `knowledge_base.linked_repositories[]`: `{repository, instructions}` cross-repo context rows.
 
+## [04]-[RUN_AND_BASE]
+
+- `coderabbit review --agent` scope flags: `-t all|committed|uncommitted` (default `all`), `--base <branch>`, `--base-commit <commit>` pinning a small on-branch diff, `-c <files...>` per-run instruction files, `--light` for a reduced-context fast pass. `--light` and `--base-commit` are the two cheap post-fix re-review levers; `--dir` path-scoping breaks store correlation (`git.json` `workingDirectory` anchors the epoch match at the repo root) and stays unexposed.
+- Every scope needs a resolvable base — even working-tree scopes call `getBranchInfo`. Resolution order: current-branch upstream, `origin/HEAD`, `git config coderabbit.baseBranch` naming an EXISTING branch; base==current is fine for working-tree scopes.
+- A base failure exits the process 0 while emitting `{"type":"error","details":{"stage":"gitService.getBranchInfo"}}` on the stream within a second — the error line, never the exit status, carries the failure.
+
 ## [05]-[STREAM_AND_STORE]
 
-`--agent` emits NDJSON on stdout with line types `review_context`, `status`, `heartbeat`, `finding`, `complete`; a streamed `finding` carries only `{severity, fileName, codegenInstructions, suggestions}` — lean by design, so the stream alone loses title, comment, and line range.
+- `--agent` emits NDJSON on stdout, line types `review_context` (first: reviewType, current and base branch, workingDirectory), `status`, `heartbeat` (the only keep-alive through the long analysis gap), `finding`, `complete` (terminal: status, finding count, reviewed files), and `error` — the failure channel, since errors ride it at exit 0. A streamed `finding` carries only `{severity, fileName, codegenInstructions, suggestions}` — liveness-only, so the stream never yields title, comment, or line range.
+- Rich per-finding records live at `~/.coderabbit/reviews/<repoHash>/<subHash>/reviews/<epochMs>/<uuid>.json`, one file per finding: `title`, `comment` (markdown carrying the proposed-fix diff), `lineRange`, `commentCategory`, `severity` ranking `critical` > `major` > `minor` > `trivial` > `info`, `codegenInstructions` (consume first, `comment` the fallback), `fingerprint` (CodeRabbit's own dedup key, `phantom:<codename>:<codename>` form), and `id`, the store back-link uuid.
+- Sibling `git.json` carries `workingDirectory` plus `timestamp` in epoch SECONDS (review start) — the run-to-store correlation key; the epoch directory name and per-finding `timestamp` are epoch MILLISECONDS (write time). `internalState.json` carries the walkthrough summary in `rawSummaryMap`; `diff.json` and `incrementalDiff.json` are diff payloads, never findings.
+- Store reads are the only recovery for a finished review: `coderabbit review findings` reprints human text only (it drops `--agent` silently) and can replay a previous unrelated review — never a harvest source, and a finished review is never re-run to recover its findings.
 
-Rich per-finding records live at `~/.coderabbit/reviews/<repoHash>/<subHash>/reviews/<epochMs>/<uuid>.json`, one file per finding: `title`, `comment` (markdown carrying the proposed-fix diff), `lineRange`, `commentCategory`, `severity`, `codegenInstructions`, `fingerprint` (CodeRabbit's own dedup key, distinct from the rail's content hash), `diff`; sibling `internalState.json` carries the walkthrough summary in `rawSummaryMap`, and sibling `git.json` carries `workingDirectory` plus `timestamp` — the run-to-store correlation key. Severity ranks `critical` > `major` > `minor` > `trivial` > `info`. Consume `codegenInstructions` first with `comment` as fallback; `coderabbit review findings` reprints the previous run, so a finished review is never re-run to recover its findings.
+## [06]-[DISTILL_SURFACE]
+
+A distill fact lands as a clause inside the owning `reviews.path_instructions` block `{path, instructions}` — never a per-fact block or row; `path` is a minimatch glob and the global home is the `path: "**"` block. Its 20000-char instruction limit is a ceiling, never a target — a touched block obeys the trim law. `path_instructions` outrank server-side learnings, so durable law lands here while learnings stay ephemeral chat-taught facts; `tone_instructions` carries register alone and never policy. Format gate: `npx ajv-cli` against the pinned schema URL.

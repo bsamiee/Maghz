@@ -324,7 +324,6 @@ _REMOTE_ENV: frozendict[str, Callable[[MaghzSettings], str]] = frozendict({
     "GOOGLE_WORKSPACE_CLI_CONFIG_DIR": lambda cfg: f"/home/{cfg.remote.user}/.config/gws",
     "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": lambda cfg: f"/home/{cfg.remote.user}/.config/gws/credentials.json",
     "GOOGLE_WORKSPACE_PROJECT_ID": lambda cfg: _required(cfg.integrations.google_workspace_project_id, "GOOGLE_WORKSPACE_PROJECT_ID"),
-    "JUPYTER_TOKEN": lambda cfg: _required(cfg.integrations.jupyter_token, "JUPYTER_TOKEN"),
     "GREPTILE_API_KEY": lambda cfg: _required(cfg.integrations.greptile_api_key, "GREPTILE_API_KEY"),
     "GH_TOKEN": lambda cfg: _required(cfg.integrations.gh_token, "GH_TOKEN"),
     "GITHUB_TOKEN": lambda cfg: _required(cfg.integrations.github_token, "GITHUB_TOKEN"),

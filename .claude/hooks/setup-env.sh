@@ -53,7 +53,6 @@ umask 077
 
 # --- [CONSTANTS] ------------------------------------------------------------------------
 
-readonly JUPYTER_TOKEN_CACHE="${HOME}/.config/jupyter/forge-token.env"
 readonly DOPPLER_CACHE_DIR="${CLAUDE_DOPPLER_CACHE_DIR:-${HOME}/.cache/doppler}"
 readonly SESSION_CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/forge-secrets"
 readonly SESSION_CACHE="${SESSION_CACHE_DIR}/session-env.sh"
@@ -74,13 +73,13 @@ declare -ra _ENV_KEYS=(
     EXA_API_KEY PERPLEXITY_API_KEY TAVILY_API_KEY
     CONTEXT7_API_KEY GREPTILE_API_KEY CODERABBIT_API_KEY
     GH_TOKEN GITHUB_TOKEN GH_PROJECTS_TOKEN
-    HOSTINGER_TOKEN HOSTINGER_API_TOKEN CACHIX_AUTH_TOKEN RHINO_TOKEN
+    HOSTINGER_API_TOKEN CACHIX_AUTH_TOKEN RHINO_TOKEN
     OP_SERVICE_ACCOUNT_TOKEN GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET
-    MAGHZ_MCP__DATABASE_URI JUPYTER_TOKEN CLOUDSDK_CONFIG WORKSPACE_MCP_CREDENTIALS_DIR
+    MAGHZ_MCP__DATABASE_URI CLOUDSDK_CONFIG WORKSPACE_MCP_CREDENTIALS_DIR
     GOOGLE_WORKSPACE_CLI_CLIENT_ID GOOGLE_WORKSPACE_CLI_CLIENT_SECRET
     GOOGLE_WORKSPACE_CLI_CONFIG_DIR GOOGLE_WORKSPACE_PROJECT_ID
     MAGHZ_REMOTE_HOST MAGHZ_REMOTE_USER MAGHZ_REMOTE_WORKROOT
-    NTFY_URL NTFY_TOPIC NTFY_TOKEN
+    NTFY_URL NTFY_TOPIC
 )
 readonly EXTRA_ENV_KEYS="${CLAUDE_ENV_EXPORT_KEYS:-}"
 readonly TOOL_PATHS="${CLAUDE_TOOL_PATHS:-${HOME}/.local/bin}"
@@ -261,7 +260,11 @@ _load_secrets() {
                 _ALERTS+=("setup-env: ${label} service token failed; ambient CLI auth served (${tokenvar:-unset})")
             case "${outcome}" in
                 live)
-                    _RECEIPT+=("ok    ${label} live keys=${nkeys} auth=${auth}")
+                    if [[ "${auth}" == "token-failed-cli-served" ]]; then
+                        _RECEIPT+=("DEGRADED ${label} live keys=${nkeys} auth=${auth}")
+                    else
+                        _RECEIPT+=("ok    ${label} live keys=${nkeys} auth=${auth}")
+                    fi
                     ;;
                 snapshot)
                     local stale=""
@@ -290,16 +293,15 @@ _load_secrets() {
         _ALERTS+=("setup-env: ${missing_cli} absent — secrets rail down")
     fi
     [[ "${DOPPLER_OFFLINE}" != "1" ]] || _RECEIPT+=("note  offline mode: fallback-only fetches")
-    if [[ -z "${JUPYTER_TOKEN:-}" && -f "${JUPYTER_TOKEN_CACHE}" ]]; then
-        # shellcheck source=/dev/null  # Nix-owned local Jupyter token; not a Doppler-managed key.
-        source "${JUPYTER_TOKEN_CACHE}" || true
-    fi
     local key
     local -a unresolved=()
     for key in "${_ENV_KEYS[@]}"; do
         [[ -n "${!key:-}" ]] || unresolved+=("${key}")
     done
-    ((${#unresolved[@]} == 0)) || _RECEIPT+=("warn  unresolved keys: $(_join "${unresolved[@]}")")
+    ((${#unresolved[@]} == 0)) || {
+        _RECEIPT+=("warn  unresolved keys: $(_join "${unresolved[@]}")")
+        _ALERTS+=("setup-env: unresolved keys: $(_join "${unresolved[@]}")")
+    }
 }
 
 _emit_env_key() {
@@ -383,6 +385,7 @@ _resolve_and_publish() {
     {
         printf 'setup-env %(%Y-%m-%dT%H:%M:%S)T offline=%s\n' "${EPOCHSECONDS}" "${DOPPLER_OFFLINE}"
         printf '%s\n' "${_RECEIPT[@]}"
+        ((${#_ALERTS[@]} == 0)) || printf 'ALERT %s\n' "${_ALERTS[@]}"
     } >"${receipt_tmp}"
     chmod 600 "${receipt_tmp}"
     mv -f "${receipt_tmp}" "${SESSION_CACHE_DIR}/receipt"
@@ -440,14 +443,14 @@ _replay_cache() {
     chmod 600 "${env_tmp}"
     mv "${env_tmp}" "${CLAUDE_ENV_FILE}"
     # Last refresh verdicts stay loud: degraded rows reach the session context.
-    grep -E 'DEAD|STALE' "${SESSION_CACHE_DIR}/receipt" 2>/dev/null || true
+    grep -E 'DEAD|STALE|DEGRADED|ALERT|unresolved keys' "${SESSION_CACHE_DIR}/receipt" 2>/dev/null || true
 }
 if [[ -s "${SESSION_CACHE}" ]]; then
     _replay_cache
     printf 'setup-env: replay served from session cache; refresh dispatched\n' >&2
     (
         unset _FORGE_SETUP_ENV_DEADLINE_ACTIVE
-        nohup "$0" --refresh >/dev/null 2>>"${SESSION_CACHE_DIR}/refresh.err" &
+        nohup "$0" --refresh >/dev/null 2>"${SESSION_CACHE_DIR}/refresh.err" &
     )
     exit 0
 fi

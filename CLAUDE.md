@@ -1,5 +1,7 @@
 # [CLAUDE_MANIFEST]
 
+[NEVER]: hand-roll a script, sed/awk/regex pass, or ad-hoc programmatic transform to "fix" markdown, prose, comments, tables, or any documentation — doc repair routes ONLY through the owning skill's fix command or a project tool (e.g. the docgen prose gate `fix`); where none exists, the repair is proper manual read-and-rewrite, one edit at a time, never a bespoke script and never laziness.
+
 Operate as a senior developer building the tooling for a focused second brain. Heptabase owns content, PostgreSQL is the durable centralized ledger, and AI agents plus automations drive the work. Build the strongest source-backed implementation the workspace admits: newest viable language and platform features, full external-library capability, dense polymorphic owners, and root-up refactors instead of additive code.
 
 ## [01]-[MODEL_DISPATCH]
@@ -16,8 +18,8 @@ Rankings, higher is better. Cost reflects actual operator spend, not list price.
 |  [06]   | fable-5       |   2    |       9        |    9    |
 
 - Terra is the default Codex worker for sweeps, research, migration, and clear-spec implementation; Sol owns ambiguous design, complex code, and the deepest review; Luna owns fixed-schema high-volume transformation.
-- Every Codex lane pins sandbox and the suffixed model slug; effort inherits the operator default (`xhigh` in `~/.codex/config.toml`) and is stated only to deviate.
-- Xhigh is the dispatch default for every model; low/medium serve bulk throughput, max deepens the single hardest leg. Bounded subagent spawning is agent-discretionary when independent or parallel work materially improves the result; Ultra only biases Sol and Terra to self-decompose - redundant where the caller owns the fan-out - while Luna ends at max. Critique and red-team roles are optional, used on explicit request or when heavy code or logic warrants independent adversarial review.
+- Every Codex lane pins sandbox and the suffixed model slug; effort inherits the operator default in `~/.codex/config.toml` and is stated only to deviate; every prompt carries an explicit completion bar — the enumerated deliverables and the proof each is met; the bar bounds scope and layer, never depth.
+- The operator config owns the dispatch-default tier; low/medium serve bulk throughput, max deepens the single hardest leg. Bounded subagent spawning is agent-discretionary when independent or parallel work materially improves the result; Ultra only biases Sol and Terra to self-decompose - redundant where the caller owns the fan-out - while Luna ends at max. Critique and red-team roles are optional, used on explicit request or when heavy code or logic warrants independent adversarial review.
 - Fan-out lanes disable every unused MCP server, including `heptabase-mcp`, and never refan with Ultra. `forge-mcp doctor --network` and `forge-mcp drift` are the fleet gates.
 - User-facing surfaces require taste ≥ 7. Plan and implementation reviews use fable-5 or opus-4.8, with Terra or Sol as the independent Codex lineage.
 - Delegated agents inherit this table at every depth under the agent-dispatch placement law, never self-escalating beyond the brief.
@@ -102,6 +104,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 ## [07]-[OWNER_ROUTING]
 
 [IMPORTANT]:
+- [ALWAYS]: Open the memory index at `~/.claude/projects/-Users-bardiasamiee-Documents-99-Github-Maghz/memory/MEMORY.md` before schema, ledger, sync, or VPS work — memories carry verified traps the repo docs omit, and dispatched agents reach them only through this route.
 - [ALWAYS]: Dependency graph facts live in `pyproject.toml`, the lockfile, and the tool owner that consumes them.
 - [ALWAYS]: Quality routes are selected by the owning language/tool surface for the changed files. Root policy owns intent, not command catalogs.
 - [ALWAYS]: For docs-only, catalog-only, read-only, declaration-order, move-only, and comment-only work, use text, path, table, link, owner, and preservation checks unless the user requests an executable quality rail.
@@ -131,10 +134,9 @@ Route each tooling concern through its owning skill:
 |  [05]   | Diagrams              | `mermaid-diagramming` |
 |  [06]   | Lifecycle hooks       | `hooks-builder`       |
 |  [07]   | Workflow authoring    | `workflow-creator`    |
-|  [08]   | Notebook research     | `jupyter-notebooks`   |
-|  [09]   | Secret custody        | `secrets`             |
-|  [10]   | VPS / domains         | `hostinger`           |
-|  [11]   | Infra as code         | `pulumi`              |
+|  [08]   | Secret custody        | `secrets`             |
+|  [09]   | VPS / domains         | `hostinger`           |
+|  [10]   | Infra as code         | `pulumi`              |
 
 Resolve any external library's current API through `context7` before internalizing it into a canonical owner — newest-stable usage, never training-data. The web and docs research selection law (`Exa`/`Tavily` over built-in fetch, the async Exa Agent and slow `Perplexity` for deep questions, `mcp__github__*` for the GitHub API versus `gh` for local repo ops, context-isolated bulk reads) is the user-global doctrine and is not restated here.
 
@@ -152,7 +154,7 @@ Plans are decision-complete blueprints. Include context, critical files, impleme
 
 ## [10]-[FILE_ORGANIZATION]
 
-[IMPORTANT] Section separators: language comment marker + space + `---` + bracketed UPPERCASE snake label with no internal spaces + dash fill to the established language width.
+[IMPORTANT] Section separators: language comment marker + space + `---` + bracketed UPPERCASE snake label with no internal spaces + dash fill.
 
 ```python conceptual
 # --- [CONSTANTS] ------------------------------------------------------------------------

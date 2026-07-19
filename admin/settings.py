@@ -91,7 +91,6 @@ _BARE_ENV: frozendict[str, tuple[str, str]] = frozendict({
     "GOOGLE_OAUTH_CLIENT_SECRET": ("integrations", "google_oauth_client_secret"),
     "GREPTILE_API_KEY": ("integrations", "greptile_api_key"),
     "HOSTINGER_API_TOKEN": ("integrations", "hostinger_api_token"),
-    "JUPYTER_TOKEN": ("integrations", "jupyter_token"),
     "OP_SERVICE_ACCOUNT_TOKEN": ("integrations", "op_service_account_token"),
     "PERPLEXITY_API_KEY": ("integrations", "perplexity_api_key"),
     "TAVILY_API_KEY": ("integrations", "tavily_api_key"),
@@ -285,7 +284,6 @@ class IntegrationsConfig(BaseModel):
     google_workspace_project_id: str | None = None
     greptile_api_key: SecretStr | None = Field(default=None, repr=False)
     hostinger_api_token: SecretStr | None = Field(default=None, repr=False)
-    jupyter_token: SecretStr | None = Field(default=None, repr=False)
     op_service_account_token: SecretStr | None = Field(default=None, repr=False)
     perplexity_api_key: SecretStr | None = Field(default=None, repr=False)
     tavily_api_key: SecretStr | None = Field(default=None, repr=False)

@@ -1,5 +1,7 @@
 # [ROOT_AGENTS]
 
+[NEVER]: hand-roll a script, sed/awk/regex pass, or ad-hoc programmatic transform to "fix" markdown, prose, comments, tables, or any documentation — doc repair routes ONLY through the owning skill's fix command or a project tool (e.g. the docgen prose gate `fix`); where none exists, the repair is proper manual read-and-rewrite, one edit at a time, never a bespoke script and never laziness.
+
 ## [01]-[NAVIGATION]
 
 Read full target files before editing. Read minimal surrounding files needed to prove ownership, existing patterns, and route conflicts. For declaration-order passes, preserve generated semantic/key bands; split grouped entries only when grouping obscures ownership, and keep compact generated rows when they are the clearer owner-local table.
@@ -7,6 +9,8 @@ Read full target files before editing. Read minimal surrounding files needed to 
 ## [02]-[TRUST_AND_PRESERVATION]
 
 Skills are execution aids and mining input, not durable documentation authority. Promote portable rules through `docs/`, source, manifests, generated contracts, tool owners, or trusted instruction overlays after current behavior is verified.
+
+Open the memory index at `~/.claude/projects/-Users-bardiasamiee-Documents-99-Github-Maghz/memory/MEMORY.md` before schema, ledger, sync, or VPS work — memories carry verified traps the repo docs omit.
 
 Design notes live in `docs/`. They are working material for a decision, not durable contract; the schema, the `maghz` CLI, and the infra code carry the binding truth.
 
