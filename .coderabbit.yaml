@@ -37,6 +37,7 @@ reviews:
         enabled: true
     path_filters:
         - "!uv.lock"
+        - "!.claude/scratch/**"
     path_instructions:
         - path: "**"
           instructions: >-
