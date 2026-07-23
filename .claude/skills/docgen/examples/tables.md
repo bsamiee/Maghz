@@ -1,6 +1,6 @@
 # [TABLE_CRAFT]
 
-Table repair is symptom-indexed: each entry names one defect an agent already sees in a grid, carries the fixed Detection / Rejected / Accepted / Reason / Reframe card, and shows both table shapes as tiny fences. Repair preserves the grid — hoist, split, extract, relieve, and re-pad in place; the conversion entries fire only after every in-place relief fails.
+Table repair opens with the eligibility triple: a failed triple converts the container whole before any cell moves, a passing grid repairs in place, and a row family resisting every move converts last, structure intact.
 
 ## [01]-[HIGH_COMPLEXITY_DONE_RIGHT]
 
@@ -93,7 +93,7 @@ Every cell restates a word the header already owns, widening the row for nothing
     |  [01]   | `interview` | ambiguous |
     |  [02]   | `plan`      | settled   |
     ```
-- Reason: The header owns the repeated word once; a cell that restates its header wastes the column and widens every row.
+- Reason: A header owns the repeated word once; a cell that restates its header wastes the column and widens every row.
 - Reframe: Hoist the shared word into the header and strip it from every cell.
 
 ## [05]-[PROSE_CRAMMED_CELL]
@@ -118,7 +118,7 @@ A cell packs a multi-clause caveat, a signature, and behavior into a slot the co
     |  [03]   | `Shape.from_profile` | ctor   |
     ```
 
-- Reason: The load-bearing caveat lives in a lead sentence the table cannot hold; each cell drops to one atomic member.
+- Reason: A load-bearing caveat lives in a lead sentence the table cannot hold; each cell drops to one atomic member.
 - Reframe: Move the invariant to prose before the table and split the crammed clause into atomic rows.
 
 ## [06]-[SENTENCE_ROWS]
@@ -170,7 +170,7 @@ A row family resists every table fix, and the teardown flattens it to mega-prose
     - [02]-[PEEL]: `Variant` separates outer and inner shells.
     - [03]-[DETACH]: `Region` re-solves mid-layer adjacency.
     ```
-- Reason: The mega-prose form drowns the lookup and the bare list strips every label and index; the structured conversion keeps a greppable key per member without a column set the family rejects.
+- Reason: Mega-prose drowns the lookup and a bare list strips every label and index; the structured conversion keeps a greppable key per member without a column set the family rejects.
 - Reframe: Convert to a labeled indexed list or a GroupedRecord set, never a paragraph flood or an unkeyed dump.
 
 ## [08]-[LINKS_IN_CELLS]
@@ -219,7 +219,7 @@ An enumerable table drops the leading `[INDEX]` column or carries bare-word head
     |  [01]   | `interview` | ambiguous | `prompt` |
     |  [02]   | `plan`      | settled   | `steps`  |
     ```
-- Reason: The `[INDEX]` column gives every row a stable reference and the bracketed rubric makes headers censusable across sibling tables.
+- Reason: An `[INDEX]` column gives every row a stable reference and the bracketed rubric makes headers censusable across sibling tables.
 - Reframe: Add the centered `[INDEX]` column numbered `[01]` onward and bracket every header as an uppercase rubric.
 
 ## [10]-[SUB_LETTERED_INDEX]

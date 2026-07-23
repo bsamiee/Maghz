@@ -1,6 +1,6 @@
 # [INTRO_CRAFT]
 
-A lead is one charter sentence opening with the document's own law, plus at most one boundary-consequence sentence — never the doc-set, the siblings, the audience, or the process. Each entry contrasts a leaked lead against its reframe under the fixed Detection / Rejected / Accepted / Reason / Reframe card.
+Lead repair re-seats the charter in the opening slot: a doc-set, sibling, audience, or process frame is replaced by the document's own law, never softened in place.
 
 ## [01]-[INDEX_LEAD]
 
@@ -15,7 +15,7 @@ An index-doc lead opens with anything but the unit's own charter — the doc-set
     ```markdown accepted
     `<unit>` owns host-free geometry: evidence graduation, scan processing, and the tessellation rail that serves every cross-boundary consumer.
     ```
-- Reason: The charter sentence states what the unit owns and the one boundary it holds; routing and sibling roles belong to the router surface, not the lead.
+- Reason: A charter sentence states what the unit owns and the one boundary it holds; routing and sibling roles belong to the router surface, never the lead.
 - Reframe: Open with the unit's owned capability and one boundary consequence; delete every sentence about siblings or the doc-set.
 
 ## [02]-[SPEC_LEAD]
@@ -29,9 +29,9 @@ A spec-page lead restates higher law or re-teaches a sibling instead of naming i
     ```
 - Accepted:
     ```markdown accepted
-    The tessellation serve owner frames per-element output as append-only positional rows keyed by the content hash.
+    `serve` frames per-element output as append-only positional rows keyed by the content hash.
     ```
-- Reason: The spec page owns byte-truth and flow; higher law is composed silently and a sibling is named only at a routing pointer.
+- Reason: A spec page owns byte-truth and flow, composes higher law silently, and names a sibling only at a routing pointer.
 - Reframe: Open on the mechanism this page owns; drop the restated law and the sibling recap.
 
 ## [03]-[TOOL_LEAD]
@@ -96,5 +96,5 @@ A design-corpus lead narrates the page's distance from code — realized, planne
     ```markdown accepted
     `<unit>` folds every fabrication route through one policy-driven dispatch; the codemap carries the owner topology.
     ```
-- Reason: The corpus charter states once what the work product is; a per-page realization narrative is process ledger, and the page count is an anchor the next page falsifies.
+- Reason: One corpus charter states what the work product is; a per-page realization narrative is process ledger, and the page count is an anchor the next page falsifies.
 - Reframe: Open with the unit's owned invariant; the realization contract lives at the corpus charter alone, and counts die with the frame.

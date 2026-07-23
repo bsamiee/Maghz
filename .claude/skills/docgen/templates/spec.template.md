@@ -7,7 +7,7 @@
 ## [01]-[INDEX]
 
 - [01]-[<cluster-token>]: <route-hook-mechanism-owner>
-- [02]-[SHAPE_FOLD]: the shape-op fold, its case vocabulary, and the content-keyed receipt
+- [02]-[SHAPE_FOLD]: `ShapeFold` op dispatch, its case vocabulary, and the content-keyed receipt
 
 ## [02]-[<cluster-token>]
 
@@ -31,7 +31,7 @@
 - Entry: `apply` discriminates single, batch, and stream by input shape
 - Receipt: `ShapeReceipt.contribute` folds evidence into the run
 - Packages: `shape-core` for the refinement kernel
-- Growth: a new op is one `ShapeOp` case plus one dispatch arm
+- Growth: a new op is one `ShapeOp` case and one dispatch arm
 - Boundary: this owner refuses wire decode, deferred to the codec seam
 
 ```python signature
