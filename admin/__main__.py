@@ -10,7 +10,7 @@ the matched rail through `App.run_async(backend="asyncio")` — the sole event-l
 resolve at dispatch, not import, so a config fault surfaces as a fault envelope rather than a bare
 traceback. The runtime `Signals` service owns the structlog pipeline and `install(RetryMode.EMIT)`
 routes boundary-retry receipts onto stderr once at startup. The `stack`, `ledger`, `schema`, `sync`,
-`cloud`, `n8n`, `health`, and `remote` (`exec`) rails return the domain `RuntimeRail[Envelope]`, so
+`cloud`, `health`, and `remote` (`exec`) rails return the domain `RuntimeRail[Envelope]`, so
 their handlers lower it to the stdout `Envelope` through the one `runtime.lower` seam, which spreads a
 surviving `BoundaryFault` into a `fault` envelope at the single CLI edge.
 The stack verbs (`up`/`down`/`status`) are stage-polymorphic through `MAGHZ_INFRA__STAGE` — the prd
@@ -47,7 +47,6 @@ _STACK = Group("Stack", sort_key=10)
 _LEDGER = Group("Ledger", sort_key=20)
 _SCHEMA = Group("Schema", sort_key=30)
 _SYNC = Group("Sync", sort_key=40)
-_N8N = Group("n8n", sort_key=45)
 _AUTOMATION = Group("Automation", sort_key=48)
 _CLOUD = Group("Cloud", sort_key=50)
 _REMOTE = Group("Remote", sort_key=60)
@@ -68,12 +67,11 @@ app = App(
 )
 _schema = App(name="schema", help="Apply the declarative schema and assert ledger health.", group=_SCHEMA)
 _sync = App(name="sync", help="Reconcile canonical concepts with their Heptabase cards.", group=_SYNC)
-_n8n = App(name="n8n", help="Manage n8n automation workflows: export, import, and container liveness.", group=_N8N)
 _automation = App(name="automation", help="Drive the trigger/action automation engine: watch, schedule, or one-shot.", group=_AUTOMATION)
 _cloud = App(name="cloud", help="Replicate the ledger dump and content tree to the cloud remotes, and restore.", group=_CLOUD)
 # Each sub-app mounts onto the root once; the verb-bearing command bodies below register through the
 # named handle's own `@<app>.command` decorator, so the handles stay bound and registration folds here.
-for _subapp in (_schema, _sync, _n8n, _automation, _cloud):
+for _subapp in (_schema, _sync, _automation, _cloud):
     app.command(_subapp)
 
 
@@ -105,7 +103,7 @@ async def _status() -> Envelope:
 
 @app.command(name="health", group=_STACK)
 async def _health() -> Envelope:
-    """Probe the service plane (postgres, ollama, n8n, atuin, hook) through its loopback ports."""
+    """Probe the service plane (postgres, ollama, atuin, hook) through its loopback ports."""
     return lower(await rails.health(settings()))
 
 
@@ -139,26 +137,6 @@ async def _sync_generate(concept: Annotated[str, Parameter(help="The canonical c
     # The required positional always carries a present concept, so it threads straight into the
     # modal `concept: str | None` `sync.run` owns; the `diff` command supplies no concept (None).
     return lower(await rails.sync(settings(), concept=concept))
-
-
-@_n8n.command(name="export")
-async def _n8n_export() -> Envelope:
-    """Export every n8n workflow to one `<id>.json` per file under the host-mounted workflows tree."""
-    # The n8n rail returns the domain `RuntimeRail[Envelope]` (its `N8nDetail` completed/fault-graded at the
-    # boundary), which this handler lowers to the stdout `Envelope` through the one `runtime.lower` seam.
-    return lower(await rails.n8n(rails.N8nOp.EXPORT, settings()))
-
-
-@_n8n.command(name="import")
-async def _n8n_import() -> Envelope:
-    """Import every `<id>.json` workflow from the host-mounted tree into the running container."""
-    return lower(await rails.n8n(rails.N8nOp.IMPORT, settings()))
-
-
-@_n8n.command(name="status")
-async def _n8n_status() -> Envelope:
-    """Probe the n8n container `/healthz` liveness; a reached non-200 reports `healthy=false`, not a fault."""
-    return lower(await rails.n8n(rails.N8nOp.STATUS, settings()))
 
 
 @_automation.command(name="run")

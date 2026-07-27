@@ -22,7 +22,7 @@
 |  [05]   | `db.py`         | Asynchronous `pg8000` query boundary                 |
 |  [06]   | `infra.py`      | Stage-polymorphic Pulumi service topology            |
 |  [07]   | `profile.py`    | PostgreSQL extension catalog and projections         |
-|  [08]   | `rails.py`      | Schema, ledger, Heptabase, cloud, and n8n rails      |
+|  [08]   | `rails.py`      | Schema, ledger, Heptabase, and cloud rails           |
 |  [09]   | `remote.py`     | Scoped asyncssh push-execute-pull rail               |
 |  [10]   | `runtime.py`    | Fault, retry, admission, drain, and signal substrate |
 |  [11]   | `settings.py`   | Sole validated environment and configuration ingress |
@@ -37,7 +37,6 @@
 |  [04]   | `ledger <projection>`                      | Read one ledger projection              |
 |  [05]   | `sync diff` / `sync generate`              | Reconcile Heptabase-backed concepts     |
 |  [06]   | `cloud sync` / `cloud restore`             | Replicate or restore durable content    |
-|  [07]   | `n8n export` / `n8n import` / `n8n status` | Move or census workflow files           |
 |  [08]   | `automation run`                           | Execute one trigger-action request      |
 |  [09]   | `exec`                                     | Run the scoped remote worktree rail     |
 
@@ -66,7 +65,6 @@ Stage-`prd` stack verbs converge the live Hostinger VPS directly: the Pulumi pro
 ## [08]-[MCP_SKILLS]
 
 - [MCP_FLEET]: Forge owns every client registration and projects the Maghz-backed `doppler-remote` row. `admin/infra.py` owns the remote `maghz-mcp` container; no `admin` rail generates client configuration.
-- [N8N]: workflow automation remains outside the MCP fleet until a credentialed consumer is admitted.
 - [SKILLS]: `.claude/skills/` mirrors Forge harness masters and Rasm methodology masters; the fleet rows above remain the tool surface.
 
 ## [09]-[SECRETS]

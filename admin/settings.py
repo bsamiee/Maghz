@@ -48,7 +48,7 @@ class Stage(StrEnum):
 
     `LOCAL` converges the Mac parity stack against the Colima daemon; `PRD` converges the identical
     service graph against the VPS system daemon over SSH. The tunnel maps the VPS loopback ports onto
-    the local loopback one-to-one, so every rail above the docker layer (DSN, ollama, n8n, atuin
+    the local loopback one-to-one, so every rail above the docker layer (DSN, ollama, atuin
     probes) is stage-agnostic by construction — only docker-daemon-facing surfaces read this switch.
     """
 
@@ -182,7 +182,9 @@ class InfraConfig(BaseModel):
     atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
     doppler_mcp_image: str = "node:26-alpine"
     doppler_mcp_version: str = "1.0.5"
-    state_dir: AnchoredPath = Path(".cache/pulumi")
+    # Pulumi state is the only copy of the stack's resource truth — it lives in durable XDG state, never the purgeable repo .cache tree
+    # (a litter sweep there once erased the prd state and a converge collided with the live plane).
+    state_dir: AnchoredPath = Field(default_factory=lambda: Path.home() / ".local/state/maghz/pulumi")
     image_context: AnchoredPath = Path("image")
 
 
@@ -209,7 +211,7 @@ class ProxyConfig(BaseModel):
     """The prd public-ingress owner: a Caddy TLS terminator on the docker network.
 
     Doppler webhook delivery mandates HTTPS, so the proxy fronts the hook consumer (and any future
-    public service, n8n included) with an ACME certificate for `host` — the sslip.io name that
+    public service) with an ACME certificate for `host` — the sslip.io name that
     resolves to the VPS address without an owned domain. Local carries no proxy: it has no public
     ingress and no ACME reachability.
     """
@@ -221,37 +223,6 @@ class ProxyConfig(BaseModel):
     host: str = "31-97-131-41.sslip.io"
     http_port: int = Field(default=80, ge=1, le=65535)
     https_port: int = Field(default=443, ge=1, le=65535)
-
-
-class N8nConfig(BaseModel):
-    """The sole owner of every n8n knob: container image/name, port, URL shape, VPS-proxy overrides, and `workflows_dir`.
-
-    `api_url` is a derived property over `protocol`/`host`/`port` (no `MAGHZ_N8N__API_URL` env, the VPS
-    override sets `PROTOCOL`/`HOST`); it returns a bare `str`, not `AnyHttpUrl`, because the `httpx`
-    `base_url` consumer needs the host:port form with no trailing slash that `AnyHttpUrl` would normalize in.
-    `webhook_url` is the typed `AnyHttpUrl` and stays independent: the reverse-proxy public URL differs from
-    the internal `api_url`. `encryption_key` is the PRD credential-store key (`MAGHZ_N8N__ENCRYPTION_KEY`,
-    Doppler `maghz/prd_host`): the prd container receives it as `N8N_ENCRYPTION_KEY` so the key survives any
-    volume loss; the local stage keeps the host-minted key FILE mount and never reads this field.
-    """
-
-    model_config = _GROUP
-
-    image: str = "n8nio/n8n:2.27.3"
-    encryption_key: SecretStr | None = Field(default=None, repr=False)
-    container_name: str = "maghz-n8n"
-    port: int = Field(default=5678, ge=1024, le=65535)
-    host: str = "127.0.0.1"
-    protocol: Literal["http", "https"] = "http"
-    webhook_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:5678/")
-    proxy_hops: int = Field(default=0, ge=0)
-    connect_timeout: float = Field(default=10.0, gt=0)
-    workflows_dir: AnchoredPath = Path("workflows/n8n")
-
-    @property
-    def api_url(self) -> str:
-        """Canonical n8n API URL derived from protocol, host, and port; never stored redundantly."""
-        return f"https://{self.host}" if self.protocol == "https" else f"http://{self.host}:{self.port}"
 
 
 class ObservabilityConfig(BaseModel):
@@ -444,7 +415,6 @@ class MaghzSettings(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     infra: InfraConfig = Field(default_factory=InfraConfig)
-    n8n: N8nConfig = Field(default_factory=N8nConfig)
     hook: HookConfig = Field(default_factory=HookConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
@@ -471,14 +441,13 @@ class MaghzSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_prd_rows(self) -> Self:  # noqa: N804 - mode="after" instance validator; pydantic mandates `self`
-        """PRD admission: the SSH target and the n8n credential-store key must exist before any converge."""
+        """PRD admission: the SSH target and the hook signing secret must exist before any converge."""
         if self.infra.stage is Stage.PRD:
             missing = [
                 name
                 for name, present in (
                     ("MAGHZ_REMOTE_HOST", bool(self.remote.host)),
                     ("MAGHZ_REMOTE_USER", bool(self.remote.user)),
-                    ("MAGHZ_N8N__ENCRYPTION_KEY", self.n8n.encryption_key is not None),
                     ("MAGHZ_HOOK__SIGNING_SECRET", self.hook.signing_secret is not None),
                 )
                 if not present
@@ -523,7 +492,6 @@ __all__ = [
     "LogFormat",
     "LogLevel",
     "MaghzSettings",
-    "N8nConfig",
     "ObservabilityConfig",
     "OllamaConfig",
     "ProxyConfig",

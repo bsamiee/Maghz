@@ -10,21 +10,14 @@ Rankings, higher is better. Cost reflects actual operator spend, not list price.
 
 | [INDEX] | [MODEL]       | [COST] | [INTELLIGENCE] | [TASTE] |
 | :-----: | :------------ | :----: | :------------: | :-----: |
-|  [01]   | gpt-5.6-terra |   9    |       7        |    6    |
-|  [02]   | gpt-5.6-sol   |   8    |       8        |    7    |
-|  [03]   | gpt-5.6-luna  |   10   |       5        |    5    |
-|  [04]   | sonnet-5      |   5    |       3        |    6    |
-|  [05]   | opus-4.8      |   4    |       7        |    7    |
-|  [06]   | fable-5       |   2    |       9        |    9    |
+|  [01]   | sonnet-5 |   5    |       3        |    6    |
+|  [02]   | opus-4.8 |   4    |       7        |    7    |
+|  [03]   | fable-5  |   2    |       9        |    9    |
 
-- Terra is the default Codex worker for sweeps, research, migration, and clear-spec implementation; Sol owns ambiguous design, complex code, and the deepest review; Luna owns fixed-schema high-volume transformation.
-- Every Codex lane pins sandbox and the suffixed model slug; effort inherits the operator default in `~/.codex/config.toml` and is stated only to deviate; every prompt carries an explicit completion bar — the enumerated deliverables and the proof each is met; the bar bounds scope and layer, never depth.
-- The operator config owns the dispatch-default tier; low/medium serve bulk throughput, max deepens the single hardest leg. Bounded subagent spawning is agent-discretionary when independent or parallel work materially improves the result; Ultra only biases Sol and Terra to self-decompose - redundant where the caller owns the fan-out - while Luna ends at max. Critique and red-team roles are optional, used on explicit request or when heavy code or logic warrants independent adversarial review.
-- Fan-out lanes disable every unused MCP server, including `heptabase-mcp`, and never refan with Ultra. `forge-mcp doctor --network` and `forge-mcp drift` are the fleet gates.
-- User-facing surfaces require taste ≥ 7. Plan and implementation reviews use fable-5 or opus-4.8, with Terra or Sol as the independent Codex lineage.
+- Effort `low`/`medium` serves bulk throughput; `max` deepens the single hardest leg. Bounded subagent spawning applies when independent or parallel work materially improves the result. Critique and red-team roles apply on explicit request or when heavy code or logic warrants independent adversarial review.
+- User-facing surfaces require taste ≥ 7. Plan and implementation reviews use fable-5 or opus-4.8.
 - Delegated agents inherit this table at every depth under the agent-dispatch placement law, never self-escalating beyond the brief.
-- Claude models run through the Agent/Workflow `model` parameter at effort `high`; Codex runs through the `codex` MCP tool or `codex exec` / `codex review` — the codex skill owns invocation. [NEVER]: Haiku.
-- A workflow codex leg is a thin wrapper labeled with the real worker (`terra:`/`sol:`/`luna:`/`gemini:`) making one blocking `codex` MCP call; the workflow-creator codex-lanes reference owns the wrapper and receipt contract.
+- Claude models run through the Agent/Workflow `model` parameter at effort `high`. [NEVER]: Haiku.
 
 ## [02]-[WORKSPACE_LAW]
 
@@ -115,7 +108,7 @@ Python has no route skill: the doctrine pair plus this manifest's `[05]` constra
 - [NEVER]: Create migration files, numbered `NNN_*.sql` scripts, schema-version tables, or up/down migration pairs; the schema is declarative and idempotent — change `db/schema.sql`, `db/routines.sql`, or `db/cron.sql` in place and replay through `maghz schema apply`.
 - [ALWAYS]: `psql` and `pgcli` own ad-hoc SQL and interactive inspection; reach for them for one-off queries, not durable schema change.
 - [ALWAYS]: The embed pipeline is in-database — `maghz_embed_enqueue`/`maghz_embed_drain` ride the minute `pg_cron` tick and `pg_net` posts to local Ollama; debug it through `maghz schema doctor` plus SQL over `cron.job_run_details`, never an application-side embedding script.
-- [ALWAYS]: Pulumi owns infra: the custom ParadeDB image build and the `db`/`ollama`/`n8n` services behind `StackOp`, driven by `MaghzSettings`. One program serves both stages — `MAGHZ_INFRA__STAGE` selects `local` (Colima) or `prd` (the VPS system daemon over the derived `ssh://` endpoint), and the prd invocation runs under `doppler run --project maghz --config prd_host`.
+- [ALWAYS]: Pulumi owns infra: the custom ParadeDB image build and the `db`/`ollama` services behind `StackOp`, driven by `MaghzSettings`. One program serves both stages — `MAGHZ_INFRA__STAGE` selects `local` (Colima) or `prd` (the VPS system daemon over the derived `ssh://` endpoint), and the prd invocation runs under `doppler run --project maghz --config prd_host`.
 - [ALWAYS]: Stage-`prd` `maghz up`/`down`/`status`/`schema apply`/`health` own VPS service operation and `maghz exec` owns remote agent shell work; raw `ssh`/`docker`/`psql` against the VPS is debugging only, and every exec receipt carries the pushed commit.
 - [ALWAYS]: Route failures by seam: the stack, schema, ledger, and deploy rails are `admin/`-owned; the VPS operating system — users, network, firewall, system Docker, tunnels — is owned by the Forge flake's `nixosConfigurations.maghz` and changes through `forge-redeploy`, never through a patch in this repo.
 
@@ -125,20 +118,20 @@ Machine tooling and the complete MCP fleet are provisioned by `Parametric_Forge`
 
 Route each tooling concern through its owning skill:
 
-| [INDEX] | [CONCERN]             | [SKILL]               |
-| :-----: | :-------------------- | :-------------------- |
-|  [01]   | Heptabase content     | `heptabase-cli`       |
-|  [02]   | Source ingestion      | `notebooklm` MCP      |
-|  [03]   | Library documentation | `context7-mcp`        |
-|  [04]   | CI/CD pipelines       | `github-actions`      |
-|  [05]   | Diagrams              | `mermaid-diagramming` |
-|  [06]   | Lifecycle hooks       | `hooks-builder`       |
-|  [07]   | Workflow authoring    | `workflow-creator`    |
-|  [08]   | Secret custody        | `secrets`             |
-|  [09]   | VPS / domains         | `hostinger`           |
-|  [10]   | Infra as code         | `pulumi`              |
+| [INDEX] | [CONCERN]             | [SKILL]                               |
+| :-----: | :-------------------- | :------------------------------------ |
+|  [01]   | Heptabase content     | `heptabase-cli` + `heptabase-mcp` MCP |
+|  [02]   | Source ingestion      | `notebooklm` MCP                      |
+|  [03]   | Library documentation | `context7-search`                     |
+|  [04]   | CI/CD pipelines       | `github-actions`                      |
+|  [05]   | Diagrams              | `mermaid-diagramming`                 |
+|  [06]   | Lifecycle hooks       | `hooks-builder`                       |
+|  [07]   | Workflow authoring    | `workflow-creator`                    |
+|  [08]   | Secret custody        | `secrets`                             |
+|  [09]   | VPS / domains         | `hostinger`                           |
+|  [10]   | Infra as code         | `pulumi`                              |
 
-Resolve any external library's current API through `context7` before internalizing it into a canonical owner — newest-stable usage, never training-data. The web and docs research selection law (`Exa`/`Tavily` over built-in fetch, the async Exa Agent and slow `Perplexity` for deep questions, `mcp__github__*` for the GitHub API versus `gh` for local repo ops, context-isolated bulk reads) is the user-global doctrine and is not restated here.
+Resolve any external library's current API through `context7-search` before internalizing it into a canonical owner — newest-stable usage, never training-data. The web and docs research selection law (`exa`/`tavily-search` over built-in fetch, the async Exa Agent and slow `Perplexity` for deep questions, `mcp__github__*` for the GitHub API versus `gh` for local repo ops, context-isolated bulk reads) is the user-global doctrine and is not restated here.
 
 ## [09]-[DOCUMENTATION_AND_OUTPUT]
 

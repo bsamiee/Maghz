@@ -24,21 +24,8 @@ from admin import db
 from admin.core import completed, Detail, Envelope, Row, Status
 from admin.db import QueryResult
 from admin.profile import census_diff
-from admin.runtime import (
-    Admit,
-    boundary,
-    BoundaryFault,
-    Disposition,
-    DrainReceipt,
-    guarded,
-    LaneKey,
-    LanePolicy,
-    RetryClass,
-    RuntimeRail,
-    spawn,
-    traversed,
-)
-from admin.settings import CloudConfig, MaghzSettings, N8nConfig, Remote, Stage
+from admin.runtime import Admit, boundary, BoundaryFault, Disposition, DrainReceipt, LaneKey, LanePolicy, RetryClass, RuntimeRail, spawn, traversed
+from admin.settings import CloudConfig, MaghzSettings, Remote, Stage
 
 
 # --- [TYPES] ---------------------------------------------------------------------------
@@ -425,88 +412,6 @@ async def ledger(kind: Kind, cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
     return (await db.query(projection.sql, cfg)).map(_report)
 
 
-class N8nOp(StrEnum):
-    EXPORT = "export"
-    IMPORT = "import"
-    STATUS = "status"
-
-
-_CONTAINER_WORKFLOWS: Final[str] = "/home/node/workflows"
-
-
-class N8nDetail(Detail, frozen=True, tag="n8n"):
-    op: N8nOp
-    workflow_count: int = 0
-    container: str = ""
-    healthy: bool | msgspec.UnsetType = msgspec.UNSET
-
-
-class _Cli(msgspec.Struct, frozen=True, gc=False):
-    op: N8nOp
-    subcommand: tuple[str, ...]
-
-
-_LIMITS: Final[httpx.Limits] = httpx.Limits(max_connections=1, max_keepalive_connections=1)
-
-
-async def _census(cfg: MaghzSettings) -> int:
-
-    return len([entry async for entry in anyio.Path(cfg.n8n.workflows_dir).glob("*.json")])
-
-
-def _n8n_graded(run: CompletedProcess[bytes], cli: _Cli, count: int, container: str) -> RuntimeRail[Envelope]:
-
-    if run.returncode == 0:
-        return Ok(completed(Status.OK, N8nDetail(op=cli.op, workflow_count=count, container=container)))
-    detail = run.stderr.decode(errors="replace").strip() or f"{cli.op.value} exited {run.returncode}"
-    return Error(BoundaryFault(boundary=(f"n8n.{cli.op.value}", detail)))
-
-
-async def _workflow(cli: _Cli, cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-
-    argv = ("docker", "exec", "-u", "node", cfg.n8n.container_name, "n8n", *cli.subcommand)
-    match await spawn(argv, subject=f"n8n.{cli.op.value}", retry_class=RetryClass.PROC, env=dict(cfg.docker_env)):
-        case Result(tag="error", error=spawn_fault):
-            return Error(spawn_fault)
-        case Result(ok=run):
-            count = await _census(cfg) if run.returncode == 0 else 0
-            return _n8n_graded(run, cli, count, cfg.n8n.container_name)
-
-
-async def _probe(n8n: N8nConfig) -> bool:
-
-    timeout = httpx.Timeout(connect=n8n.connect_timeout, read=n8n.connect_timeout, write=n8n.connect_timeout, pool=n8n.connect_timeout)
-    async with httpx.AsyncClient(base_url=n8n.api_url, timeout=timeout, limits=_LIMITS, headers={"accept": "application/json"}) as client:
-        return (await client.get("/healthz")).status_code == httpx.codes.OK
-
-
-async def _status(cfg: MaghzSettings) -> RuntimeRail[Envelope]:
-    # Container-plane status by ruling: unauthenticated /healthz liveness plus
-    # the on-disk workflow census. No n8n API key exists; API-managed workflow
-    # ownership is not claimed.
-    probed = await guarded(RetryClass.HTTP, lambda: _probe(cfg.n8n), subject="n8n.status")
-    count = await _census(cfg)
-    return probed.map(
-        lambda healthy: completed(Status.OK, N8nDetail(op=N8nOp.STATUS, workflow_count=count, container=cfg.n8n.container_name, healthy=healthy))
-    )
-
-
-_CLI: Final[frozendict[N8nOp, _Cli]] = frozendict({
-    N8nOp.EXPORT: _Cli(op=N8nOp.EXPORT, subcommand=("export:workflow", "--all", f"--output={_CONTAINER_WORKFLOWS}", "--separate")),
-    N8nOp.IMPORT: _Cli(op=N8nOp.IMPORT, subcommand=("import:workflow", "--separate", f"--input={_CONTAINER_WORKFLOWS}")),
-})
-_N8N_BUILD: Final[frozendict[N8nOp, Callable[[MaghzSettings], Awaitable[RuntimeRail[Envelope]]]]] = frozendict({
-    **{op: partial(_workflow, cli) for op, cli in _CLI.items()},
-    N8nOp.STATUS: _status,
-})
-
-
-async def n8n(op: N8nOp, cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
-
-    structlog.contextvars.bind_contextvars(rail="n8n", op=op.value)
-    return await _N8N_BUILD[op](cfg)
-
-
 class SchemaOp(StrEnum):
     APPLY = "apply"
     DOCTOR = "doctor"
@@ -825,7 +730,7 @@ class _Probe(msgspec.Struct, frozen=True, gc=False):
 
 _TAGS_DECODER: Final[msgspec.json.Decoder[_Tags]] = msgspec.json.Decoder(type=_Tags)
 _PROBE_TIMEOUT: Final[float] = 5.0
-_HEALTH_SERVICES: Final[tuple[str, ...]] = ("postgres", "ollama", "n8n", "atuin", "hook")
+_HEALTH_SERVICES: Final[tuple[str, ...]] = ("postgres", "ollama", "atuin", "hook")
 
 
 async def _db_probe(cfg: MaghzSettings) -> _Probe:
@@ -888,7 +793,6 @@ async def health(cfg: MaghzSettings, /) -> RuntimeRail[Envelope]:
         for fn in (
             partial(_db_probe, cfg),
             partial(_ollama_probe, cfg),
-            lambda: _http_probe("n8n", f"{cfg.n8n.api_url}/healthz"),
             lambda: _http_probe("atuin", str(cfg.infra.atuin_url)),
             lambda: _http_probe("hook", f"http://127.0.0.1:{cfg.hook.port}/healthz"),
         )
@@ -915,8 +819,6 @@ __all__ = [
     "Kind",
     "LedgerDetail",
     "LineageEdge",
-    "N8nDetail",
-    "N8nOp",
     "Projection",
     "SchemaDetail",
     "SchemaOp",
@@ -925,7 +827,6 @@ __all__ = [
     "cloud",
     "health",
     "ledger",
-    "n8n",
     "schema",
     "sync",
 ]

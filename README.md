@@ -1,6 +1,6 @@
 # Maghz
 
-An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — the n8n workflows ride infrastructure (the schema, embed pipeline, rails, and VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
+An agent-operated second brain. Heptabase owns note content, the PostgreSQL `maghz` database is the durable centralized ledger and hybrid-search engine, and the `admin/` Python CLI is the one operator surface that agents and automations drive. Every surface is agent-facing: the CLI emits one JSON `Envelope` per call with no human prompts, no interactive flags, and no decorative output. Automation is the central design pressure — automations ride infrastructure (the schema, embed pipeline, rails, and VPS deploy path) that already runs. One stack definition serves two hosts: the local Mac for development parity and the `maghz` NixOS VPS as the durable home.
 
 ## [01]-[LAYOUT]
 
@@ -9,9 +9,8 @@ The codemap is a regenerable projection of the repository root.
 ```text codemap
 Maghz/
 ├── admin/      maghz CLI modules and package charter
-├── db/         declarative SQL, search dictionaries, and n8n bootstrap
+├── db/         declarative SQL and search dictionaries
 ├── image/      ParadeDB-derived Postgres image and apt projection
-├── workflows/  committed n8n workflow files
 ├── docs/       doctrine, prose standards, and language stacks
 └── .claude/    skills, hooks, scripts, and agent configuration
 ```
@@ -22,7 +21,7 @@ Maghz/
 
 The `admin/` package is functional Railway-Oriented Programming over one closed `BoundaryFault` family. Every domain operation returns a `RuntimeRail[Envelope]`; the CLI lowers it to one stdout `Envelope` at the edge. `admin/runtime.py` is the substrate — the rail, the fault classifier, the bounded `drain` lane, retry policies, and structured receipts — and every consumer module composes it rather than re-deriving spawn, retry, or fault handling.
 
-Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infrastructure lifecycle. MCP owns live exploration of web research and the VPS; live database reads ride `psql` on the trust-auth loopback DSN. PostgreSQL is deliberately dual-surface: schema and ledger mutation stay on the CLI rail, while exploratory reads enter the loopback port directly. Deterministic work goes through `maghz`; exploratory work goes through MCP; never the reverse. n8n remains container-plane only: workflows move by file export/import, status is the unauthenticated `/healthz` liveness plus the on-disk census, and no n8n API key or MCP row exists. API-managed workflow ownership requires an explicit credential and consumer admission.
+Two surfaces meet at the database and never collapse into each other. The CLI rails own deterministic, receipted truth: schema apply, ledger projections, Heptabase sync, cloud backup, and infrastructure lifecycle. MCP owns live exploration of web research and the VPS; live database reads ride `psql` on the trust-auth loopback DSN. PostgreSQL is deliberately dual-surface: schema and ledger mutation stay on the CLI rail, while exploratory reads enter the loopback port directly. Deterministic work goes through `maghz`; exploratory work goes through MCP; never the reverse.
 
 Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW cosine (semantic), and `pg_trgm`/FTS (fuzzy) fused through Reciprocal Rank Fusion in `maghz.search()`. Embeddings are produced in the database — `pg_net` posts each concept to local Ollama `nomic-embed-text` and the response writes back as `vector(768)` — on a two-step `pg_cron` sweep, with no application round-trip and no embedding API key.
 
@@ -32,14 +31,13 @@ Retrieval is hybrid and in-database: `pg_search` BM25 (lexical), `pgvector` HNSW
 
 | [INDEX] | [COMMAND]                | [DOES]                                                     |
 | :-----: | :----------------------- | :--------------------------------------------------------- |
-|  [01]   | `up` / `down` / `status` | Stage-selected Pulumi lifecycle for db, Ollama, and n8n    |
+|  [01]   | `up` / `down` / `status` | Stage-selected Pulumi lifecycle for db and Ollama          |
 |  [02]   | `health`                 | Loopback service census; down services grade `failed`      |
 |  [03]   | `schema apply`           | Stage dictionaries and idempotently apply the SQL surfaces |
 |  [04]   | `schema doctor`          | Parse SQL and assert the live extension catalog            |
 |  [05]   | `ledger <kind>`          | Read one ledger projection                                 |
 |  [06]   | `sync`                   | Diff or generate Heptabase-backed concepts                 |
 |  [07]   | `cloud`                  | Dump, bisync, or restore configured cloud remotes          |
-|  [08]   | `n8n`                    | Export, import, or census committed workflows              |
 |  [09]   | `exec`                   | Push, execute, and pull through the scoped SSH rail        |
 |  [10]   | `automation run`         | Dispatch one typed trigger-action specification            |
 
@@ -61,7 +59,7 @@ Three identities partition the VPS: `root` carries only the `forge-redeploy` act
 
 1. The Docker runtime is running; the docker endpoint self-detects (`MAGHZ_INFRA__DOCKER_HOST` overrides).
 2. Secrets are present in the process environment (Parametric_Forge injects them; see below).
-3. `maghz up` drives Pulumi to build the custom image and start the Postgres, Ollama, and n8n services. The Ollama embed model is pulled as the converge's follow-on.
+3. `maghz up` drives Pulumi to build the custom image and start the Postgres and Ollama services. The Ollama embed model is pulled as the converge's follow-on.
 4. `maghz schema apply` then `maghz schema doctor` apply and assert the schema and extension census.
 5. `maghz down` tears the whole stack down and leaves no orphaned containers, networks, or volumes.
 6. Stage `prd` runs the same ladder against the VPS daemon: `doppler run --project maghz --config prd_host -- env MAGHZ_INFRA__STAGE=prd uv run maghz up`, then `schema apply` and `health` through the live tunnel. The tunnel must own the loopback ports first — stop the local stack before kickstarting it.
