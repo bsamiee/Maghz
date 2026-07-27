@@ -180,7 +180,7 @@ class InfraConfig(BaseModel):
     ollama_port: int = Field(default=11434, ge=1024, le=65535)
     docker_host: str = Field(default_factory=_detect_docker_host)
     atuin_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8788")
-    doppler_mcp_image: str = "node:24-alpine"
+    doppler_mcp_image: str = "node:26-alpine"
     doppler_mcp_version: str = "1.0.5"
     state_dir: AnchoredPath = Path(".cache/pulumi")
     image_context: AnchoredPath = Path("image")

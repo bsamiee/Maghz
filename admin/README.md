@@ -65,7 +65,7 @@ Stage-`prd` stack verbs converge the live Hostinger VPS directly: the Pulumi pro
 
 ## [08]-[MCP_SKILLS]
 
-- [MCP_FLEET]: Forge owns every client registration and projects the Maghz-backed `postgres` and `doppler-remote` rows. `admin/infra.py` owns the remote `maghz-mcp` container; no `admin` rail generates client configuration.
+- [MCP_FLEET]: Forge owns every client registration and projects the Maghz-backed `doppler-remote` row. `admin/infra.py` owns the remote `maghz-mcp` container; no `admin` rail generates client configuration.
 - [N8N]: workflow automation remains outside the MCP fleet until a credentialed consumer is admitted.
 - [SKILLS]: `.claude/skills/` mirrors Forge harness masters and Rasm methodology masters; the fleet rows above remain the tool surface.
 
